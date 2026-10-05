@@ -33,7 +33,11 @@ State is local (`terraform.tfstate`, git-ignored). Provider:
 | --- | --- |
 | `bootstrap.rsc` / `bootstrap.local.rsc` | access-layer bootstrap (see runbook) |
 | `snapshots/` | `/export` dumps, taken before/after changes |
-| `versions.tf`, `provider.tf`, `variables.tf` | scaffolding; network config follows |
+| `versions.tf`, `provider.tf`, `variables.tf` | stack scaffolding |
+| `interfaces.tf` | WAN port, VLANs on the `ether5` trunk, interface lists |
+| `addressing.tf` | gateways + WAN DHCP client |
+| `dhcp.tf` | DHCP pools/servers for VLANs 30/40/50 |
+| `firewall.tf` | address lists, input/forward filter, NAT, MSS clamp |
 
 ## Procedures
 

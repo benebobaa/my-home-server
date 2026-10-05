@@ -3,6 +3,8 @@
 *.tfstate
 *.tfstate.*
 crash.log
+tfplan
+*.tfplan
 
 # Local credentials and bootstrap files with real secrets
 .env
