@@ -1,7 +1,8 @@
 # Default-deny firewall, NAT and the PPPoE MSS clamp.
-# Rule order matters: rules are chained with depends_on so they are created in
-# sequence. This also keeps the OOB management connection (ether3) alive while
-# the chain is being built.
+# Rule order matters! RouterOS appends new rules to the END of a chain, so any
+# rule that must sit mid-chain sets `place_before = <the rule that follows it>`
+# (see forward_switch_mgmt). The rest are chained with depends_on so a full
+# rebuild creates them in the intended order.
 
 # --- address lists --------------------------------------------------------------
 resource "routeros_ip_firewall_addr_list" "admin_src_trusted" {
@@ -164,6 +165,7 @@ resource "routeros_ip_firewall_filter" "forward_switch_mgmt" {
   protocol         = "tcp"
   dst_port         = "80,443"
   comment          = "admin to the switch management UI"
+  place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
   depends_on       = [routeros_ip_firewall_filter.forward_admin_gw]
 }
 
@@ -173,7 +175,7 @@ resource "routeros_ip_firewall_filter" "forward_no_biznet" {
   dst_address_list   = "biznet-lan"
   out_interface_list = routeros_interface_list.wan.name
   comment            = "lab must not reach Biznet/household LAN"
-  depends_on         = [routeros_ip_firewall_filter.forward_switch_mgmt]
+  depends_on         = [routeros_ip_firewall_filter.forward_admin_gw]
 }
 
 resource "routeros_ip_firewall_filter" "forward_drop_inter_vlan" {

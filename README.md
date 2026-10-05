@@ -54,5 +54,6 @@ tofu apply                     # commit it to the device
 - [x] hEX reset + access bootstrap (SSH + REST verified; fresh snapshots in `network/routeros/snapshots/`)
 - [x] hEX baseline: WAN + VLANs + DHCP + firewall (applied; `tofu plan` clean)
 - [x] Switch VLAN configuration (SG108E; backup committed)
+- [x] First client on VLAN 40: DHCP, DNS, internet, hEX + switch management verified
 - [ ] Proxmox cluster + edge services
 - [ ] VPS public exposure
