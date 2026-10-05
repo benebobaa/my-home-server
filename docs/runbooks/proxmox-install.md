@@ -47,9 +47,15 @@ for the temporary install (P5 = untagged VLAN 10).
    - `/etc/systemd/logind.conf`: `HandleLidSwitch=ignore` (and
      `HandleLidSwitchExternalPower=ignore`);
    - `systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target`.
-5. Replace `/etc/network/interfaces` with the template below, **without**
+5. USB NIC hygiene:
+   - `ethtool <usb-nic> | grep Speed` → must report **1000Mb/s** (a 100Mb
+     adapter would bottleneck migrations/backups — replace it);
+   - disable USB autosuspend (a known fix for USB NICs that randomly drop):
+     add `usbcore.autosuspend=-1` to `GRUB_CMDLINE_LINUX_DEFAULT` in
+     `/etc/default/grub`, then `update-grub`.
+6. Replace `/etc/network/interfaces` with the template below, **without**
    reloading yet.
-6. Move the USB NIC cable **P5 → P3**, then reboot the node.
+7. Move the USB NIC cable **P5 → P3**, then reboot the node.
 
 ## 4. Verify
 
