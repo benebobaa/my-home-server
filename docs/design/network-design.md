@@ -70,16 +70,16 @@ Set the management IP to 192.168.99.2/29 (gateway 192.168.99.1) before installin
 
 | Port | Device | Untagged (PVID) | Tagged |
 | --- | --- | --- | --- |
-| P1 | hEX ether2 (trunk) | 1 (1) | 10, 20, 25, 30, 40, 50 |
+| P1 | Management / recovery laptop (normally unplugged) | 1 (1) | none |
 | P2 | pve1 | 999 (999) | 10, 20, 25, 30, 60 |
 | P3 | pve2 | 999 (999) | 10, 20, 25, 30, 60 |
 | P4 | pve3 | 999 (999) | 10, 20, 25, 30, 60 |
 | P5 | PBS / NAS (future) | 10 (10) | none |
 | P6 | Optional Wi-Fi AP for your own devices (own SSID) | 40 (40) | none |
 | P7 | Workstation | 40 (40) | none |
-| P8 | Recovery port (normally unplugged) | 10 (10) | none |
+| P8 | hEX ether5 (trunk) | 1 (1) | 10, 20, 25, 30, 40, 50 |
 
-Remove P2-P4 from VLAN 1 so an untagged VM can't land on the switch-management VLAN. VLAN 60 is not tagged on P1, so cluster traffic can never reach the router.
+VLAN 1 stays on **P1 and P8 only** — it is the management segment (`192.168.99.0/29`) shared with the hEX's `ether5` address. Remove every other port from VLAN 1 so an untagged VM can't land on the switch-management VLAN. VLAN 60 is not tagged on P8, so cluster traffic can never reach the router.
 
 ## 4. MikroTik hEX (RouterOS 7)
 
@@ -277,12 +277,12 @@ backend home_https
 1. **Switch (offline):** connect a PC directly (default 192.168.0.1), set management IP, create VLANs, set membership then PVIDs, export config.
 2. **hEX:** reset with `no-defaults`, connect via ether5, apply baseline in Safe Mode, export config.
 3. **WAN:** check the Biznet LAN subnet (no overlap, update `biznet-lan`), then cable a free Biznet LAN port to hEX ether1. Leave the Biznet router's settings untouched, and confirm household Wi-Fi still works.
-4. **Wire up:** hEX ether2 → SG108E P1, then connect nodes, AP and workstation.
+4. **Wire up:** hEX ether5 → SG108E P8 (trunk), laptop/recovery on P1, then connect nodes, AP and workstation.
 5. **Proxmox:** apply `interfaces`, verify ping to the gateway on VLAN 10, create the cluster over VLAN 60.
 6. **Edge and VPS:** bring up WireGuard, then HAProxy and Traefik, then public DNS records.
 7. **Verify:** see the checklist below.
 
-**Rollback:** Safe Mode on the hEX undoes bad changes automatically; ether5 and switch P8 are always-on recovery paths; the Biznet router is never modified, so unplugging the hEX's `ether1` cable returns the household to exactly how it was.
+**Rollback:** Safe Mode on the hEX undoes bad changes automatically; ether3 (OOB) and switch P1 (management) are always-available recovery paths; the Biznet router is never modified, so unplugging the hEX's `ether1` cable returns the household to exactly how it was.
 
 **Verification checklist**
 
