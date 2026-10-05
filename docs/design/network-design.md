@@ -302,4 +302,5 @@ backend home_https
 - Remote admin choice: Tailscale, Headscale on the VPS, or the WireGuard hub fallback.
 - Services to expose (HTTP only, or raw TCP too) and the domain to use.
 - PBS target and the role of the 8GB laptop (full member vs quorum-only).
+- Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
 - VPS provider and region.

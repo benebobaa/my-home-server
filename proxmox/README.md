@@ -17,3 +17,7 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 - Guest VLAN tags: 20 (SERVERS), 25 (DMZ), 30 (LAB).
 - `pve1` build notes: enable SVM + IOMMU in BIOS (GPU passthrough for the
   RTX 3060 later); boot from an NVMe SSD.
+- `pve1` runs **on-demand** (~4 days/week — electricity ≈ AI workstation):
+  always-on services (edge, admin-gw, monitoring) belong on the laptops; AI
+  training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
+  start it remotely is planned.
