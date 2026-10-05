@@ -18,9 +18,9 @@ flowchart TB
   FAM["Household phones/laptops"] --- BR["Biznet router: PPPoE VLAN 377, CGNAT, Wi-Fi + DHCP"]
   BR -->|"LAN port to ether1"| H["MikroTik hEX"]
   H -->|"ether2 trunk"| S["TP-Link SG108E"]
-  S --> N1["pve1 M720q"]
-  S --> N2["pve2 laptop + USB NIC"]
-  S --> N3["pve3 laptop + USB NIC"]
+  S --> N1["pve1 desktop (Ryzen 5 5600)"]
+  S --> N2["pve2 laptop (i3, 12GB) + USB NIC"]
+  S --> N3["pve3 laptop (i3, 8GB) + USB NIC"]
   S --> AP["Wi-Fi AP / Biznet unit as AP"]
   N1 --- E
   E -->|"allowlist only"| B["Backends, VLAN 20"]
@@ -53,9 +53,9 @@ flowchart TB
 
 | Host | MGMT (VLAN 10) | CLUSTER (VLAN 60) | Other |
 | --- | --- | --- | --- |
-| pve1 (M720q) | 10.10.10.11 | 10.10.60.11 |  |
-| pve2 (laptop 12GB) | 10.10.10.12 | 10.10.60.12 |  |
-| pve3 (laptop 4GB) | 10.10.10.13 | 10.10.60.13 |  |
+| pve1 (desktop: Ryzen 5 5600, 32GB, RTX 3060) | 10.10.10.11 | 10.10.60.11 |  |
+| pve2 (Asus i3 laptop, 12GB) | 10.10.10.12 | 10.10.60.12 |  |
+| pve3 (Asus i3 laptop, 8GB) | 10.10.10.13 | 10.10.60.13 |  |
 | PBS (future) | 10.10.10.14 |  |  |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
 | edge LXC |  |  | 10.10.25.10, wg 10.99.0.2 |
@@ -301,5 +301,5 @@ backend home_https
 - Own-device Wi-Fi for the lab later (optional AP on P6); until then use the wired workstation on P7.
 - Remote admin choice: Tailscale, Headscale on the VPS, or the WireGuard hub fallback.
 - Services to expose (HTTP only, or raw TCP too) and the domain to use.
-- PBS target and the role of the 4GB node (full member vs quorum-only).
+- PBS target and the role of the 8GB laptop (full member vs quorum-only).
 - VPS provider and region.
