@@ -1,0 +1,12 @@
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Local credentials and bootstrap files with real secrets
+.env
+*.local.rsc
+
+# macOS
+.DS_Store
