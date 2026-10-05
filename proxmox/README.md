@@ -24,3 +24,5 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 - `pve2` details: PVE 9.2, kernel 7.0.x. Single NIC = USB ASIX AX88179
   (Gigabit, pinned as `nic0`; no built-in Ethernet). Config snapshot in
   `nodes/pve2/interfaces`.
+- Guests: add the admin SSH key at creation (the wizard has a field for it).
+  Debian's default sshd refuses root *password* logins over SSH — key-only.
