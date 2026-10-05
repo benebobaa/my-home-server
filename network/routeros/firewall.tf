@@ -16,6 +16,12 @@ resource "routeros_ip_firewall_addr_list" "admin_src_mgmt" {
   comment = "MGMT"
 }
 
+resource "routeros_ip_firewall_addr_list" "admin_src_native" {
+  list    = "admin-src"
+  address = "192.168.99.0/29"
+  comment = "switch management / P1 recovery segment"
+}
+
 resource "routeros_ip_firewall_addr_list" "admin_gw" {
   list    = "admin-gw"
   address = "10.10.10.15"
@@ -150,13 +156,24 @@ resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   depends_on       = [routeros_ip_firewall_filter.forward_dmz_backends]
 }
 
+resource "routeros_ip_firewall_filter" "forward_switch_mgmt" {
+  chain            = "forward"
+  action           = "accept"
+  src_address_list = "admin-src"
+  dst_address      = "192.168.99.2"
+  protocol         = "tcp"
+  dst_port         = "80,443"
+  comment          = "admin to the switch management UI"
+  depends_on       = [routeros_ip_firewall_filter.forward_admin_gw]
+}
+
 resource "routeros_ip_firewall_filter" "forward_no_biznet" {
   chain              = "forward"
   action             = "drop"
   dst_address_list   = "biznet-lan"
   out_interface_list = routeros_interface_list.wan.name
   comment            = "lab must not reach Biznet/household LAN"
-  depends_on         = [routeros_ip_firewall_filter.forward_admin_gw]
+  depends_on         = [routeros_ip_firewall_filter.forward_switch_mgmt]
 }
 
 resource "routeros_ip_firewall_filter" "forward_drop_inter_vlan" {

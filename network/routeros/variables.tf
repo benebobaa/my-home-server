@@ -1,5 +1,5 @@
 variable "ros_hosturl" {
-  description = "RouterOS REST API endpoint (OOB management address of the hEX)"
+  description = "RouterOS REST API endpoint (management address of the hEX)"
   type        = string
-  default     = "https://192.168.88.1"
+  default     = "https://192.168.99.1"
 }

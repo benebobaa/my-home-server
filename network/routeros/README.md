@@ -24,8 +24,9 @@ tofu apply                     # commit to the device
 ```
 
 State is local (`terraform.tfstate`, git-ignored). Provider:
-`terraform-routeros/routeros`, REST at `https://192.168.88.1` (self-signed →
-`insecure = true`).
+`terraform-routeros/routeros`, REST at `https://192.168.99.1` by default
+(self-signed → `insecure = true`). If your laptop is on the OOB port instead:
+`tofu apply -var ros_hosturl=https://192.168.88.1`.
 
 ## Contents
 
@@ -42,4 +43,4 @@ State is local (`terraform.tfstate`, git-ignored). Provider:
 ## Procedures
 
 - Reset + bootstrap: [`../../docs/runbooks/hex-bootstrap.md`](../../docs/runbooks/hex-bootstrap.md)
-- Snapshot: `../../scripts/hex-snapshot.sh`
+- Snapshot: `../../scripts/hex-snapshot.sh` (add `ROS_HOST=192.168.88.1` when on the OOB port)
