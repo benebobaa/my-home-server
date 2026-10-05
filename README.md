@@ -50,9 +50,9 @@ tofu apply                     # commit it to the device
 
 ## Status
 
-- [x] hEX OpenTofu project scaffolded; repo structure in place
-- [x] Pre-reset snapshot: `network/routeros/snapshots/hex-2026-10-05-pre-reset.rsc`
-- [ ] hEX reset → bootstrap → VLAN/DHCP/firewall baseline
+- [x] Repo structure, hEX OpenTofu scaffold, pre-reset snapshot
+- [x] hEX reset + access bootstrap (SSH + REST verified; fresh snapshots in `network/routeros/snapshots/`)
+- [ ] hEX baseline: WAN + VLANs + DHCP + firewall (in review)
 - [ ] Switch VLAN configuration
 - [ ] Proxmox cluster + edge services
 - [ ] VPS public exposure
