@@ -21,3 +21,6 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
   always-on services (edge, admin-gw, monitoring) belong on the laptops; AI
   training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
   start it remotely is planned.
+- `pve2` details: PVE 9.2, kernel 7.0.x. Single NIC = USB ASIX AX88179
+  (Gigabit, pinned as `nic0`; no built-in Ethernet). Config snapshot in
+  `nodes/pve2/interfaces`.

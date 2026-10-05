@@ -41,6 +41,8 @@ for the temporary install (P5 = untagged VLAN 10).
 ## 3. Post-install (done over SSH from the workstation)
 
 1. From a machine on VLAN 10/40: `ssh root@10.10.10.12`.
+   (From the macOS workstation with Wi-Fi as primary, scope it:
+   `ssh -o BindInterface=en8 root@10.10.10.12`.)
 2. Install the admin machine's SSH key into `/root/.ssh/authorized_keys`.
 3. Switch apt to the no-subscription repo; `apt update && apt full-upgrade`.
 4. Laptop-as-server tweaks:

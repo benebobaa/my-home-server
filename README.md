@@ -55,5 +55,6 @@ tofu apply                     # commit it to the device
 - [x] hEX baseline: WAN + VLANs + DHCP + firewall (applied; `tofu plan` clean)
 - [x] Switch VLAN configuration (SG108E; backup committed)
 - [x] First client on VLAN 40: DHCP, DNS, internet, hEX + switch management verified
-- [ ] Proxmox cluster + edge services
-- [ ] VPS public exposure
+- [x] Proxmox: pve2 (laptop) installed + configured — VLAN trunk, web UI, updates
+- [ ] Proxmox: pve1 (desktop) + pve3 (laptop), then the cluster
+- [ ] Edge services + VPS public exposure
