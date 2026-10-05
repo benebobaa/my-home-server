@@ -1,45 +1,58 @@
 # Home Server Lab
 
-Living repo for a home lab: network design + infrastructure as code.
+Monorepo for the home lab — network, hypervisors, services and the public front.
+Everything is reproducible from this repo.
 
-| Device | Role | Status |
+> **Start here:** read [`docs/design/network-design.md`](docs/design/network-design.md)
+> before touching anything.
+
+## The stack
+
+| Layer | What | Where |
 | --- | --- | --- |
-| MikroTik hEX (RB750Gr3, RouterOS 7) | router / firewall / VLAN gateway | in setup |
-| TP-Link SG108E | managed switch | pending |
-| Proxmox cluster (M720q + 2 laptops) | hypervisors | later |
-| VPS | public front for exposed services | later |
-
-The original network design draft lives in [`initial.md`](initial.md); it is
-being revised against the real hardware as we build.
+| Router / firewall | MikroTik hEX (RB750Gr3, RouterOS 7) | [`network/routeros/`](network/routeros/) |
+| Switch | TP-Link SG108E (8-port managed) | [`network/switch/`](network/switch/) |
+| Hypervisors | 3-node Proxmox cluster | [`proxmox/`](proxmox/) |
+| Public front | VPS (HAProxy + WireGuard) | [`vps/`](vps/) |
+| Services | edge proxy, admin, monitoring, apps | [`services/`](services/) |
 
 ## Layout
 
 ```text
-initial.md              # network design draft (v2)
-routeros/               # MikroTik hEX
-  bootstrap.rsc         # one-time access-layer script (template, no secrets)
-  bootstrap.local.rsc   # ready-to-paste version with real credentials (git-ignored)
-  snapshots/            # /export dumps captured before changes
-  *.tf                  # OpenTofu — the actual router config lives here
-  .env                  # ROS_* credentials for the provider (git-ignored)
-switch/                 # SG108E port map + config backups (later)
-proxmox/                # cluster + guest definitions (later)
-vps/                    # public exposure setup (later)
+docs/               # the knowledge: design, runbooks, decisions (ADRs)
+network/            # the network: hEX (OpenTofu) + switch artifacts
+proxmox/            # cluster + guests (later)
+vps/                # public exposure host (later)
+services/           # what runs on the guests (later)
+ansible/            # host-level config management (later)
+scripts/            # small helper scripts
 ```
 
-## Conventions
+## Principles
 
-- **Declarative first** — the hEX config is owned by OpenTofu; changes go
-  `plan → review → apply`, never ad-hoc clicking.
-- **Thin bootstrap** — only identity, admin user, OOB network and the REST API
-  are applied by hand (`routeros/bootstrap.rsc`); the rest is in `routeros/*.tf`.
-- **No secrets in git** — `.env`, `*.local.rsc` and `*.tfstate` are ignored.
-- **Snapshot before changes** —
-  `ssh ben@192.168.88.1 '/export' > routeros/snapshots/hex-<date>.rsc`.
+1. **Declarative first** — machines and networks are described in code
+   (OpenTofu) and applied via `plan → review → apply`.
+2. **One stack per target** — each stack is a self-contained directory with its
+   own README, variables and state.
+3. **Secrets never in git** — credentials live in local `.env` files
+   (git-ignored); state files stay local.
+4. **Document the why** — decisions become ADRs, procedures become runbooks.
+5. **Snapshot before changes** — device configs are exported to `snapshots/`.
 
-## Current state
+## Quickstart (router)
 
-- hEX reachable on `192.168.88.1` (user `ben`), RouterOS 7.23.7 long-term.
-- Household LAN discovered: `192.168.18.0/24` — no overlap with the lab ranges.
-- Pre-reset snapshot: `routeros/snapshots/hex-2026-10-05-pre-reset.rsc`.
-- Next: clean reset → bootstrap → OpenTofu baseline (WAN, VLANs, DHCP, firewall).
+```sh
+cd network/routeros
+set -a; source .env; set +a    # ROS_USERNAME / ROS_PASSWORD
+tofu plan                      # review the diff
+tofu apply                     # commit it to the device
+```
+
+## Status
+
+- [x] hEX OpenTofu project scaffolded; repo structure in place
+- [x] Pre-reset snapshot: `network/routeros/snapshots/hex-2026-10-05-pre-reset.rsc`
+- [ ] hEX reset → bootstrap → VLAN/DHCP/firewall baseline
+- [ ] Switch VLAN configuration
+- [ ] Proxmox cluster + edge services
+- [ ] VPS public exposure

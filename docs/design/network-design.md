@@ -1,5 +1,12 @@
 # Home Server Lab: Network Design v2
 
+> **Living document.** Started as the v2 draft; it gets revised as the build
+> progresses. Facts pinned against real hardware so far: the Biznet/household
+> LAN is `192.168.18.0/24`; port roles are `ether1` = WAN, `ether3` = OOB
+> management, `ether5` = trunk to switch P8; the hEX is managed by OpenTofu
+> ([ADR 0001](../decisions/0001-opentofu-for-routeros.md)). A full v3 pass
+> happens once the router baseline is applied.
+
 **Scope:** Biznet fiber (CGNAT), MikroTik hEX (RB750Gr3), TP-Link SG108E, 3-node Proxmox cluster, public exposure through a rented VPS (no Cloudflare Tunnel). The hEX sits **behind the existing Biznet router**, which keeps serving the household Wi-Fi untouched. **Principles:** zero inbound ports at home, VLAN segmentation with default-deny, VPS treated as an untrusted zone, out-of-band recovery path, everything reproducible from a config export.
 
 ## 1. Logical topology
