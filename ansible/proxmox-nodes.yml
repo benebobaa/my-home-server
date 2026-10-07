@@ -92,6 +92,20 @@
       tags: grub
 
     # ---------------------------------------------------------------- network
+    - name: Ensure NIC pinning matches the declared MAC (pve_nic_mac)
+      ansible.builtin.copy:
+        dest: /usr/local/lib/systemd/network/50-pmx-nic0.link
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (pve_nic_mac).
+          [Match]
+          MACAddress={{ pve_nic_mac }}
+          Type=ether
+
+          [Link]
+          Name=nic0
+        mode: "0644"
+      tags: network
+
     - name: Install the canonical interfaces file
       ansible.builtin.copy:
         src: "{{ playbook_dir | dirname }}/proxmox/nodes/{{ inventory_hostname }}/interfaces"
@@ -172,6 +186,20 @@
       ansible.builtin.assert:
         that: sleep_state.stdout == 'masked'
         fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — laptops must not sleep"
+      tags: verify
+
+    - name: Read nic0 MAC
+      ansible.builtin.command: cat /sys/class/net/{{ pve_nic }}/address
+      register: nic_mac
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      tags: verify
+
+    - name: Assert nic0 MAC matches the declared pinning
+      ansible.builtin.assert:
+        that: nic_mac.stdout == pve_nic_mac
+        fail_msg: "{{ pve_nic }} is '{{ nic_mac.stdout }}', declared '{{ pve_nic_mac }}' — update inventory.ini"
       tags: verify
 
     - name: Report version

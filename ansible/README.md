@@ -26,6 +26,7 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 | sleep/suspend targets masked | this playbook |
 | `usbcore.autosuspend=-1` in GRUB | this playbook |
 | `/etc/network/interfaces` (VLAN-aware trunk) | `proxmox/nodes/<node>/interfaces` |
+| NIC pinning (`.link` → `nic0`) | `pve_nic_mac` per host in `inventory.ini` |
 | root `authorized_keys` (admin key) | `~/.ssh/id_ed25519.pub` on the operator machine |
 
 ## What it verifies (read-only asserts)
@@ -46,3 +47,8 @@ kernel, sleep masked, `pveversion` report.
 - Not managed here: the Proxmox API user/token bootstrap (one-time, by
   design — see `proxmox/opentofu/README.md`) and the SG108E switch (no
   provider — backup + runbook).
+- Swapping a node's NIC: update `pve_nic_mac` and run the playbook **while the
+  node is still reachable**, then swap the hardware and reboot — no console
+  visit needed. A node that is already dark needs one console session — that
+  is the bootstrap path (the same reason install media exist), not a gap in
+  the IaC.
