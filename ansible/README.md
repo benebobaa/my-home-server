@@ -52,3 +52,7 @@ kernel, sleep masked, `pveversion` report.
   visit needed. A node that is already dark needs one console session — that
   is the bootstrap path (the same reason install media exist), not a gap in
   the IaC.
+- Cluster formation is a guarded one-time task (`--tags cluster`, tag
+  `never`): creates on the node with `cluster_creator=true`, joins the rest
+  with `--use_ssh`. See `docs/runbooks/proxmox-cluster.md` for the gotchas
+  (password-default join, guests-present check).

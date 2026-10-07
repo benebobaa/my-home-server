@@ -20,6 +20,8 @@
   vars:
     admin_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
     pve_nic: nic0            # USB NIC name (pinned by the installer)
+    cluster_name: homelab
+    cluster_seed: 10.10.10.13
 
   tasks:
     # ------------------------------------------------------------------ repos
@@ -213,6 +215,33 @@
       ansible.builtin.debug:
         msg: "{{ inventory_hostname }}: {{ pvever.stdout }}"
       tags: verify
+
+    # ---------------------------------------------------------------- cluster
+    # One-time bootstrap, explicit only:
+    #   ansible-playbook proxmox-nodes.yml --tags cluster
+    # See docs/runbooks/proxmox-cluster.md (prerequisites + gotchas).
+    - name: Check cluster status
+      ansible.builtin.command: pvecm status
+      register: pvecm_status
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      tags: [cluster, never]
+
+    - name: Create the cluster (seed node)
+      ansible.builtin.command: "pvecm create {{ cluster_name }} --link0 {{ pve_cluster_ip }}"
+      when:
+        - pvecm_status.rc != 0
+        - cluster_creator | default(false) | bool
+      tags: [cluster, never]
+
+    - name: Join the cluster (other nodes)
+      ansible.builtin.command: >-
+        pvecm add {{ cluster_seed }} --use_ssh --link0 {{ pve_cluster_ip }} --force
+      when:
+        - pvecm_status.rc != 0
+        - not (cluster_creator | default(false) | bool)
+      tags: [cluster, never]
 
   handlers:
     - name: update grub
