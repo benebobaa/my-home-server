@@ -1,0 +1,197 @@
+---
+# Configure the Proxmox nodes from the repo (source of truth).
+#
+# The guests are OpenTofu (proxmox/opentofu); this playbook owns the *host*
+# config that used to be applied by hand during setup. Idempotent — run with
+# --check --diff for a drift report.
+#
+# Usage (from this directory):
+#   ansible-playbook proxmox-nodes.yml --check --diff    # drift report
+#   ansible-playbook proxmox-nodes.yml                   # converge
+#   ansible-playbook proxmox-nodes.yml --limit pve3
+#   ansible-playbook proxmox-nodes.yml --tags upgrade    # explicit full upgrade
+#
+# Mirrors docs/runbooks/proxmox-install.md §3 (post-install).
+
+- name: Proxmox nodes — repo as source of truth
+  hosts: proxmox_nodes
+  gather_facts: true
+
+  vars:
+    admin_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+    pve_nic: nic0            # USB NIC name (pinned by the installer)
+
+  tasks:
+    # ------------------------------------------------------------------ repos
+    - name: Find enterprise repo files
+      ansible.builtin.stat:
+        path: "/etc/apt/sources.list.d/{{ item }}"
+      loop:
+        - pve-enterprise.sources
+        - ceph.sources
+      register: enterprise_repos
+      tags: repos
+
+    - name: Disable enterprise repos
+      ansible.builtin.lineinfile:
+        path: "/etc/apt/sources.list.d/{{ item.item }}"
+        regexp: '^Enabled:'
+        line: 'Enabled: false'
+      loop: "{{ enterprise_repos.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.stat.exists
+      tags: repos
+
+    - name: Ensure the no-subscription repo is present
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pve-no-subscription.sources
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: http://download.proxmox.com/debian/pve
+          Suites: trixie
+          Components: pve-no-subscription
+          Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+      tags: repos
+
+    - name: "Full upgrade (run explicitly: --tags upgrade)"
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: full
+      tags: [upgrade, never]
+
+    # ------------------------------------------------------- laptop-as-server
+    - name: Ignore the lid switch
+      ansible.builtin.lineinfile:
+        path: /etc/systemd/logind.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^#?HandleLidSwitch=', line: 'HandleLidSwitch=ignore' }
+        - { regexp: '^#?HandleLidSwitchExternalPower=', line: 'HandleLidSwitchExternalPower=ignore' }
+      tags: logind
+
+    - name: Mask sleep/suspend targets
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        masked: true
+      loop:
+        - sleep.target
+        - suspend.target
+        - hibernate.target
+        - hybrid-sleep.target
+      tags: logind
+
+    - name: Ensure USB autosuspend fix in the GRUB cmdline
+      ansible.builtin.replace:
+        path: /etc/default/grub
+        regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?!.*usbcore\.autosuspend=-1).*)"$'
+        replace: '\1 usbcore.autosuspend=-1"'
+      notify: update grub
+      tags: grub
+
+    # ---------------------------------------------------------------- network
+    - name: Install the canonical interfaces file
+      ansible.builtin.copy:
+        src: "{{ playbook_dir | dirname }}/proxmox/nodes/{{ inventory_hostname }}/interfaces"
+        dest: /etc/network/interfaces
+        backup: true
+      notify: warn reboot for network
+      tags: network
+
+    # -------------------------------------------------------------------- ssh
+    - name: Ensure /root/.ssh exists
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        mode: "0700"
+      tags: ssh
+
+    # /root/.ssh/authorized_keys is a PVE-managed symlink to
+    # /etc/pve/priv/authorized_keys (cluster-shared, 0600 root:www-data) —
+    # we ensure the key's presence, not the link's mode.
+    - name: Authorize the admin key for root
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/authorized_keys
+        line: "{{ admin_pubkey }}"
+        create: true
+      tags: ssh
+
+    # ----------------------------------------------------------------- verify
+    - name: Read FQDN
+      ansible.builtin.command: hostname -f
+      register: fqdn
+      changed_when: false
+      check_mode: false
+      tags: verify
+
+    - name: Assert FQDN
+      ansible.builtin.assert:
+        that: fqdn.stdout == inventory_hostname + '.home.arpa'
+        fail_msg: "hostname -f is '{{ fqdn.stdout }}', expected '{{ inventory_hostname }}.home.arpa'"
+      tags: verify
+
+    - name: Read USB NIC speed
+      ansible.builtin.command: "ethtool {{ pve_nic }}"
+      register: ethtool
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      tags: verify
+
+    - name: Assert the USB NIC runs at 1000Mb/s
+      ansible.builtin.assert:
+        that: "'Speed: 1000Mb/s' in ethtool.stdout"
+        fail_msg: "{{ pve_nic }} is not at 1000Mb/s — replace the adapter (see runbook)"
+      when: ethtool.rc == 0
+      tags: verify
+
+    - name: Read kernel cmdline
+      ansible.builtin.command: cat /proc/cmdline
+      register: cmdline
+      changed_when: false
+      check_mode: false
+      tags: verify
+
+    - name: Assert the USB autosuspend fix is active
+      ansible.builtin.assert:
+        that: "'usbcore.autosuspend=-1' in cmdline.stdout"
+        fail_msg: "GRUB has the fix but the kernel didn't get it — reboot pending?"
+      tags: verify
+
+    - name: Read sleep target state
+      ansible.builtin.command: systemctl is-enabled sleep.target
+      register: sleep_state
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      tags: verify
+
+    - name: Assert sleep is masked
+      ansible.builtin.assert:
+        that: sleep_state.stdout == 'masked'
+        fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — laptops must not sleep"
+      tags: verify
+
+    - name: Report version
+      ansible.builtin.command: pveversion
+      register: pvever
+      changed_when: false
+      check_mode: false
+      tags: verify
+
+    - name: Version
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ pvever.stdout }}"
+      tags: verify
+
+  handlers:
+    - name: update grub
+      ansible.builtin.command: update-grub
+
+    - name: warn reboot for network
+      ansible.builtin.debug:
+        msg: >-
+          /etc/network/interfaces changed — reboot {{ inventory_hostname }}
+          to apply it (the live session keeps the old config until then).
