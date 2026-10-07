@@ -67,5 +67,10 @@ pvesh get /cluster/resources --type vm   # guests from all nodes
 - 2-node cluster: if either node is down, quorum is lost (management actions
   lock; running guests keep running). Emergency: `pvecm expected 1` on the
   remaining node; reset with `pvecm expected 2` once both are back.
-- pve1 (3 nodes) removes this caveat — it joins with the same §3 command
-  (`--link0 10.10.60.11`).
+- pve1 joins as the 3rd node (same §3 command, `--link0 10.10.60.11`) — it is
+  **on-demand (~4 days/week)** by design. Quorum is a majority, so a
+  part-time member never hurts: while pve1 is up, any 2 of 3 nodes stay
+  quorate (bonus: either laptop can be maintained); while pve1 is off, the
+  two laptops must both be up (same as today). If you later want quorum that
+  survives one laptop down while pve1 is off, add a corosync QDevice (e.g. on
+  the future VPS).
