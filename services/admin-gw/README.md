@@ -5,6 +5,10 @@ inbound ports at home. Tailscale traffic is end-to-end encrypted; the
 household router and any VPS never see it. Design:
 `docs/design/network-design.md` § Remote admin.
 
+**Live since 2026-10-07** — verified cable-free management from the operator
+Mac over Wi-Fi. The path relays via Tailscale DERP (Singapore, ~52 ms)
+because both ends sit behind CGNAT — that is by design (zero inbound).
+
 ## What it is
 
 | | |
