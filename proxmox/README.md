@@ -27,6 +27,11 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
   always-on services (edge, admin-gw, monitoring) belong on the laptops; AI
   training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
   start it remotely is planned.
+- GPUs: both laptops carry an NVIDIA MX130 (Maxwell, `sm_50`) — tested working
+  2026-10-08 (NVIDIA 580.178.04; pve3 also has CUDA 12.8). pve2 needs a one-time
+  MOK enrollment (Secure Boot on) — experiment:
+  [`../docs/experiments/mx130/`](../docs/experiments/mx130/), runbook:
+  [`../docs/runbooks/secure-boot-mok.md`](../docs/runbooks/secure-boot-mok.md).
 - `pve2` details: PVE 9.2, kernel 7.0.x. Single NIC = USB ASIX AX88179
   (Gigabit, pinned as `nic0`; no built-in Ethernet). Config snapshot in
   `nodes/pve2/interfaces`.
