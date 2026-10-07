@@ -22,6 +22,22 @@ because both ends sit behind CGNAT — that is by design (zero inbound).
 The hEX firewall already trusts `10.10.10.15` (address-list `admin-gw`) for
 management access to the router, the switch UI and all lab VLANs.
 
+## Access cheat-sheet (over Tailscale, from anywhere)
+
+| What | Address | Notes |
+| --- | --- | --- |
+| Proxmox (cluster) | `https://10.10.10.13:8006` (or `.12`) | accept the self-signed cert; either node shows the whole Datacenter |
+| Proxmox SSH | `ssh root@10.10.10.12` / `.13` | key-based |
+| hEX WinBox | `10.10.10.1` (port 8291) | "Connect To" field |
+| hEX WebFig / SSH | `https://10.10.10.1` · `ssh ben@10.10.10.1` | |
+| Switch (SG108E) UI | `http://192.168.99.2` | tiny web server — the first hit can be slow, retry |
+| admin-gw itself | `ssh root@10.10.10.15` (or `100.64.185.120`) | |
+
+Any device with Tailscale (same account) gets these routes automatically.
+The hEX already trusts `10.10.10.15` (address-list `admin-gw`). Fallbacks if
+Tailscale is down: P7 cable (direct) or the P1 recovery port (hEX + switch
+only).
+
 ## Provisioning (all from this repo)
 
 1. **Container + Tailscale install:** `proxmox/opentofu/` (OpenTofu) creates
