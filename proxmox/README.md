@@ -7,7 +7,7 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 | --- | --- | --- | --- | --- | --- |
 | pve1 | desktop — Ryzen 5 5600 / 32GB / RTX 3060 | 10.10.10.11 | 10.10.60.11 | P2 | being built |
 | pve2 | Asus i3-7 laptop, 12GB + USB NIC | 10.10.10.12 | 10.10.60.12 | P3 | installing |
-| pve3 | Asus i3-7 laptop, 8GB + USB NIC | 10.10.10.13 | 10.10.60.13 | P4 | planned |
+| pve3 | Asus i3-7 laptop, 8GB + USB NIC | 10.10.10.13 | 10.10.60.13 | P4 | installing |
 
 - Install procedure:
   [`../docs/runbooks/proxmox-install.md`](../docs/runbooks/proxmox-install.md).
