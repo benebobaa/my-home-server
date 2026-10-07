@@ -11,6 +11,8 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 
 - Install procedure:
   [`../docs/runbooks/proxmox-install.md`](../docs/runbooks/proxmox-install.md).
+- **Guests are code:** new containers/VMs are provisioned with OpenTofu
+  (`opentofu/`, bpg provider) — see [`opentofu/README.md`](opentofu/README.md).
 - Node networking: VLAN-aware bridge on the trunk NIC (design §5). Management on
   VLAN 10, cluster on VLAN 60. No HA on the USB-NIC nodes (the laptops); the
   desktop node can carry HA later.
