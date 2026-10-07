@@ -32,6 +32,14 @@ flowchart TB
 - Its WAN connection, Wi-Fi bindings and DHCP stay exactly as they are, so household devices are unaffected. The hEX plugs into a free LAN port and acts as an ordinary client (double NAT behind CGNAT is fine for outbound WireGuard).
 - No bridge mode, no DMZ, no PPPoE on the hEX. Reserve the hEX's WAN address in the Biznet DHCP if possible.
 - The Biznet LAN subnet must not overlap 10.10.0.0/16, 192.168.99.0/29 or 192.168.88.0/24. If it does, change ours.
+- **Known quirk (2026-10-07):** Biznet's internal/CGNAT network also uses `10.x`
+  space (first CGNAT hop: `10.108.0.1`). From a device *without* a lab route,
+  traffic to lab IPs escapes via the default route into the ISP network — and
+  `10.10.10.13` phantom-answered ICMP from deep inside Biznet (TTL≈229).
+  Harmless in normal operation (lab devices always have a correct route), but
+  never trust a bare ping as proof of lab connectivity — check the route/TTL.
+  Mitigation if it ever causes real problems: renumber the lab (e.g.
+  `172.31.0.0/16`).
 - IPv4 only in the lab. Biznet delegates a single /64, so leave IPv6 off on the hEX.
 - Household devices cannot reach the lab: the hEX drops all input from `ether1` and nothing is forwarded in.
 
