@@ -17,8 +17,10 @@ fi
 systemctl enable --now tailscaled
 
 # Subnet routing needs IP forwarding inside the container (persists across
-# reboots via systemd-sysctl).
-echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/99-admin-gw.conf
+# reboots via systemd-sysctl). IPv6 is enabled too — only IPv4 routes are
+# advertised, but this keeps the daemon quiet and is harmless without global
+# IPv6.
+printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' > /etc/sysctl.d/99-admin-gw.conf
 sysctl --system >/dev/null 2>&1 || true
 
 if tailscale status >/dev/null 2>&1; then
