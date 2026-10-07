@@ -26,7 +26,8 @@ timeouts — a busy guest can add up to a couple of minutes).
 ## Guests after a reboot
 
 Only guests with `Start at boot = Yes` (guest → Options) start automatically.
-`test-01` has it off → start it manually after a node boot.
+`admin-gw` has it **on** → it returns by itself after a node boot; any guest
+without it must be started manually.
 
 ## Before shutting down (optional checks)
 

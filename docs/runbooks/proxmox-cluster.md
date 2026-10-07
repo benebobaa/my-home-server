@@ -48,10 +48,10 @@ PVE 9 gotchas, both handled by the flags above:
   `/var/lib/pve-cluster/backup/config-*.sql.gz`).
   - Preferred: stop + back up + remove guests before joining.
   - Or force (only when VM IDs do not collide!) and restore the configs from
-    the backup. The 2026-10-08 pve2 join did exactly that for CT 100: the
-    config was extracted from the dump and written back to
-    `/etc/pve/nodes/<node>/lxc/<id>.conf`; volumes and snapshots were
-    untouched.
+    the backup. The 2026-10-08 pve2 join did exactly that for CT 100 (a
+    temporary sandbox, removed the same day): the config was extracted from
+    the dump and written back to `/etc/pve/nodes/<node>/lxc/<id>.conf`;
+    volumes and snapshots were untouched.
 
 ## 4. Verify
 
