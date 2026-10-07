@@ -72,7 +72,10 @@ then `pve3` (2026-10-07).
 6. Replace `/etc/network/interfaces` with the template below (canonical copy:
    `proxmox/nodes/<node>/interfaces`), **without** reloading yet.
 7. Move the USB NIC cable **P5 → P3** (pve2) or **P5 → P4** (pve3), then reboot
-   the node.
+   the node. Order matters: once this config is written, the node answers only
+   on the **trunk** port (tagged VLAN 10) — moving the cable early (while the
+   installer config still runs) or rebooting while still on P5 (untagged)
+   leaves it unreachable.
 
 ## 4. Verify
 

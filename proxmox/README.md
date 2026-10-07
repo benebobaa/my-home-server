@@ -6,8 +6,8 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 | Node | Machine | MGMT (VLAN 10) | CLUSTER (VLAN 60) | Switch port | Status |
 | --- | --- | --- | --- | --- | --- |
 | pve1 | desktop — Ryzen 5 5600 / 32GB / RTX 3060 | 10.10.10.11 | 10.10.60.11 | P2 | being built |
-| pve2 | Asus i3-7 laptop, 12GB + USB NIC | 10.10.10.12 | 10.10.60.12 | P3 | installing |
-| pve3 | Asus i3-7 laptop, 8GB + USB NIC | 10.10.10.13 | 10.10.60.13 | P4 | installing |
+| pve2 | Asus i3-7 laptop, 12GB + USB NIC | 10.10.10.12 | 10.10.60.12 | P3 | configured |
+| pve3 | Asus i3-7 laptop, 8GB + USB NIC | 10.10.10.13 | 10.10.60.13 | P4 | configured |
 
 - Install procedure:
   [`../docs/runbooks/proxmox-install.md`](../docs/runbooks/proxmox-install.md).
@@ -24,5 +24,8 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 - `pve2` details: PVE 9.2, kernel 7.0.x. Single NIC = USB ASIX AX88179
   (Gigabit, pinned as `nic0`; no built-in Ethernet). Config snapshot in
   `nodes/pve2/interfaces`.
+- `pve3` details: PVE 9.2, kernel 7.0.x. Single NIC = USB Gigabit adapter
+  (pinned as `nic0`; no built-in Ethernet). Config snapshot in
+  `nodes/pve3/interfaces`.
 - Guests: add the admin SSH key at creation (the wizard has a field for it).
   Debian's default sshd refuses root *password* logins over SSH — key-only.
