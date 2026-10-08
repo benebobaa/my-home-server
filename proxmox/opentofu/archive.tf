@@ -41,9 +41,10 @@ resource "proxmox_virtual_environment_container" "archive" {
     cores = 1
   }
 
+  # 512 MB was OOM-killed generating thumbnails for a photo folder (2026-10-09).
   memory {
-    dedicated = 512
-    swap      = 256
+    dedicated = 1024
+    swap      = 512
   }
 
   disk {

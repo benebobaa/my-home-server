@@ -47,6 +47,8 @@ fb() { runuser -u filebrowser -- /usr/local/bin/filebrowser -d "$FB_DB" "$@"; }
 PERMS=(--perm.admin=false --perm.create=false --perm.delete=false --perm.download=true
        --perm.execute=false --perm.modify=false --perm.rename=false --perm.share=false)
 
+# BoltDB takes an exclusive lock: the CLI cannot run next to the service.
+systemctl stop filebrowser 2>/dev/null || true
 [ -f "$FB_DB" ] || fb config init >/dev/null
 fb config set --address 127.0.0.1 --port 8080 --root /srv/archive \
   --auth.method json --signup=false --branding.name "Family archive" \
@@ -64,11 +66,13 @@ Wants=network-online.target
 [Service]
 User=filebrowser
 Group=filebrowser
-ExecStart=/usr/local/bin/filebrowser -d /var/lib/filebrowser/filebrowser.db
+# Thumbnails are cached on disk so a photo folder is resized once, not per visit.
+ExecStart=/usr/local/bin/filebrowser -d /var/lib/filebrowser/filebrowser.db --cacheDir /var/cache/filebrowser
+CacheDirectory=filebrowser
 Restart=on-failure
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/filebrowser
+ReadWritePaths=/var/lib/filebrowser /var/cache/filebrowser
 
 [Install]
 WantedBy=multi-user.target
