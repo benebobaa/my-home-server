@@ -28,6 +28,7 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 | `/etc/network/interfaces` (VLAN-aware trunk) | `proxmox/nodes/<node>/interfaces` |
 | NIC pinning (`.link` → `nic0`) | `pve_nic_mac` per host in `inventory.ini` |
 | root `authorized_keys` (admin key) | `~/.ssh/id_ed25519.pub` on the operator machine |
+| NVIDIA modules load at boot + `nvidia-persistenced` (`--tags gpu`) | hosts with `has_nvidia_gpu=true` in `inventory.ini` — see `docs/runbooks/gpu-lxc-passthrough.md` |
 
 ## What it verifies (read-only asserts)
 

@@ -134,6 +134,65 @@
         create: true
       tags: ssh
 
+    # ------------------------------------------------------------------- gpu
+    # Makes the NVIDIA GPU usable from LXC containers (device-passthrough,
+    # shared — not VM/VFIO exclusive passthrough). The driver itself (dkms,
+    # MOK/Secure-Boot-off) was set up by hand during the MX130 experiment —
+    # see docs/experiments/mx130/README.md and docs/runbooks/secure-boot-mok.md.
+    # This section only makes that driver *boot-safe for containers*:
+    # unprivileged LXCs cannot load kernel modules themselves, so nvidia_uvm
+    # (needed for CUDA) must already be loaded, and its device node already
+    # created, before any GPU-enabled container starts — on-demand loading
+    # (what a CUDA app does when run directly on the host) does not work
+    # from inside a container.
+    - name: Ensure all NVIDIA kernel modules load at boot (not just on-demand)
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/nvidia.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (gpu tag).
+          # nvidia_uvm is required for CUDA and is NOT auto-loaded by the
+          # "nvidia" module alone — without this, LXC containers (which
+          # cannot load kernel modules) get /dev/nvidia-uvm missing.
+          nvidia
+          nvidia_uvm
+          nvidia_drm
+          nvidia_modeset
+        mode: "0644"
+      when: has_nvidia_gpu | default(false)
+      notify: reload nvidia modules
+      tags: gpu
+
+    - name: Install the nvidia-persistenced systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nvidia-persistenced.service
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (gpu tag).
+          # Official unit (NVIDIA driver docs: nvidia-persistenced-init/systemd/),
+          # --user root since this is headless (no login session owns the GPU).
+          [Unit]
+          Description=NVIDIA Persistence Daemon
+          Wants=syslog.target
+
+          [Service]
+          Type=forking
+          ExecStart=/usr/bin/nvidia-persistenced --user root
+          ExecStopPost=/bin/rm -rf /var/run/nvidia-persistenced
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
+    - name: Enable nvidia-persistenced
+      ansible.builtin.systemd_service:
+        name: nvidia-persistenced.service
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
     # ----------------------------------------------------------------- verify
     - name: Read FQDN
       ansible.builtin.command: hostname -f
@@ -216,6 +275,38 @@
         msg: "{{ inventory_hostname }}: {{ pvever.stdout }}"
       tags: verify
 
+    - name: Stat the nvidia_uvm device node
+      ansible.builtin.stat:
+        path: /dev/nvidia-uvm
+      register: nvidia_uvm_dev
+      when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Assert /dev/nvidia-uvm exists (boot-time, not on-demand)
+      ansible.builtin.assert:
+        that: nvidia_uvm_dev.stat.exists
+        fail_msg: >-
+          /dev/nvidia-uvm is missing — a GPU-enabled LXC would fail to get
+          CUDA. Check modules-load.d/nvidia.conf applied and reboot pending?
+      when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Read nvidia-persistenced state
+      ansible.builtin.command: systemctl is-active nvidia-persistenced.service
+      register: persistenced_state
+      changed_when: false
+      check_mode: false
+      failed_when: false
+      when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Assert nvidia-persistenced is active
+      ansible.builtin.assert:
+        that: persistenced_state.stdout == 'active'
+        fail_msg: "nvidia-persistenced is '{{ persistenced_state.stdout }}', expected 'active'"
+      when: has_nvidia_gpu | default(false)
+      tags: verify
+
     # ---------------------------------------------------------------- cluster
     # One-time bootstrap, explicit only:
     #   ansible-playbook proxmox-nodes.yml --tags cluster
@@ -252,3 +343,13 @@
         msg: >-
           /etc/network/interfaces changed — reboot {{ inventory_hostname }}
           to apply it (the live session keeps the old config until then).
+
+    - name: reload nvidia modules
+      ansible.builtin.command: "modprobe {{ item }}"
+      loop:
+        - nvidia_uvm
+        - nvidia_drm
+        - nvidia_modeset
+      changed_when: true
+      # Already loaded on a node that ran the MX130 experiment by hand — this
+      # only matters the first time a fresh GPU node applies this playbook.
