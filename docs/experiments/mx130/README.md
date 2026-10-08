@@ -73,6 +73,53 @@ The two laptops behave as identical twins; pve2 was benchmarked after Secure Boo
 disabled (2026-10-08) and after a reboot of all nodes — driver persisted. vectoradd on
 pve2 uses a binary built on pve3 with `--cudart static` (no CUDA toolkit installed on pve2).
 
+## Pooling both GPUs: llama.cpp over RPC (2026-10-08)
+
+**Question:** can the two MX130s work together? **Answer:** not as one bigger GPU, but
+llama.cpp's RPC backend splits a model's layers across both cards over the network, so
+their VRAM adds up (2 GB + 2 GB). Setup: `ggml-rpc-server` on pve2 (bound to the
+management VLAN, started only for the test; it has **no authentication** — never leave
+it running), client `llama-bench` on pve3 with `--rpc 10.10.10.12:50052`.
+llama.cpp built once on pve3 (`-DGGML_CUDA=ON -DGGML_RPC=ON -DCMAKE_CUDA_ARCHITECTURES=50`,
+CUDA 12.8, about 20 min niced on 4 cores); binaries + the 3 CUDA runtime libs were copied
+to pve2. Models: Qwen2.5 Instruct Q4_K_M (1.5B = 1.04 GiB, 3B = 1.95 GiB).
+Link between the nodes: 1 GbE, **~4.9 ms RTT**.
+
+| Model | Setup | prompt (tok/s) | generation (tok/s) |
+| --- | --- | ---: | ---: |
+| 1.5B | CPU only (i3, 4 threads) | 39.7 | 17.3 |
+| 1.5B | 1 GPU | 142.6 | 17.8 |
+| 1.5B | 2 GPUs (RPC) | 135.8 | 17.1 |
+| 3B | CPU only | 19.7 | 8.8 |
+| 3B | 1 GPU | out of memory (1.95 GiB model on a ~1.9 GiB card) | |
+| 3B | 1 GPU, partial offload (30 layers) | 64.3 | 7.5 |
+| 3B | 2 GPUs (RPC) | 65.8 | 7.8 |
+
+During the 3B run both cards held ~1 GB of weights and were busy (pve2 986 MiB, pve3 1073 MiB).
+
+**Takeaways**
+- Pooling **works** and is what makes a model too big for one card run fully on GPU, but
+  it brings **no speed-up**: layers run one after another, so the cards take turns, and
+  the ~5 ms link adds a little (1.5B: 17.8 → 17.1 tok/s).
+- Prompt processing is where the GPUs help: 3.6× faster than the CPU on 1.5B, 3.3× on 3B.
+- Token generation is memory-bandwidth-bound (~32 GB/s on the GPU, similar to the i3's
+  DDR4), so **the CPU matches the GPU** here (17.3 vs 17.8 tok/s on 1.5B).
+- The first CPU run (prompt 66 tok/s) was inflated: with the CUDA backend present,
+  llama.cpp offloads big batches to the GPU even at `-ngl 0`. Hide the GPU
+  (`CUDA_VISIBLE_DEVICES=""`) for a true CPU baseline.
+- Embarrassingly parallel work (e.g. hashcat, split keyspace) is the case where two nodes
+  scale roughly linearly: 2,309.5 + 2,275.1 ≈ 4.6 GH/s MD5 (not measured together).
+
+**Reproduce**
+```bash
+# pve2 (never leave running; unauthenticated)
+LD_LIBRARY_PATH=. ./ggml-rpc-server -H 10.10.10.12 -p 50052
+# pve3
+llama-bench -m qwen2.5-3b-instruct-q4_k_m.gguf -ngl 99 --rpc 10.10.10.12:50052 -p 128 -n 32 -r 2
+CUDA_VISIBLE_DEVICES="" llama-bench -m <model> -ngl 0 -t 4     # true CPU baseline
+```
+Files on the nodes: `/root/mx130-experiment/{llama.cpp,models}` (pve3), `/root/mx130-experiment/llama` (pve2).
+
 ## Reproduce
 
 ```bash
@@ -105,6 +152,7 @@ On pve3: same + `nvtop` and `/usr/local/cuda-12.8`.
 
 ## Next steps
 
-- AI demo: tiny LLM via llama.cpp (`sm_50` build, ~0.5B model) — "a 2017 GPU runs an LLM".
-- Bake-off: same inference on CPU (i3) vs iGPU (OpenVINO) vs MX130 (CUDA).
+- Bake-off, remaining part: iGPU (OpenVINO / Vulkan on the HD 620) vs the MX130 and the CPU
+  (CPU and MX130 done above).
+- Measure hashcat on both nodes at once (keyspace split) to confirm the ~linear scaling.
 - Level 3: VFIO passthrough rehearsal (MX130 → throwaway VM) before doing the RTX 3060 on pve1.
