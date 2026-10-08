@@ -60,6 +60,8 @@ sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 - [x] GPUs (2× MX130): driver + boot-safe shared LXC passthrough ([ADR 0003](docs/decisions/0003-lxc-gpu-passthrough.md))
 - [x] Foundation audit (2026-10-08): router NTP + MAC-access hardening, host cleanup, zero drift (`tofu plan` / `ansible --check`)
 - [x] DMZ hardened as the tenant zone (2026-10-08): SMTP-25 and non-public egress blocked, 50/50 Mbps cap, exact pinholes; `home.arpa` names on the hEX
+- [x] Old laptop HDDs triaged (2026-10-08): pve3's is failing (8,448 pending sectors) and its files were rescued by imaging ([runbook](docs/runbooks/disk-rescue.md)); pve2's is healthy and untouched
+- [ ] Family archive (Irene + Bene) on ZFS with a second copy, then File Browser for both: **blocked on a replacement disk**. The keep-set is on pve2's temporary `rescue-staging` LV, except Irene's 258 GB `Captures`, which is still a single copy on pve2's HDD
 - [ ] Foundation, before any stateful service: backups (PBS + test restore), UPS + clean shutdown, alert channel, secrets (SOPS), encrypted IaC state, quorum tie-breaker
 - [ ] Monitoring → databases → apps
 - [ ] Proxmox: pve1 (desktop, RTX 3060) — being built
