@@ -29,7 +29,10 @@ Default to **LXC device passthrough, shared**, provisioned by:
 
 - `ansible/proxmox-nodes.yml` (`--tags gpu`) — host readiness: `nvidia_uvm` /
   `nvidia_drm` / `nvidia_modeset` load at **boot** (not on first CUDA call —
-  an LXC cannot load kernel modules itself), `nvidia-persistenced` enabled.
+  an LXC cannot load kernel modules itself), `nvidia-persistenced` enabled,
+  and `/dev/nvidia-uvm[-tools]` explicitly created at boot (`nvidia-modprobe
+  -c0 -u` — this driver ships no udev rule for it; confirmed missing on a
+  cold reboot before this was added).
 - `proxmox/opentofu/files/lxc-gpu-passthrough.sh <VMID>` — adds the `devN:`
   entries to a container (root-only, same class of limitation as `admin-gw`'s
   `dev0` TUN passthrough: the Terraform/OpenTofu API token cannot write

@@ -193,6 +193,45 @@
       when: has_nvidia_gpu | default(false)
       tags: gpu
 
+    # Loading nvidia_uvm (above) is NOT enough: no udev rule ships with this
+    # driver to create /dev/nvidia-uvm[-tools] on module load — confirmed by
+    # rebooting pve2 cold (2026-10-08): the module was loaded, the device
+    # node was not. The node normally appears "by itself" only because a
+    # CUDA app run as root on the host triggers this same call internally
+    # (via libcuda) — which an LXC container cannot do.
+    - name: Install the nvidia-uvm device-node creation unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nvidia-uvm-mknod.service
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (gpu tag).
+          # Creates /dev/nvidia-uvm[-tools] at boot — no udev rule does this
+          # for this driver; without it, an LXC container sees nvidia_uvm
+          # loaded but the device missing (CUDA init fails).
+          [Unit]
+          Description=Create /dev/nvidia-uvm device nodes
+          After=systemd-modules-load.service
+          Before=pve-guests.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart=/usr/bin/nvidia-modprobe -c0 -u
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
+    - name: Enable nvidia-uvm-mknod
+      ansible.builtin.systemd_service:
+        name: nvidia-uvm-mknod.service
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
     # ----------------------------------------------------------------- verify
     - name: Read FQDN
       ansible.builtin.command: hostname -f

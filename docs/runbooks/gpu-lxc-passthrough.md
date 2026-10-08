@@ -16,9 +16,16 @@ ansible-playbook proxmox-nodes.yml --tags gpu,verify
 This makes `nvidia_uvm`/`nvidia_drm`/`nvidia_modeset` load **at boot** (an
 LXC cannot load kernel modules itself — on-demand loading, which is what
 happens when you run a CUDA app directly on the host, does not work from
-inside a container) and enables `nvidia-persistenced`. Re-run any time; it's
-idempotent. A new GPU node needs `has_nvidia_gpu=true` added in
-`ansible/inventory.ini` first.
+inside a container), enables `nvidia-persistenced`, and — the part that's
+easy to miss — runs `nvidia-modprobe -c0 -u` at boot to actually **create**
+`/dev/nvidia-uvm[-tools]`. Loading the module is not enough by itself: this
+driver ships no udev rule for that device node, so without the explicit
+mknod step the node only appears after the first CUDA app happens to run as
+real root on the host. Confirmed by a cold reboot of both nodes
+(2026-10-08): before this fix, `/dev/nvidia-uvm` was missing on boot even
+though `nvidia_uvm` was loaded; after it, the node exists before any manual
+command runs. Re-run any time; it's idempotent. A new GPU node needs
+`has_nvidia_gpu=true` added in `ansible/inventory.ini` first.
 
 ## 1. Create the container (however you normally do — OpenTofu or `pct create`)
 
@@ -68,16 +75,24 @@ pct exec <VMID> -- nvidia-smi          # should show the MX130
 - **No isolation between containers:** this is shared passthrough — any
   container with the devices can use the full 2 GB VRAM; there's no quota.
   Watch for concurrent heavy jobs on the same card.
-- `/dev/nvidia-modeset` doesn't exist on this hardware (no display attached
-  to the card) — don't expect it; compute-only (CUDA) workloads don't need it.
+- `/dev/nvidia-modeset` *does* now exist (created automatically once
+  `nvidia_modeset` loads at boot, unlike `nvidia-uvm` — DRM/KMS modules get a
+  udev rule, this vendor module doesn't) but isn't passed through by the
+  script above and isn't needed for compute-only (CUDA) workloads; add
+  `dev4: /dev/nvidia-modeset` yourself if a guest ever needs display output.
 
 ## Validated (2026-10-08)
 
-Built a throwaway unprivileged CT (`pct create` + the steps above) on `pve2`,
-confirmed `nvidia-smi` and a CUDA `vectoradd` run matched bare-metal numbers
-exactly (24.80 ms/rep, 32.5 GB/s, verify OK), then destroyed it
-(`pct stop && pct destroy`) — this runbook is the reproduction path, nothing
-was left running.
+- Built a throwaway unprivileged CT (`pct create` + the steps above) on
+  `pve2`, confirmed `nvidia-smi` and a CUDA `vectoradd` run matched
+  bare-metal numbers exactly (24.80 ms/rep, 32.5 GB/s, verify OK), then
+  destroyed it (`pct stop && pct destroy`) — this runbook is the
+  reproduction path, nothing was left running.
+- **Cold-rebooted both pve2 and pve3** afterward specifically to check the
+  host prerequisite survives a real boot, not just "still loaded from
+  earlier testing" — this is what caught the missing `nvidia-modprobe -c0 -u`
+  step above. After the fix, both nodes show `/dev/nvidia-uvm[-tools]`
+  present immediately on boot, before any CUDA command runs.
 
 ## Revert
 
