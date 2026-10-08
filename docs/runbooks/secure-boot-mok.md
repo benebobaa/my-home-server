@@ -10,13 +10,15 @@ Two options — pick per node:
 - **Option A (keep Secure Boot):** enroll a Machine Owner Key (MOK); sign the modules.
   One-time physical step, then DKMS signs future rebuilds automatically.
 - **Option B (simpler, lower security):** disable Secure Boot in the BIOS.
-  Unsigned modules load immediately. (pve3 currently uses this.)
+  Unsigned modules load immediately. (**pve2 and pve3 both use this** — pve2 switched
+  from A to B on 2026-10-08; the queued MOK was never enrolled.)
 
 ---
 
 ## Option A — MOK enrollment (keeps Secure Boot ON)
 
-Already prepared on **pve2** — remaining work is the physical step.
+Was prepared on **pve2** but not used (pve2 went with Option B). Kept as the recipe
+if a node ever needs Secure Boot ON.
 
 1. **Key** (generated during the 2026-10-08 MX130 experiment, per node):
    ```bash
@@ -61,8 +63,11 @@ sh NVIDIA-Linux-x86_64-580.178.04.run -s -z -j 4 --dkms \
 
 ## Option B — disable Secure Boot
 
-BIOS → Security → Secure Boot → **Disabled** → boot.
-(Everything else identical; no signing needed. This is what pve3 currently runs.)
+ASUS laptops (pve2/pve3): reboot, tap **F2** at the logo → **F7** (Advanced Mode) →
+**Security** → **Secure Boot** → *Secure Boot Control* = **Disabled** (if greyed out, set a
+temporary Administrator Password first) → **F10** Save & Exit.
+Verify: `mokutil --sb-state` → `SecureBoot disabled`.
+(Everything else identical; no signing needed. This is what pve2 and pve3 run.)
 
 ## Gotchas
 

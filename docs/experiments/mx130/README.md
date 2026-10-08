@@ -16,7 +16,7 @@ heavy compute belongs to `pve1`'s RTX 3060.)
 | --- | --- |
 | nouveau (open driver) + Mesa RustiCL OpenCL | works — **268.7 MH/s** MD5 |
 | NVIDIA 580.178.04 (last Maxwell branch) | works — **2,275.1 MH/s** MD5 (**8.5×**) |
-| pve2 (Secure Boot ON) | driver installed + signed; **one-time MOK enrollment pending** |
+| pve2 (Secure Boot now OFF) | **fully working**: driver loaded, **2,309.5 MH/s** MD5, demo kernel ran |
 | pve3 (Secure Boot OFF) | **fully working**: driver loaded, CUDA toolkit 12.8, demo kernel ran |
 
 Both MX130s idle near-zero power (nouveau/nvidia runtime-PM suspend after ~5 s).
@@ -65,8 +65,13 @@ Both MX130s idle near-zero power (nouveau/nvidia runtime-PM suspend after ~5 s).
 
 | Benchmark | nouveau + RustiCL | NVIDIA 580 | factor |
 | --- | --- | --- | --- |
-| hashcat MD5 | 268.7 MH/s | 2,275.1 MH/s | 8.5× |
-| vectoradd (pve3) | — | 24.8 ms/rep · 32.5 GB/s · verify OK | |
+| hashcat MD5 (pve3) | 268.7 MH/s | 2,275.1 MH/s | 8.5× |
+| hashcat MD5 (pve2) | — | 2,309.5 MH/s | |
+| vectoradd (pve2 and pve3) | — | 24.80 ms/rep · 32.5 GB/s · verify OK (identical) | |
+
+The two laptops behave as identical twins; pve2 was benchmarked after Secure Boot was
+disabled (2026-10-08) and after a reboot of all nodes — driver persisted. vectoradd on
+pve2 uses a binary built on pve3 with `--cudart static` (no CUDA toolkit installed on pve2).
 
 ## Reproduce
 
@@ -81,10 +86,11 @@ LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64 ./vectoradd
 
 ## Node state after the experiment
 
-- **pve2:** nouveau blacklisted + unloaded; NVIDIA 580.178.04 installed via dkms,
-  module signed (auto-signing configured in `/etc/dkms/framework.conf`); `nvidia`
-  in `/etc/modules-load.d/`; **activation = one-time MOK enrollment**
-  (runbook: [`docs/runbooks/secure-boot-mok.md`](../../runbooks/secure-boot-mok.md)).
+- **pve2:** nouveau blacklisted + unloaded; NVIDIA 580.178.04 installed via dkms
+  (module signed; MOK signing is configured in `/etc/dkms/framework.conf` but unused now);
+  `nvidia` in `/etc/modules-load.d/`. **Secure Boot was disabled in the BIOS** (same as
+  pve3) instead of enrolling the MOK — the queued enrollment was cleared by the reboot.
+  Driver loads at boot. (Runbook: [`docs/runbooks/secure-boot-mok.md`](../../runbooks/secure-boot-mok.md).)
 - **pve3:** fully done (driver loaded; toolkit 12.8; hashcat + nvtop installed).
 
 ## Revert (if ever needed)
@@ -99,7 +105,6 @@ On pve3: same + `nvtop` and `/usr/local/cuda-12.8`.
 
 ## Next steps
 
-- One-time **MOK enrollment on pve2** (see runbook), then `nvidia-smi` there too.
 - AI demo: tiny LLM via llama.cpp (`sm_50` build, ~0.5B model) — "a 2017 GPU runs an LLM".
 - Bake-off: same inference on CPU (i3) vs iGPU (OpenVINO) vs MX130 (CUDA).
 - Level 3: VFIO passthrough rehearsal (MX130 → throwaway VM) before doing the RTX 3060 on pve1.
