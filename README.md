@@ -63,4 +63,4 @@ sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 - [ ] Foundation, before any stateful service: backups (PBS + test restore), UPS + clean shutdown, alert channel, secrets (SOPS), encrypted IaC state, quorum tie-breaker
 - [ ] Monitoring → databases → apps
 - [ ] Proxmox: pve1 (desktop, RTX 3060) — being built
-- [ ] Edge services + VPS public exposure
+- [ ] Public ingress via Cloudflare Tunnel ([ADR 0004](docs/decisions/0004-public-ingress-cloudflare-tunnel.md)): Cloudflare DNS as code, tunnel, Kubeletto move (VPS only on a trigger)

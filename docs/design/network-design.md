@@ -7,14 +7,14 @@
 > ([ADR 0001](../decisions/0001-opentofu-for-routeros.md)). A full v3 pass
 > happens once the router baseline is applied.
 
-**Scope:** Biznet fiber (CGNAT), MikroTik hEX (RB750Gr3), TP-Link SG108E, 3-node Proxmox cluster, public exposure through a rented VPS (no Cloudflare Tunnel). The hEX sits **behind the existing Biznet router**, which keeps serving the household Wi-Fi untouched. **Principles:** zero inbound ports at home, VLAN segmentation with default-deny, VPS treated as an untrusted zone, out-of-band recovery path, everything reproducible from a config export.
+**Scope:** Biznet fiber (CGNAT), MikroTik hEX (RB750Gr3), TP-Link SG108E, 3-node Proxmox cluster, public exposure through **Cloudflare Tunnel** ([ADR 0004](../decisions/0004-public-ingress-cloudflare-tunnel.md); the VPS path in §6 is a deferred fallback). The hEX sits **behind the existing Biznet router**, which keeps serving the household Wi-Fi untouched. **Principles:** zero inbound ports at home, VLAN segmentation with default-deny, the DMZ (tenant workloads) and any VPS treated as untrusted zones, out-of-band recovery path, everything reproducible from a config export.
 
 ## 1. Logical topology
 
 ```mermaid
 flowchart TB
-  U["Internet users"] -->|"443/tcp"| V["VPS public IPv4: HAProxy L4 + WireGuard 10.99.0.1"]
-  V ==>|"WireGuard UDP 51820 (home dials out)"| E["edge LXC, VLAN 25: WG 10.99.0.2 + Traefik"]
+  U["Internet users"] -->|"HTTPS"| CF["Cloudflare: DNS, TLS, WAF"]
+  CF <==>|"Cloudflare Tunnel (home dials out)"| E["K3s VM, VLAN 25 DMZ: cloudflared + Traefik"]
   FAM["Household phones/laptops"] --- BR["Biznet router: PPPoE VLAN 377, CGNAT, Wi-Fi + DHCP"]
   BR -->|"LAN port to ether1"| H["MikroTik hEX"]
   H -->|"ether2 trunk"| S["TP-Link SG108E"]
@@ -22,13 +22,13 @@ flowchart TB
   S --> N2["pve2 laptop (i3, 12GB) + USB NIC"]
   S --> N3["pve3 laptop (i3, 8GB) + USB NIC"]
   S --> AP["Wi-Fi AP / Biznet unit as AP"]
-  N1 --- E
-  E -->|"allowlist only"| B["Backends, VLAN 20"]
+  N2 --- E
+  E -->|"exact pinholes only"| B["Backends, VLAN 20 (Postgres)"]
 ```
 
 **Upstream: Biznet router (left untouched)**
 
-- It terminates PPPoE on VLAN 377 (MRU 1492) and receives a private 10.108.x.x address, which means **CGNAT**: no inbound connections from the internet, so all exposure goes through the VPS.
+- It terminates PPPoE on VLAN 377 (MRU 1492) and receives a private 10.108.x.x address, which means **CGNAT**: no inbound connections from the internet, so all exposure goes through an outbound tunnel (Cloudflare Tunnel, ADR 0004).
 - Its WAN connection, Wi-Fi bindings and DHCP stay exactly as they are, so household devices are unaffected. The hEX plugs into a free LAN port and acts as an ordinary client (double NAT behind CGNAT is fine for outbound WireGuard).
 - No bridge mode, no DMZ, no PPPoE on the hEX. Reserve the hEX's WAN address in the Biznet DHCP if possible.
 - The Biznet LAN subnet must not overlap 10.10.0.0/16, 192.168.99.0/29 or 192.168.88.0/24. If it does, change ours.
@@ -68,11 +68,11 @@ flowchart TB
 | Postgres LXC (Kubeletto, future, pve2) |  |  | 10.10.20.21 (VLAN 20) |
 | K3s VM (Kubeletto tenant cluster, future) |  |  | 10.10.25.20 (VLAN 25) |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
-| edge LXC |  |  | 10.10.25.10, wg 10.99.0.2 |
+| edge LXC (deferred VPS path only) |  |  | 10.10.25.10, wg 10.99.0.2 |
 | hEX OOB (ether3) |  |  | 192.168.88.1/24 |
 | VPS |  |  | wg 10.99.0.1 |
 
-Internal DNS: hEX resolver. Infra names under `home.arpa`. Public service names get a **split-horizon** static entry on the hEX pointing to the edge (10.10.25.10), so LAN clients never hairpin through the VPS.
+Internal DNS: hEX resolver, names under `home.arpa` (`network/routeros/dns.tf`). Public names (`kubeletto.com`, `kubeletto.app`) are authoritative on **Cloudflare DNS** only. No split-horizon: HSTS `includeSubDomains; preload` makes every public subdomain HTTPS-only, so LAN clients go through Cloudflare like everyone else.
 
 ## 3. SG108E configuration
 
@@ -204,7 +204,9 @@ public IP. So, beyond the table above:
 
 Verified from a throwaway CT on VLAN 25: 443 and DNS work; SMTP-25, every
 lab VLAN, the hEX admin ports, the switch, `192.168.18.1` and `10.108.0.1` are
-blocked; throughput 48 Mbps vs 89 Mbps from VLAN 10. Back up with `/export file=hex-baseline` (and a binary backup) after every change.
+blocked; throughput 48 Mbps vs 89 Mbps from VLAN 10.
+
+Back up with `/export file=hex-baseline` (and a binary backup) after every change.
 
 ## 5. Proxmox networking (each node)
 
@@ -233,7 +235,19 @@ iface vmbr0.60 inet static
 
 Use the adapter's real name instead of `eno1` (USB NICs show up as `enx...`). Increment the last octet per node. Create the cluster with corosync on the 10.10.60.x addresses. Guests get a VLAN tag in their NIC settings (20, 25 or 30). Don't enable HA on the USB-NIC nodes. Use an ASIX AX88179 or Realtek RTL8153 adapter. Schedule PBS jobs off-hours because corosync shares the single NIC.
 
-## 6. Public exposure (VPS, L4 passthrough)
+## 6. Public exposure
+
+**Current choice: Cloudflare Tunnel** ([ADR 0004](../decisions/0004-public-ingress-cloudflare-tunnel.md)).
+Flow: user → Cloudflare (TLS, WAF, cache) → tunnel → `cloudflared` (2 replicas
+inside the K3s VM, DMZ VLAN 25, outbound only) → Traefik → tenant services; the
+K3s VM reaches its Postgres in VLAN 20 through one exact pinhole. Admin
+surfaces never go through the tunnel (Tailscale only; Cloudflare Access if a
+web UI must be public).
+
+### 6b. Deferred fallback: VPS, L4 passthrough
+
+Build only on an ADR 0004 trigger: non-HTTP ports, media or >100 MB uploads,
+or tenant egress needing an exit IP other than the household's.
 
 Flow: user → VPS:443 → HAProxy (PROXY protocol) → WireGuard → edge LXC Traefik/Caddy (terminates TLS, DNS-01 certificates) → backend in VLAN 20.
 
@@ -302,7 +316,7 @@ backend home_https
 
 - **Backups:** PBS for VMs/LXC (target to be decided, ideally not on the same cluster), plus config exports for hEX, SG108E and VPS.
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
-- **Monitoring (later):** Uptime Kuma or Prometheus on VLAN 10/20, with alerts if the WireGuard tunnel drops.
+- **Monitoring (later):** Uptime Kuma or Prometheus on VLAN 10/20, with alerts if the public tunnel drops (an external check, so it still fires when home is down).
 
 ## 8. Build order and rollback
 
@@ -311,7 +325,7 @@ backend home_https
 3. **WAN:** check the Biznet LAN subnet (no overlap, update `biznet-lan`), then cable a free Biznet LAN port to hEX ether1. Leave the Biznet router's settings untouched, and confirm household Wi-Fi still works.
 4. **Wire up:** hEX ether5 → SG108E P8 (trunk), laptop/recovery on P1, then connect nodes, AP and workstation.
 5. **Proxmox:** apply `interfaces`, verify ping to the gateway on VLAN 10, create the cluster over VLAN 60.
-6. **Edge and VPS:** bring up WireGuard, then HAProxy and Traefik, then public DNS records.
+6. **Public ingress:** Cloudflare DNS stack (import existing records), then the tunnel, then hostnames (ADR 0004).
 7. **Verify:** see the checklist below.
 
 **Rollback:** Safe Mode on the hEX undoes bad changes automatically; ether3 (OOB) and switch P1 (management) are always-available recovery paths; the Biznet router is never modified, so unplugging the hEX's `ether1` cable returns the household to exactly how it was.
@@ -322,17 +336,17 @@ backend home_https
 - No lab VLAN can reach the Biznet LAN (ping the Biznet router's LAN IP from LAB; it must fail).
 - LAB, IOT and SERVERS cannot reach MGMT or TRUSTED.
 - IOT cannot reach any internal subnet; internet works from every VLAN.
-- DMZ can reach only allowlisted backend ports.
+- DMZ can reach only its exact pinholes; no SMTP-25 or non-public egress; internet capped (§4).
 - Proxmox UI (8006) and SSH respond only from TRUSTED/MGMT.
 - Large downloads through the tunnel don't stall (MTU/MSS check).
-- Stopping the VPS WireGuard peer is detected by monitoring.
+- Stopping `cloudflared` is detected by monitoring.
 
 ## 9. Open items
 
 - Biznet LAN subnet: verify no overlap and set the `biznet-lan` entry.
 - Own-device Wi-Fi for the lab later (optional AP on P6); until then use the wired workstation on P7.
-- Remote admin choice: Tailscale, Headscale on the VPS, or the WireGuard hub fallback.
-- Services to expose (HTTP only, or raw TCP too) and the domain to use.
+- Remote admin: Tailscale chosen (`admin-gw`); tailnet policy as code and a second subnet router on pve2 still to do.
+- Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - PBS target and the role of the 8GB laptop (full member vs quorum-only).
 - Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
-- VPS provider and region.
+- VPS provider and region (only if an ADR 0004 trigger fires).
