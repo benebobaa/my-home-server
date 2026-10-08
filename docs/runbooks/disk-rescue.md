@@ -56,7 +56,9 @@ and returns no data.
 | sda3 (C:, projects, AMIKOM) | 99.89 % of 141 GB used | 27 GB, 37,658 files | `Bene/raceto/sbd.PNG`, an installer zip, the folder `AMIKOM/SEMESTER 2/KOMUNIKASI DATA/tugas 9`, ≤256 unnamed files (lost `$MFT` records) |
 | sda2 (projects, suitmedia) | 99.92 % of 212 GB (whole partition) | via scrounge-ntfs, flat names | the first ~117 MB of `$MFT` is unreadable: folder structure lost |
 
-The disk itself: 8,448 pending sectors, not to be reused.
+The disk itself: 8,448 pending sectors, not to be reused. Removed from pve3 on
+2026-10-09 and kept offline; it still holds personal data, so destroy it physically
+before disposal.
 
 pve2's HDD stayed clean (9 reallocated, 0 pending, no errors) throughout. Its
 keep-set, everything except Irene's 258 GB `Captures`, was copied to
@@ -70,10 +72,10 @@ until the replacement disk arrives.
 - pve2: thin LV `pve/rescue-staging` mounted at `/mnt/staging` (not in fstab).
 - pve2 HDD `sda4` (old Windows E:, contents copied to staging first) mounted
   read-write with `ntfs3 -o force` at `/mnt/e4`, overriding the Fast Startup dirty flag; it
-  holds `_pve3-rescue/sda2.img`.
+  holds `_pve3-rescue/sda2.img` and a second copy of the extracted pve3 files
+  (`_pve3-rescue/extract/`).
 - Packages: pve2 `ntfs-3g gddrescue ddrutility scrounge-ntfs`;
   pve3 `gddrescue ddrutility sshfs ntfs-3g`.
-- pve3 HDD: SCT ERC 3 s (volatile).
 
 Cleanup when the archive is built: unmount, `lvremove pve/rescue-staging`, purge
-the packages, physically remove the pve3 HDD.
+the packages.
