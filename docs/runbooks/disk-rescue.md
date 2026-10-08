@@ -76,6 +76,9 @@ until the replacement disk arrives.
   (`_pve3-rescue/extract/`).
 - Packages: pve2 `ntfs-3g gddrescue ddrutility scrounge-ntfs`;
   pve3 `gddrescue ddrutility sshfs ntfs-3g`.
+- Re-encoding Irene's captures (2026-10-09): `ffmpeg vainfo intel-media-va-driver`
+  on both nodes; pve3 sshfs mounts `/mnt/cap-src` (ro) and `/mnt/cap-out` from pve2;
+  output on pve2 HDD `/mnt/e4/_captures-30fps`.
 
 Cleanup when the archive is built: unmount, `lvremove pve/rescue-staging`, purge
 the packages.
