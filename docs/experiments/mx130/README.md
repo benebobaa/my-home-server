@@ -107,8 +107,11 @@ During the 3B run both cards held ~1 GB of weights and were busy (pve2 986 MiB, 
 - The first CPU run (prompt 66 tok/s) was inflated: with the CUDA backend present,
   llama.cpp offloads big batches to the GPU even at `-ngl 0`. Hide the GPU
   (`CUDA_VISIBLE_DEVICES=""`) for a true CPU baseline.
-- Embarrassingly parallel work (e.g. hashcat, split keyspace) is the case where two nodes
-  scale roughly linearly: 2,309.5 + 2,275.1 ≈ 4.6 GH/s MD5 (not measured together).
+- Embarrassingly parallel work scales linearly. Confirmed by running hashcat's `-b`
+  benchmark on both nodes **at the same time** (2026-10-08): pve2 2,308.8 MH/s, pve3
+  2,272.4 MH/s — each within 0.2% of its solo number (2,309.5 / 2,275.1 MH/s) —
+  combined **4,581.2 MH/s** MD5. Unlike the RPC case, each node runs independently
+  (no shared state), so there's no cross-node latency to pay.
 
 **Reproduce**
 ```bash
@@ -154,5 +157,4 @@ On pve3: same + `nvtop` and `/usr/local/cuda-12.8`.
 
 - Bake-off, remaining part: iGPU (OpenVINO / Vulkan on the HD 620) vs the MX130 and the CPU
   (CPU and MX130 done above).
-- Measure hashcat on both nodes at once (keyspace split) to confirm the ~linear scaling.
 - Level 3: VFIO passthrough rehearsal (MX130 → throwaway VM) before doing the RTX 3060 on pve1.
