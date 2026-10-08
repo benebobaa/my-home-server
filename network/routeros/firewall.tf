@@ -26,13 +26,30 @@ resource "routeros_ip_firewall_addr_list" "admin_src_native" {
 resource "routeros_ip_firewall_addr_list" "admin_gw" {
   list    = "admin-gw"
   address = "10.10.10.15"
-  comment = "Tailscale admin gateway (planned)"
+  comment = "Tailscale admin gateway (CT 101 on pve3)"
 }
 
 resource "routeros_ip_firewall_addr_list" "biznet_lan" {
   list    = "biznet-lan"
   address = "192.168.18.0/24"
   comment = "Biznet household LAN - never reachable from the lab"
+}
+
+# Non-public destinations the DMZ must never reach through the WAN. Biznet's
+# own CGNAT network is 10.x: a tenant scanning it would be seen by the ISP, on
+# the household's account.
+resource "routeros_ip_firewall_addr_list" "non_public" {
+  for_each = {
+    "10.0.0.0/8"     = "RFC1918 (incl. Biznet CGNAT internals)"
+    "172.16.0.0/12"  = "RFC1918"
+    "192.168.0.0/16" = "RFC1918 (incl. the Biznet household LAN)"
+    "100.64.0.0/10"  = "CGNAT shared space"
+    "169.254.0.0/16" = "link-local"
+  }
+
+  list    = "non-public"
+  address = each.key
+  comment = each.value
 }
 
 # --- input ----------------------------------------------------------------------
@@ -105,11 +122,16 @@ resource "routeros_ip_firewall_filter" "input_drop" {
 }
 
 # --- forward --------------------------------------------------------------------
+# The DMZ (VLAN 25) is never fasttracked: fasttracked packets skip the simple
+# queue that caps its internet bandwidth (queues.tf). Replies to DMZ flows are
+# already de-NATed in forward, so dst covers both directions.
 resource "routeros_ip_firewall_filter" "forward_fasttrack" {
   chain            = "forward"
   action           = "fasttrack-connection"
   connection_state = "established,related"
-  comment          = "offload established flows"
+  src_address      = "!10.10.25.0/24"
+  dst_address      = "!10.10.25.0/24"
+  comment          = "offload established flows (not the DMZ)"
   depends_on       = [routeros_ip_firewall_filter.input_drop]
 }
 
@@ -128,6 +150,35 @@ resource "routeros_ip_firewall_filter" "forward_invalid" {
   depends_on       = [routeros_ip_firewall_filter.forward_established]
 }
 
+# DMZ = tenant zone (it will run other people's code). Its internet egress
+# leaves from the household's IP, so the abuse that gets an IP reported is cut
+# here. Logged: a hit is the earliest abuse signal.
+resource "routeros_ip_firewall_filter" "forward_dmz_no_smtp" {
+  chain              = "forward"
+  action             = "drop"
+  src_address        = "10.10.25.0/24"
+  out_interface_list = routeros_interface_list.wan.name
+  protocol           = "tcp"
+  dst_port           = "25"
+  log                = true
+  log_prefix         = "dmz-smtp"
+  comment            = "DMZ: no outbound SMTP (spam from the household IP)"
+  place_before       = routeros_ip_firewall_filter.forward_dmz_no_private.id
+}
+
+resource "routeros_ip_firewall_filter" "forward_dmz_no_private" {
+  chain              = "forward"
+  action             = "drop"
+  src_address        = "10.10.25.0/24"
+  out_interface_list = routeros_interface_list.wan.name
+  dst_address_list   = "non-public"
+  depends_on         = [routeros_ip_firewall_addr_list.non_public]
+  log                = true
+  log_prefix         = "dmz-private"
+  comment            = "DMZ: no private/CGNAT destinations via WAN (ISP internals)"
+  place_before       = routeros_ip_firewall_filter.forward_trusted_internal.id
+}
+
 resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
   chain       = "forward"
   action      = "accept"
@@ -137,15 +188,19 @@ resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
   depends_on  = [routeros_ip_firewall_filter.forward_invalid]
 }
 
-resource "routeros_ip_firewall_filter" "forward_dmz_backends" {
-  chain            = "forward"
-  action           = "accept"
-  src_address      = "10.10.25.0/24"
-  dst_address_list = "dmz-backends"
-  protocol         = "tcp"
-  dst_port         = "443,8080"
-  comment          = "DMZ to allowlisted backends only"
-  depends_on       = [routeros_ip_firewall_filter.forward_trusted_internal]
+# DMZ -> backend pinholes: one rule per exact source/destination/port. Nothing
+# else in the DMZ reaches another VLAN.
+# K3s VM (Kubeletto) -> its Postgres. Both hosts are reserved in design §2 and
+# not built yet.
+resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
+  chain        = "forward"
+  action       = "accept"
+  src_address  = "10.10.25.20"
+  dst_address  = "10.10.20.21"
+  protocol     = "tcp"
+  dst_port     = "5432"
+  comment      = "DMZ pinhole: K3s VM to Postgres"
+  place_before = routeros_ip_firewall_filter.forward_admin_gw.id
 }
 
 resource "routeros_ip_firewall_filter" "forward_admin_gw" {
@@ -154,7 +209,7 @@ resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   src_address_list = "admin-gw"
   dst_address      = "10.10.0.0/16"
   comment          = "admin-gw to internal"
-  depends_on       = [routeros_ip_firewall_filter.forward_dmz_backends]
+  depends_on       = [routeros_ip_firewall_filter.forward_trusted_internal]
 }
 
 resource "routeros_ip_firewall_filter" "forward_switch_mgmt" {

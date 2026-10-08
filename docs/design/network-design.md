@@ -65,6 +65,8 @@ flowchart TB
 | pve2 (Asus i3 laptop, 12GB) | 10.10.10.12 | 10.10.60.12 |  |
 | pve3 (Asus i3 laptop, 8GB) | 10.10.10.13 | 10.10.60.13 |  |
 | PBS (future) | 10.10.10.14 |  |  |
+| Postgres LXC (Kubeletto, future, pve2) |  |  | 10.10.20.21 (VLAN 20) |
+| K3s VM (Kubeletto tenant cluster, future) |  |  | 10.10.25.20 (VLAN 25) |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
 | edge LXC |  |  | 10.10.25.10, wg 10.99.0.2 |
 | hEX OOB (ether3) |  |  | 192.168.88.1/24 |
@@ -176,11 +178,33 @@ add chain=forward action=drop comment="default drop"
 | TRUSTED | yes | yes | yes | yes | n/a | yes | yes |
 | MGMT | n/a | no | no | no | no | no | yes |
 | SERVERS | no | n/a | no | no | no | no | yes |
-| DMZ | no | allowlist | n/a | no | no | no | yes |
+| DMZ | no | exact pinholes | n/a | no | no | no | capped, filtered |
 | LAB | no | no | no | n/a | no | no | yes |
 | IOT | no | no | no | no | no | n/a | yes |
 
-The Biznet/household LAN is blocked from every lab VLAN (rule `biznet-lan`), and `admin-gw` is the only MGMT host allowed to reach other internal VLANs. Back up with `/export file=hex-baseline` (and a binary backup) after every change.
+The Biznet/household LAN is blocked from every lab VLAN (rule `biznet-lan`), and `admin-gw` is the only MGMT host allowed to reach other internal VLANs.
+
+**DMZ = tenant zone (as built 2026-10-08).** VLAN 25 will run other people's
+code (Kubeletto tenant workloads), and its egress leaves from the household's
+public IP. So, beyond the table above:
+
+- **No outbound SMTP** (`tcp/25` out WAN dropped and logged, prefix `dmz-smtp`).
+  Submission ports (465/587) stay open.
+- **No non-public destinations via WAN** (address list `non-public`: RFC1918,
+  `100.64.0.0/10`, link-local; logged, prefix `dmz-private`). Biznet's CGNAT
+  internals are `10.x`; tenants must not probe them.
+- **Bandwidth cap** 50M/50M on DMZ ↔ internet (`/queue simple` `dmz-internet`,
+  `dst=ether1`), so tenants cannot starve the household or corosync. The line
+  measured ~90/90 Mbps. The DMZ is excluded from fasttrack, because fasttracked
+  packets skip queues; every other VLAN keeps fasttrack.
+- **Exact pinholes, not a list.** Each DMZ → backend path is its own rule
+  (source, destination, port). First: K3s VM `10.10.25.20` → Postgres
+  `10.10.20.21:5432` (hosts reserved, not built yet). The earlier generic
+  `dmz-backends` list rule (443/8080) is gone.
+
+Verified from a throwaway CT on VLAN 25: 443 and DNS work; SMTP-25, every
+lab VLAN, the hEX admin ports, the switch, `192.168.18.1` and `10.108.0.1` are
+blocked; throughput 48 Mbps vs 89 Mbps from VLAN 10. Back up with `/export file=hex-baseline` (and a binary backup) after every change.
 
 ## 5. Proxmox networking (each node)
 

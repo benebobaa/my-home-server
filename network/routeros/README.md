@@ -41,6 +41,9 @@ State is encrypted (`encryption.tf`, enforced) and committed. See
 | `addressing.tf` | gateways + WAN DHCP client |
 | `dhcp.tf` | DHCP pools/servers for VLANs 30/40/50 |
 | `firewall.tf` | address lists, input/forward filter, NAT, MSS clamp |
+| `queues.tf` | DMZ ↔ internet bandwidth cap |
+| `dns.tf` | internal `home.arpa` names on the hEX resolver |
+| `system.tf` | NTP client, MAC-access / discovery limits, plaintext services off |
 
 ## Procedures
 
