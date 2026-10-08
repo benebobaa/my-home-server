@@ -67,7 +67,7 @@ flowchart TB
 | PBS (future) | 10.10.10.14 |  |  |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
 | edge LXC |  |  | 10.10.25.10, wg 10.99.0.2 |
-| hEX OOB (ether5) |  |  | 192.168.88.1/24 |
+| hEX OOB (ether3) |  |  | 192.168.88.1/24 |
 | VPS |  |  | wg 10.99.0.1 |
 
 Internal DNS: hEX resolver. Infra names under `home.arpa`. Public service names get a **split-horizon** static entry on the hEX pointing to the edge (10.10.25.10), so LAN clients never hairpin through the VPS.
@@ -91,7 +91,7 @@ VLAN 1 stays on **P1 and P8 only** — it is the management segment (`192.168.99
 
 ## 4. MikroTik hEX (RouterOS 7)
 
-Port roles: **ether1** WAN (cable to a free LAN port on the Biznet router), **ether2** trunk to switch, **ether5** out-of-band recovery, ether3-4 spare.
+Port roles (as built): **ether1** WAN (cable to a free LAN port on the Biznet router), **ether3** out-of-band recovery, **ether5** trunk to switch P8, ether2/ether4 spare.
 
 Reset with `no-defaults=yes`, connect via Winbox (MAC) on ether5, and apply the baseline below. Review it before pasting, and apply it in **Safe Mode**.
 
