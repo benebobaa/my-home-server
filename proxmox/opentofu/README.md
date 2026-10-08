@@ -10,7 +10,8 @@ the Proxmox side (containers today, VMs later) under the same discipline.
 | Resource | Purpose |
 | --- | --- |
 | `admin-gw` (CT 101) | Tailscale subnet router — remote lab management. See `services/admin-gw/`. |
-| Debian 13 template | Downloaded to `local` (vztmpl) and referenced by the container. |
+| `archive` (CT 110, pve2) | File Browser over Tailscale for the family archive (read-only bind mounts). See `services/archive/`. |
+| Debian 13 template | Downloaded to `local` (vztmpl) on pve3 and pve2, referenced by the containers. |
 
 **Not** managed here: the nodes themselves (golden configs + runbooks in
 `proxmox/`) and the switch (config backup in `network/switch/`).

@@ -28,3 +28,21 @@ variable "node_ssh_host" {
   type        = string
   default     = "10.10.10.13"
 }
+
+variable "archive_node_ssh_host" {
+  description = "SSH address of the node hosting the archive container (root login, key auth); used for its root-only bind mounts + TUN step."
+  type        = string
+  default     = "10.10.10.12"
+}
+
+variable "archive_bene_password" {
+  description = "File Browser password for user bene (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}
+
+variable "archive_irene_password" {
+  description = "File Browser password for user irene (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}

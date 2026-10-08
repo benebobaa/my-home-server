@@ -68,6 +68,7 @@ flowchart TB
 | Postgres LXC (Kubeletto, future, pve2) |  |  | 10.10.20.21 (VLAN 20) |
 | K3s VM (Kubeletto tenant cluster, future) |  |  | 10.10.25.20 (VLAN 25) |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
+| archive LXC (File Browser over Tailscale, CT 110, pve2) |  |  | 10.10.20.30 (VLAN 20) |
 | edge LXC (deferred VPS path only) |  |  | 10.10.25.10, wg 10.99.0.2 |
 | hEX OOB (ether3) |  |  | 192.168.88.1/24 |
 | VPS |  |  | wg 10.99.0.1 |

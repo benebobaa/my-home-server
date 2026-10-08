@@ -7,6 +7,8 @@ Built:
 
 - `admin-gw/` — Tailscale subnet router (MGMT LXC) — provisioned by OpenTofu
   (`proxmox/opentofu/`).
+- `archive/` — File Browser (read-only) over Tailscale for the family archive
+  (VLAN 20 LXC) — provisioned by OpenTofu.
 
 Planned:
 
