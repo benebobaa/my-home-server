@@ -63,6 +63,8 @@ only).
 ## Operations
 
 - Status: `tailscale status`, `tailscale ip -4` (shows the 100.x address).
+- Updates: Tailscale auto-update is on (`tailscale set --auto-update`, in
+  `provision.sh`; check with `tailscale debug prefs | grep -A3 AutoUpdate`).
 - Logs: `journalctl -u tailscaled -e`.
 - Changed routes? Re-run `tailscale up` with the new `--advertise-routes`
   and re-approve in the console.

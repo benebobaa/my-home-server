@@ -16,6 +16,11 @@ fi
 
 systemctl enable --now tailscaled
 
+# This CT is the remote-access door: take Tailscale security fixes without
+# waiting for a manual apt run. If an update ever breaks it, the fallback is the
+# P7 cable (services/admin-gw/README.md).
+tailscale set --auto-update
+
 # Subnet routing needs IP forwarding inside the container (persists across
 # reboots via systemd-sysctl). IPv6 is enabled too — only IPv4 routes are
 # advertised, but this keeps the daemon quiet and is harmless without global
