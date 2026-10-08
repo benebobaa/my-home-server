@@ -57,6 +57,14 @@
           Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
       tags: repos
 
+    # pve-manager *recommends* it, so a stock install has it; a broad
+    # `apt purge ~nnvidia` during the MX130 experiment removed it from pve2.
+    - name: Ensure stock PVE recommended packages are present
+      ansible.builtin.apt:
+        name: pve-nvidia-vgpu-helper
+        state: present
+      tags: repos
+
     - name: "Full upgrade (run explicitly: --tags upgrade)"
       ansible.builtin.apt:
         update_cache: true
@@ -145,6 +153,39 @@
     # created, before any GPU-enabled container starts — on-demand loading
     # (what a CUDA app does when run directly on the host) does not work
     # from inside a container.
+    # The driver is the .run installer + dkms. NVIDIA's CUDA apt repo must not
+    # be configured on the host: a full-upgrade would pull its driver/dkms
+    # packages over the .run install (it had already replaced Debian's dkms on
+    # pve2 when the 2026-10-08 audit found it). CUDA toolkits belong in guests.
+    - name: Ensure NVIDIA's CUDA apt repo is absent
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/cuda-debian13-x86_64.list
+        state: absent
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
+    - name: Ensure the CUDA repo keyring package is absent
+      ansible.builtin.apt:
+        name: cuda-keyring
+        state: absent
+        purge: true
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
+    # Without the headers meta-package, a kernel update installs no headers,
+    # dkms cannot rebuild nvidia, and the GPU silently disappears on the next
+    # boot. proxmox-default-headers tracks proxmox-default-kernel.
+    - name: Ensure dkms + headers for every future kernel (+ nvtop for ops)
+      ansible.builtin.apt:
+        name:
+          - dkms
+          - proxmox-default-headers
+          - nvtop
+        state: present
+        update_cache: true   # drop the removed repo's package lists first
+      when: has_nvidia_gpu | default(false)
+      tags: gpu
+
     - name: Ensure all NVIDIA kernel modules load at boot (not just on-demand)
       ansible.builtin.copy:
         dest: /etc/modules-load.d/nvidia.conf

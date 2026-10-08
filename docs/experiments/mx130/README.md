@@ -121,12 +121,17 @@ LD_LIBRARY_PATH=. ./ggml-rpc-server -H 10.10.10.12 -p 50052
 llama-bench -m qwen2.5-3b-instruct-q4_k_m.gguf -ngl 99 --rpc 10.10.10.12:50052 -p 128 -n 32 -r 2
 CUDA_VISIBLE_DEVICES="" llama-bench -m <model> -ngl 0 -t 4     # true CPU baseline
 ```
-Files on the nodes: `/root/mx130-experiment/{llama.cpp,models}` (pve3), `/root/mx130-experiment/llama` (pve2).
+Files on the nodes: removed in the 2026-10-08 cleanup (see *Node state* below) — rebuild
+llama.cpp per the flags above and re-download the models from Hugging Face to repeat it.
 
 ## Reproduce
 
+The tools below were removed from the hosts after the experiment (CUDA toolkits and
+benchmarks belong in a guest now — see `docs/runbooks/gpu-lxc-passthrough.md`).
+Re-install them in a GPU-enabled container to repeat these runs.
+
 ```bash
-# (on the node, as root)
+# (as root)
 RUSTICL_ENABLE=nouveau clinfo -l                      # nouveau path
 RUSTICL_ENABLE=nouveau hashcat -b -m 0 --backend-ignore-cuda
 hashcat -b -m 0                                       # NVIDIA path
@@ -141,20 +146,38 @@ LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64 ./vectoradd
   `nvidia` in `/etc/modules-load.d/`. **Secure Boot was disabled in the BIOS** (same as
   pve3) instead of enrolling the MOK — the queued enrollment was cleared by the reboot.
   Driver loads at boot. (Runbook: [`docs/runbooks/secure-boot-mok.md`](../../runbooks/secure-boot-mok.md).)
-- **pve3:** fully done (driver loaded; toolkit 12.8; hashcat + nvtop installed).
+- **pve3:** same driver setup, Secure Boot off.
+
+**Cleanup (2026-10-08, after the foundation audit)** — both nodes now carry only what a
+GPU host needs; everything below is enforced by `ansible/proxmox-nodes.yml --tags gpu`
+unless noted:
+
+- NVIDIA's CUDA apt repo + `cuda-keyring` **removed** (a full-upgrade would otherwise pull
+  its driver packages over the `.run` install; it had already swapped pve2's `dkms`).
+  `dkms` is back on Debian's 3.2.2 on both.
+- `proxmox-default-headers` installed, so every future kernel gets headers and dkms
+  rebuilds nvidia (before this, the next kernel update would have dropped the GPU).
+- Boot-time `nvidia_uvm` + device nodes + `nvidia-persistenced` (LXC passthrough).
+- One-time, by hand: experiment packages purged (`hashcat`, `clinfo`, `mesa-opencl-icd`,
+  `pocl-opencl-icd`, `cmake`, `git`), CUDA 12.8 toolkit deleted from pve3 (8.7 GB; root
+  went 59% → 24%), `non-free` dropped from `debian.sources` again, `pve-nvidia-vgpu-helper`
+  restored on pve2 (a broad `apt purge ~nnvidia` had removed it), `/root/mx130-experiment`
+  deleted. **Kept:** the installer at `/root/nvidia/NVIDIA-Linux-x86_64-580.178.04.run`
+  (containers need it for the matching userspace driver), `nvtop`, the dkms MOK signing
+  config (harmless with Secure Boot off; useful if it is ever turned back on).
+- Verified with a cold reboot of each node: driver, `/dev/nvidia-uvm`, quorum all back.
 
 ## Revert (if ever needed)
 
 ```bash
-sh /root/mx130-experiment/NVIDIA-Linux-x86_64-580.178.04.run --uninstall
+sh /root/nvidia/NVIDIA-Linux-x86_64-580.178.04.run --uninstall
 rm /etc/modprobe.d/blacklist-nouveau.conf /etc/modules-load.d/nvidia.conf
 update-initramfs -u && reboot     # nouveau returns
 ```
-Extra packages on pve2: `clinfo`, `mesa-opencl-icd`, `hashcat`, `dkms`, headers.
-On pve3: same + `nvtop` and `/usr/local/cuda-12.8`.
+Then drop the `gpu` tasks for that node (`has_nvidia_gpu=false` in `ansible/inventory.ini`).
 
 ## Next steps
 
-- Bake-off, remaining part: iGPU (OpenVINO / Vulkan on the HD 620) vs the MX130 and the CPU
-  (CPU and MX130 done above).
-- Level 3: VFIO passthrough rehearsal (MX130 → throwaway VM) before doing the RTX 3060 on pve1.
+- Done: guests use the GPUs via shared LXC passthrough — ADR
+  [`0003`](../../decisions/0003-lxc-gpu-passthrough.md).
+- Out of scope by decision: the iGPU (HD 620), and VFIO/RTX 3060 work until `pve1` is built.

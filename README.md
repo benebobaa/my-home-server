@@ -55,6 +55,11 @@ tofu apply                     # commit it to the device
 - [x] hEX baseline: WAN + VLANs + DHCP + firewall (applied; `tofu plan` clean)
 - [x] Switch VLAN configuration (SG108E; backup committed)
 - [x] First client on VLAN 40: DHCP, DNS, internet, hEX + switch management verified
-- [x] Proxmox: pve2 (laptop) installed + configured — VLAN trunk, web UI, updates
-- [ ] Proxmox: pve1 (desktop) + pve3 (laptop), then the cluster
+- [x] Proxmox: pve2 + pve3 (laptops) installed, Ansible-managed, clustered (`homelab`)
+- [x] Remote admin: `admin-gw` (Tailscale subnet router) — OpenTofu
+- [x] GPUs (2× MX130): driver + boot-safe shared LXC passthrough ([ADR 0003](docs/decisions/0003-lxc-gpu-passthrough.md))
+- [x] Foundation audit (2026-10-08): router NTP + MAC-access hardening, host cleanup, zero drift (`tofu plan` / `ansible --check`)
+- [ ] Foundation, before any stateful service: backups (PBS + test restore), UPS + clean shutdown, alert channel, secrets (SOPS), encrypted IaC state, quorum tie-breaker
+- [ ] Monitoring → databases → apps
+- [ ] Proxmox: pve1 (desktop, RTX 3060) — being built
 - [ ] Edge services + VPS public exposure

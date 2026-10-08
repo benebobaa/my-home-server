@@ -50,9 +50,10 @@ the host's kernel module, so only the userspace libraries + `nvidia-smi` are
 needed:
 
 ```bash
-# copy the same .run file used on the host (kept in /root/mx130-experiment/
-# on both nodes), then inside the container:
-sh NVIDIA-Linux-x86_64-580.178.04.run -s -z \
+# the host's installer is kept at /root/nvidia/ on both nodes:
+pct push <VMID> /root/nvidia/NVIDIA-Linux-x86_64-580.178.04.run /root/nvidia.run
+# then inside the container (the toolkit, if you need one, goes here too):
+sh /root/nvidia.run -s -z \
   --no-kernel-module --no-nvidia-modprobe --skip-depmod --no-systemd
 ```
 

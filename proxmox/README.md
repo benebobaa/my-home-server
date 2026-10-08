@@ -28,8 +28,10 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
   training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
   start it remotely is planned.
 - GPUs: both laptops carry an NVIDIA MX130 (Maxwell, `sm_50`) — tested working
-  2026-10-08 (NVIDIA 580.178.04; pve3 also has CUDA 12.8). pve2 needs a one-time
-  MOK enrollment (Secure Boot on) — experiment:
+  2026-10-08 (NVIDIA 580.178.04, Secure Boot off on both). Guests get them via
+  shared LXC passthrough — runbook
+  [`../docs/runbooks/gpu-lxc-passthrough.md`](../docs/runbooks/gpu-lxc-passthrough.md),
+  ADR [`0003`](../docs/decisions/0003-lxc-gpu-passthrough.md). Experiment:
   [`../docs/experiments/mx130/`](../docs/experiments/mx130/), runbook:
   [`../docs/runbooks/secure-boot-mok.md`](../docs/runbooks/secure-boot-mok.md).
 - `pve2` details: PVE 9.2, kernel 7.0.x. Single NIC = USB ASIX AX88179
