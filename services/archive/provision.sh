@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# archive in-guest bootstrap: Tailscale + File Browser (read-only) + users.
+# archive in-guest bootstrap: Tailscale + File Browser (read-only).
 #
 # Executed once by OpenTofu's remote-exec after the container is created
-# (see ../../proxmox/opentofu/archive.tf). Safe to re-run by hand; it then
-# needs /root/archive-users.env again (BENE_PASSWORD=..., IRENE_PASSWORD=...,
-# from proxmox/opentofu/secrets.sops.env).
+# (see ../../proxmox/opentofu/archive.tf). Safe to re-run by hand. Holds no
+# secrets: the users come from users.sh.
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -12,7 +11,6 @@ export DEBIAN_FRONTEND=noninteractive
 FB_VERSION=v2.63.23
 FB_SHA256=b14db2bb8033caa3f80205eb6578b2ed0744ebd9e716b790bc4a9703ce909e88
 FB_DB=/var/lib/filebrowser/filebrowser.db
-USERS_ENV=/root/archive-users.env
 
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends curl ca-certificates
@@ -54,23 +52,8 @@ fb config set --address 127.0.0.1 --port 8080 --root /srv/archive \
   --auth.method json --signup=false --branding.name "Family archive" \
   --commands "" "${PERMS[@]}" >/dev/null
 
-if [ -f "$USERS_ENV" ]; then
-  # shellcheck disable=SC1090
-  . "$USERS_ENV"
-  for u in bene irene; do
-    var="${u^^}_PASSWORD"
-    if fb users ls 2>/dev/null | awk '{print $2}' | grep -qx "$u"; then
-      fb users update "$u" --password "${!var}" "${PERMS[@]}" >/dev/null
-    else
-      fb users add "$u" "${!var}" "${PERMS[@]}" >/dev/null
-    fi
-  done
-  # The default "admin" user from config init must not survive.
-  if fb users ls 2>/dev/null | awk '{print $2}' | grep -qx admin; then
-    fb users rm admin >/dev/null
-  fi
-  shred -u "$USERS_ENV"
-fi
+# Users (bene, irene) are created by users.sh, fed the passwords over the
+# host-key-verified root SSH to pve2 + pct exec (terraform_data.archive_users).
 
 cat > /etc/systemd/system/filebrowser.service <<'EOF'
 [Unit]

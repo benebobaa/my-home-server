@@ -11,6 +11,9 @@ resource "proxmox_download_file" "debian_13_template_pve2" {
   datastore_id = "local"
   content_type = "vztmpl"
   url          = "http://download.proxmox.com/images/system/debian-13-standard_13.6-1_amd64.tar.zst"
+  # Published in Proxmox's appliance index (aplinfo); plain-HTTP download, so verify.
+  checksum           = "4c0c27ca6ceab5ef0b84db57825a00f26157ef1854bafe97297813e1cbe8ecb8cc9c453cab6b3b0efe1ba193a50c47ece1e41d950e411b8730b835b71e9e754b"
+  checksum_algorithm = "sha512"
   # pve2 already had this template from an earlier hand-made test CT; adopt it.
   overwrite_unmanaged = true
 }
@@ -92,24 +95,9 @@ resource "proxmox_virtual_environment_container" "archive" {
     ignore_changes = [mount_point, device_passthrough]
   }
 
-  # One-time in-guest bootstrap: Tailscale + File Browser + the two users.
+  # One-time in-guest bootstrap: Tailscale + File Browser (no secrets).
   # The operator Mac has no route to VLAN 20, so connect through admin-gw.
-  provisioner "file" {
-    content     = "BENE_PASSWORD=${var.archive_bene_password}\nIRENE_PASSWORD=${var.archive_irene_password}\n"
-    destination = "/root/archive-users.env"
-
-    connection {
-      type                = "ssh"
-      host                = "10.10.20.30"
-      user                = "root"
-      private_key         = file(pathexpand(var.admin_ssh_private_key_path))
-      bastion_host        = "10.10.10.15"
-      bastion_user        = "root"
-      bastion_private_key = file(pathexpand(var.admin_ssh_private_key_path))
-      timeout             = "3m"
-    }
-  }
-
+  # Users/passwords are NOT sent this way: see terraform_data.archive_users.
   provisioner "file" {
     source      = "${path.module}/../../services/archive/provision.sh"
     destination = "/root/provision-archive.sh"
@@ -128,7 +116,6 @@ resource "proxmox_virtual_environment_container" "archive" {
 
   provisioner "remote-exec" {
     inline = [
-      "chmod 600 /root/archive-users.env",
       "bash /root/provision-archive.sh",
     ]
 
@@ -149,11 +136,46 @@ resource "proxmox_virtual_environment_container" "archive" {
 # then reboot the container. Idempotent; script: files/archive-root-config.sh.
 resource "terraform_data" "archive_root_config" {
   triggers_replace = [
-    proxmox_virtual_environment_container.archive.vm_id,
     filesha256("${path.module}/files/archive-root-config.sh"),
   ]
+
+  # vm_id survives a container replacement, so trigger on the resource itself.
+  lifecycle {
+    replace_triggered_by = [proxmox_virtual_environment_container.archive]
+  }
 
   provisioner "local-exec" {
     command = "ssh -i ${pathexpand(var.admin_ssh_private_key_path)} -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@${var.archive_node_ssh_host} 'bash -s' < ${path.module}/files/archive-root-config.sh"
   }
+}
+
+# File Browser users (bene, irene; download-only). Passwords come from
+# secrets.sops.env and travel only over the root SSH to pve2 — host key pinned
+# in the operator's known_hosts — then `pct exec` into the CT; never over the
+# provisioner connection above (no host-key check for a brand-new CT).
+resource "terraform_data" "archive_users" {
+  triggers_replace = [
+    sha256("${var.archive_bene_password}:${var.archive_irene_password}"),
+    filesha256("${path.module}/../../services/archive/users.sh"),
+  ]
+
+  lifecycle {
+    replace_triggered_by = [proxmox_virtual_environment_container.archive]
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -eu
+      SSH="ssh -i ${pathexpand(var.admin_ssh_private_key_path)} -o BatchMode=yes -o StrictHostKeyChecking=yes root@${var.archive_node_ssh_host}"
+      $SSH 'pct exec 110 -- sh -c "cat > /usr/local/sbin/archive-users.sh && chmod 0700 /usr/local/sbin/archive-users.sh"' < ${path.module}/../../services/archive/users.sh
+      printf 'BENE_PASSWORD=%s\nIRENE_PASSWORD=%s\n' "$BENE_PASSWORD" "$IRENE_PASSWORD" | $SSH 'pct exec 110 -- /usr/local/sbin/archive-users.sh'
+    EOT
+
+    environment = {
+      BENE_PASSWORD  = var.archive_bene_password
+      IRENE_PASSWORD = var.archive_irene_password
+    }
+  }
+
+  depends_on = [terraform_data.archive_root_config]
 }
