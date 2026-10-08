@@ -52,6 +52,18 @@ resource "routeros_ip_firewall_addr_list" "non_public" {
   comment = each.value
 }
 
+# --- anti-spoofing ----------------------------------------------------------------
+# The allow rules below trust source addresses (TRUSTED 10.10.40.0/24, admin-gw
+# 10.10.10.15, the K3s VM). Without source validation, any VLAN (notably the
+# DMZ tenant zone) could forge those sources and be forwarded into MGMT. Strict
+# reverse-path filtering drops a packet whose source is not routed back out the
+# interface it arrived on. Safe here: single WAN, no policy routing, and
+# admin-gw SNATs tailnet traffic to its own VLAN 10 address. The accept rules
+# also pin their in-interface (defense in depth).
+resource "routeros_ip_settings" "this" {
+  rp_filter = "strict"
+}
+
 # --- input ----------------------------------------------------------------------
 resource "routeros_ip_firewall_filter" "input_established" {
   chain            = "input"
@@ -180,12 +192,13 @@ resource "routeros_ip_firewall_filter" "forward_dmz_no_private" {
 }
 
 resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
-  chain       = "forward"
-  action      = "accept"
-  src_address = "10.10.40.0/24"
-  dst_address = "10.10.0.0/16"
-  comment     = "TRUSTED to internal"
-  depends_on  = [routeros_ip_firewall_filter.forward_invalid]
+  chain        = "forward"
+  action       = "accept"
+  in_interface = routeros_interface_vlan.trusted.name
+  src_address  = "10.10.40.0/24"
+  dst_address  = "10.10.0.0/16"
+  comment      = "TRUSTED to internal"
+  depends_on   = [routeros_ip_firewall_filter.forward_invalid]
 }
 
 # DMZ -> backend pinholes: one rule per exact source/destination/port. Nothing
@@ -193,19 +206,22 @@ resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
 # K3s VM (Kubeletto) -> its Postgres. Both hosts are reserved in design §2 and
 # not built yet.
 resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
-  chain        = "forward"
-  action       = "accept"
-  src_address  = "10.10.25.20"
-  dst_address  = "10.10.20.21"
-  protocol     = "tcp"
-  dst_port     = "5432"
-  comment      = "DMZ pinhole: K3s VM to Postgres"
-  place_before = routeros_ip_firewall_filter.forward_admin_gw.id
+  chain         = "forward"
+  action        = "accept"
+  in_interface  = routeros_interface_vlan.dmz.name
+  out_interface = routeros_interface_vlan.servers.name
+  src_address   = "10.10.25.20"
+  dst_address   = "10.10.20.21"
+  protocol      = "tcp"
+  dst_port      = "5432"
+  comment       = "DMZ pinhole: K3s VM to Postgres"
+  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
 }
 
 resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   chain            = "forward"
   action           = "accept"
+  in_interface     = routeros_interface_vlan.mgmt.name
   src_address_list = "admin-gw"
   dst_address      = "10.10.0.0/16"
   comment          = "admin-gw to internal"

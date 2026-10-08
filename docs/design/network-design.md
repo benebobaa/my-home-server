@@ -202,6 +202,12 @@ public IP. So, beyond the table above:
   `10.10.20.21:5432` (hosts reserved, not built yet). The earlier generic
   `dmz-backends` list rule (443/8080) is gone.
 
+- **Anti-spoofing.** Allow rules trust source addresses, so the hEX runs
+  strict reverse-path filtering (`/ip settings rp-filter=strict`): a packet
+  whose source is not routed back out its arrival interface is dropped. The
+  source-based accepts also pin their `in-interface`. Without this, a DMZ guest
+  could forge a TRUSTED or admin-gw source and be forwarded into MGMT.
+
 Verified from a throwaway CT on VLAN 25: 443 and DNS work; SMTP-25, every
 lab VLAN, the hEX admin ports, the switch, `192.168.18.1` and `10.108.0.1` are
 blocked; throughput 48 Mbps vs 89 Mbps from VLAN 10.
