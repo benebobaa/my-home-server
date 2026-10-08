@@ -34,8 +34,9 @@ scripts/            # small helper scripts
    (OpenTofu) and applied via `plan → review → apply`.
 2. **One stack per target** — each stack is a self-contained directory with its
    own README, variables and state.
-3. **Secrets never in git** — credentials live in local `.env` files
-   (git-ignored); state files stay local.
+3. **Secrets never in git in plaintext** — credentials live in SOPS-encrypted
+   `*.sops.env` files, OpenTofu state is encrypted (enforced); one age key
+   decrypts everything. See [`docs/runbooks/secrets.md`](docs/runbooks/secrets.md).
 4. **Document the why** — decisions become ADRs, procedures become runbooks.
 5. **Snapshot before changes** — device configs are exported to `snapshots/`.
 
@@ -43,9 +44,8 @@ scripts/            # small helper scripts
 
 ```sh
 cd network/routeros
-set -a; source .env; set +a    # ROS_USERNAME / ROS_PASSWORD
-tofu plan                      # review the diff
-tofu apply                     # commit it to the device
+sops exec-env secrets.sops.env 'tofu plan'    # review the diff
+sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 ```
 
 ## Status

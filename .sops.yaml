@@ -1,0 +1,8 @@
+# SOPS: secrets live in git, encrypted. One age key (the operator's) decrypts
+# everything — see docs/runbooks/secrets.md. To add a recipient (a second
+# machine, a CI runner), append its age public key and run
+# `sops updatekeys <file>` on every *.sops.* file.
+creation_rules:
+  - path_regex: \.sops\.(env|ya?ml|json)$
+    age: >-
+      age17l5vheelwnd23jqy4754ythtwcamq8u79pfu5dmcdka36nth59aq0hlypw

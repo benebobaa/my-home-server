@@ -17,13 +17,15 @@ Design: [`../../docs/design/network-design.md`](../../docs/design/network-design
 
 ```sh
 cd network/routeros
-set -a; source .env; set +a    # ROS_USERNAME / ROS_PASSWORD
 tofu init
-tofu plan                      # review
-tofu apply                     # commit to the device
+sops exec-env secrets.sops.env 'tofu plan'    # review
+sops exec-env secrets.sops.env 'tofu apply'   # commit to the device
 ```
 
-State is local (`terraform.tfstate`, git-ignored). Provider:
+Credentials (`ROS_USERNAME`, `ROS_PASSWORD`) and the state passphrase live in
+`secrets.sops.env` (encrypted, committed — `sops edit secrets.sops.env`).
+State is encrypted (`encryption.tf`, enforced) and committed. See
+[`docs/runbooks/secrets.md`](../../docs/runbooks/secrets.md). Provider:
 `terraform-routeros/routeros`, REST at `https://192.168.99.1` by default
 (self-signed → `insecure = true`). If your laptop is on the OOB port instead:
 `tofu apply -var ros_hosturl=https://192.168.88.1`.

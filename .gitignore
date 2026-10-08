@@ -2,6 +2,10 @@
 .terraform/
 *.tfstate
 *.tfstate.*
+# ...except the live state: encrypted (OpenTofu state encryption, enforced)
+# and committed on purpose — history + an off-laptop copy. The pre-commit
+# hook (.githooks/pre-commit) refuses a plaintext one.
+!terraform.tfstate
 crash.log
 tfplan
 *.tfplan

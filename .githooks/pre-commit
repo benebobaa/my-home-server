@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Refuse commits that would leak secrets (see docs/runbooks/secrets.md).
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+
+fail=0
+while IFS= read -r f; do
+  case "$f" in
+    .sops.yaml)
+      ;; # the SOPS config itself — public keys only
+    *.tfstate)
+      # Only encrypted state may be committed (OpenTofu state encryption).
+      if ! git show ":$f" | grep -q '"encrypted_data"'; then
+        echo "BLOCKED: $f is plaintext state — encryption.tf missing or not applied?"
+        fail=1
+      fi
+      ;;
+    *.sops.env | *.sops.yaml | *.sops.yml | *.sops.json)
+      if ! git show ":$f" | grep -q 'sops_mac\|"mac":\|mac:'; then
+        echo "BLOCKED: $f is not SOPS-encrypted — use 'sops edit $f'"
+        fail=1
+      fi
+      ;;
+    .env | */.env | *.local.rsc)
+      echo "BLOCKED: $f holds plaintext credentials — it belongs in a *.sops.env file"
+      fail=1
+      ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+exit "$fail"

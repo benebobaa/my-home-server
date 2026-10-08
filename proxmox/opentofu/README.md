@@ -29,16 +29,16 @@ the Proxmox side (containers today, VMs later) under the same discipline.
   pveum user token add terraform@pve tofu --privsep 0   # copy the secret!
   ```
 
-- `.env` with the token (git-ignored), see `.env.example`.
+- The token goes into `secrets.sops.env` (`sops edit secrets.sops.env`, key
+  `PROXMOX_VE_API_TOKEN`) — see [`docs/runbooks/secrets.md`](../../docs/runbooks/secrets.md).
 
 ## Usage
 
 ```bash
 cd proxmox/opentofu
-set -a; source .env; set +a    # PROXMOX_VE_API_TOKEN
 tofu init
-tofu plan
-tofu apply
+sops exec-env secrets.sops.env 'tofu plan'
+sops exec-env secrets.sops.env 'tofu apply'
 ```
 
 On apply, this stack will (idempotently):
