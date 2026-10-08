@@ -273,6 +273,118 @@
       when: has_nvidia_gpu | default(false)
       tags: gpu
 
+    # --------------------------------------------------------------- storage
+    # Guest disks live on LVM-thin (local-lvm = pve/data). Thin pools can be
+    # over-committed; at 100% every guest on the pool freezes and can corrupt.
+    # Auto-extend at 80% into the VG's free space (pve2 16 GB, pve3 ~15 GB) is
+    # the safety margin. Via a metadata profile on the pool (lvmthin(7)), not
+    # by editing the distro's lvm.conf. Requires dmeventd monitoring (active).
+    - name: Install the thin-pool autoextend profile
+      ansible.builtin.copy:
+        dest: /etc/lvm/profile/homelab-thin-autoextend.profile
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (storage tag).
+          activation {
+              thin_pool_autoextend_threshold = 80
+              thin_pool_autoextend_percent = 20
+          }
+        mode: "0644"
+      tags: storage
+
+    - name: Read the profile attached to the guest thin pool
+      ansible.builtin.command: lvs --noheadings -o lv_profile pve/data
+      register: thin_profile
+      changed_when: false
+      check_mode: false
+      tags: storage
+
+    - name: Attach the autoextend profile to the guest thin pool
+      ansible.builtin.command: lvchange --metadataprofile homelab-thin-autoextend pve/data
+      when: thin_profile.stdout | trim != 'homelab-thin-autoextend'
+      tags: storage
+
+    # Proxmox trims VM disks (with discard=on) but never container volumes:
+    # files deleted inside an LXC stay allocated in the thin pool forever.
+    - name: Install the container-trim script
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/pct-fstrim-all
+        content: |
+          #!/bin/sh
+          # managed by Ansible — see ansible/proxmox-nodes.yml (storage tag).
+          # fstrim every running container on this node (pct list is node-local).
+          rc=0
+          for id in $(pct list | awk 'NR > 1 && $2 == "running" { print $1 }'); do
+            echo "CT $id:"
+            pct fstrim "$id" || { echo "CT $id: fstrim failed"; rc=1; }
+          done
+          exit "$rc"
+        mode: "0755"
+      tags: storage
+
+    - name: Install the weekly container-trim service + timer
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - name: pct-fstrim.service
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (storage tag).
+            [Unit]
+            Description=Return space freed inside running containers to the thin pool
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/sbin/pct-fstrim-all
+        - name: pct-fstrim.timer
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (storage tag).
+            [Unit]
+            Description=Weekly container fstrim
+
+            [Timer]
+            OnCalendar=Sun 03:30
+            RandomizedDelaySec=30min
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+      loop_control:
+        label: "{{ item.name }}"
+      tags: storage
+
+    - name: Enable the container-trim timer
+      ansible.builtin.systemd_service:
+        name: pct-fstrim.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      tags: storage
+
+    # Keep guest memory in RAM and spare the SSDs; swap stays as a safety net.
+    - name: Lower swappiness on the hosts
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/90-homelab.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (storage tag).
+          vm.swappiness = 10
+        mode: "0644"
+      tags: storage
+
+    # Converge the *running* value too (not via a handler: the verify asserts
+    # below run before end-of-play handlers would fire).
+    - name: Read live swappiness
+      ansible.builtin.command: cat /proc/sys/vm/swappiness
+      register: live_swappiness
+      changed_when: false
+      check_mode: false
+      tags: storage
+
+    - name: Apply swappiness now
+      ansible.builtin.command: sysctl -p /etc/sysctl.d/90-homelab.conf
+      when: live_swappiness.stdout | trim != '10'
+      tags: storage
+
     # ----------------------------------------------------------------- verify
     - name: Read FQDN
       ansible.builtin.command: hostname -f
@@ -385,6 +497,27 @@
         that: persistenced_state.stdout == 'active'
         fail_msg: "nvidia-persistenced is '{{ persistenced_state.stdout }}', expected 'active'"
       when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Read storage safety state
+      ansible.builtin.shell: |
+        echo "profile=$(lvs --noheadings -o lv_profile pve/data | tr -d ' ')"
+        echo "monitor=$(lvs --noheadings -o seg_monitor pve/data | tr -d ' ')"
+        echo "swappiness=$(cat /proc/sys/vm/swappiness)"
+        echo "trimtimer=$(systemctl is-active pct-fstrim.timer)"
+      register: storage_state
+      changed_when: false
+      check_mode: false
+      tags: verify
+
+    - name: Assert thin-pool autoextend, monitoring, swappiness, trim timer
+      ansible.builtin.assert:
+        that:
+          - "'profile=homelab-thin-autoextend' in storage_state.stdout"
+          - "'monitor=monitored' in storage_state.stdout"
+          - "'swappiness=10' in storage_state.stdout"
+          - "'trimtimer=active' in storage_state.stdout"
+        fail_msg: "storage safety drifted: {{ storage_state.stdout_lines }}"
       tags: verify
 
     # ---------------------------------------------------------------- cluster

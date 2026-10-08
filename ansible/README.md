@@ -29,12 +29,15 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 | NIC pinning (`.link` → `nic0`) | `pve_nic_mac` per host in `inventory.ini` |
 | root `authorized_keys` (admin key) | `~/.ssh/id_ed25519.pub` on the operator machine |
 | stock PVE recommended package `pve-nvidia-vgpu-helper` present | this playbook (`repos` tag) |
+| Storage (`--tags storage`): guest thin pool auto-extends at 80% (LVM profile `homelab-thin-autoextend` on `pve/data`), weekly `pct fstrim` of running containers (`pct-fstrim.timer`), `vm.swappiness = 10` | this playbook |
 | GPU hosts (`--tags gpu`): NVIDIA modules at boot, `/dev/nvidia-uvm` created at boot, `nvidia-persistenced`; `dkms` + `proxmox-default-headers` (dkms rebuilds nvidia for every new kernel) + `nvtop`; NVIDIA's CUDA apt repo **absent** | hosts with `has_nvidia_gpu=true` in `inventory.ini` — see `docs/runbooks/gpu-lxc-passthrough.md` |
 
 ## What it verifies (read-only asserts)
 
 FQDN, USB NIC speed (must be 1000 Mb/s), autosuspend active in the running
-kernel, sleep masked, `pveversion` report.
+kernel, sleep masked, NIC MAC pinning, `pveversion` report; GPU hosts:
+`/dev/nvidia-uvm` present + `nvidia-persistenced` active; storage: thin-pool
+profile attached + monitored, swappiness 10, trim timer active.
 
 ## Notes
 

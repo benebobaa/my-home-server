@@ -54,9 +54,25 @@ On apply, this stack will (idempotently):
 
 ## Notes
 
-- State is local (`terraform.tfstate`) and git-ignored — single-operator
-  homelab. Rebuild the token + `.env` if the machine is replaced.
+- State is encrypted (`encryption.tf`, enforced) and committed; the token and
+  the state passphrase are in `secrets.sops.env`. New machine = restore the
+  age key — see [`docs/runbooks/secrets.md`](../../docs/runbooks/secrets.md).
 - Secrets never live in HCL: the token comes from the environment only.
+
+## Guest conventions (storage)
+
+`local-lvm` is LVM-thin on a single SSD per node — thin space is only
+returned to the pool when the guest discards it:
+
+- **VM disks:** `discard = "on"` and `ssd = true` on every `disk {}` block, so
+  deletes inside the VM reach the pool (and the guest sees an SSD).
+- **Containers:** nothing to set — the hosts run `pct fstrim` weekly
+  (`pct-fstrim.timer`, Ansible `storage` tag).
+- The pool auto-extends at 80% into the node's free VG space (Ansible), but
+  that buffer is small (~15 GB) — size guests for real use, don't rely on
+  over-commit.
+- **Placement:** stateful guests (databases, monitoring data) on `pve2`;
+  `pve3`'s no-name SSD gets stateless/rebuildable guests only.
 - Move the container between nodes by changing `admin_gw_node`
   (`migrate = true` → offline migration, short downtime; useful after the
   cluster exists).
