@@ -97,6 +97,12 @@ Port roles (as built): **ether1** WAN (cable to a free LAN port on the Biznet ro
 
 Reset with `no-defaults=yes`, connect via Winbox (MAC) on ether5, and apply the baseline below. Review it before pasting, and apply it in **Safe Mode**.
 
+> **Historical v2 sketch.** The live router is defined by OpenTofu in
+> `network/routeros/` (ADR 0001), which has moved on from this script: the
+> `dmz-backends` list rule is replaced by exact pinholes, plus the DMZ
+> tenant-zone rules and anti-spoofing below. Never paste this over a running
+> router.
+
 ```routeros
 /interface vlan
 add name=vlan10-mgmt    interface=ether2 vlan-id=10
@@ -309,7 +315,7 @@ backend home_https
 
 - AllowedIPs on the VPS peer is only 10.99.0.2/32.
 - IP forwarding is **off** on the edge LXC.
-- The hEX only lets DMZ reach the `dmz-backends` allowlist.
+- The hEX only lets DMZ reach its exact pinholes (§4).
 - Edge firewall: accept inbound only on `wg0` to 8443.
 
 **VPS hardening:** SSH keys only, no root login, SSH restricted to your IP or WireGuard; firewall allows only 51820/udp and exposed ports; CrowdSec or fail2ban; unattended security upgrades; no secrets stored; rebuild from cloud-init/Ansible. Choose a Jakarta or Singapore region.
@@ -355,4 +361,6 @@ backend home_https
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - PBS target and the role of the 8GB laptop (full member vs quorum-only).
 - Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
-- VPS provider and region (only if an ADR 0004 trigger fires).
+- VPS provider and region (only if an ADR 0004 trigger fires). If the VPS becomes the DMZ's egress exit, that needs policy routing, and `rp-filter=strict` does not work with routing tables: switch to `loose` and keep the per-interface pins on the accepts.
+- DMZ tenants can resolve `home.arpa` names through the hEX (the names are unreachable from the DMZ, but they leak). Fix when Kubeletto moves in: drop DNS from `vlan25-dmz` on the input chain, before the LAN DNS accept, and point the K3s VM at a public resolver.
+- The `dmz-smtp` / `dmz-private` log rules would flood the hEX's 1000-line memory log under a tenant scan, and cost CPU on the MIPS. With monitoring: remote syslog, or rate-limit the log rules.
