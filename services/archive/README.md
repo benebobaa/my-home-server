@@ -7,7 +7,7 @@ Tailscale app. It is never public. Why not Cloudflare Tunnel:
 
 | | |
 | --- | --- |
-| URL | `https://archive.<tailnet>.ts.net` (`tailscale serve` → `127.0.0.1:8080`) |
+| URL | `https://archive.tailbc7ce3.ts.net` (`tailscale serve` → `127.0.0.1:8080`; node `archive`, 100.93.77.50) |
 | Users | `bene`, `irene`: download/preview only (no create/rename/modify/delete/share/exec) |
 | Passwords | `proxmox/opentofu/secrets.sops.env`. Read Irene's with `sops -d --extract '["TF_VAR_archive_irene_password"]' proxmox/opentofu/secrets.sops.env` |
 | Data | `/srv/archive` (mp0, `ro=1`) + `/srv/archive/irene/zoom-recordings` (mp1, `ro=1`) |
@@ -45,6 +45,10 @@ per node. Worker: `scripts/rescue/encode-worker.sh`. The originals stay on the
 pve2 HDD until Irene has checked some re-encodes.
 
 ## Operator steps (account-level, once)
+
+Steps 1–4 done 2026-10-09 (key expiry disabled, HTTPS on, serve active). Verified
+from the operator Mac over Tailscale: login 200, wrong password 403, DELETE 403,
+a downloaded PDF's sha256 matches the source, video range requests return 206.
 
 1. **Log the node in:** run `tailscale up --hostname=archive --accept-dns=false` in the CT
    and open the printed URL.
