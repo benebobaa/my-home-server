@@ -23,6 +23,47 @@ locals {
     for f in sort(fileset(local.monitoring_dir, "**")) :
     filesha256("${local.monitoring_dir}/${f}") if f != "README.md"
   ]))
+
+  # --- scrape targets, generated from the `monitoring:` blocks in lab.yaml ----
+  # (ADR 0008). One file_sd file per job; Prometheus re-reads them on change,
+  # so adding a host is a targets push, not a setup run. Every target carries
+  # `instance` (the inventory name) and `tier` (drives alert severity).
+  watched = { for n, h in local.host : n => h if h.status == "live" && h.monitoring.enabled }
+  # The node that hosts monitoring serves the cluster-wide PVE series; the
+  # others only their node config (otherwise every series is doubled).
+  pve_cluster_node = local.host.monitoring.node
+
+  scrape_targets = {
+    icmp = [for n, h in local.watched : {
+      targets = [h.ip]
+      labels  = { instance = n, tier = h.monitoring.tier }
+    }]
+    http = [for n, h in local.watched : {
+      targets = [h.monitoring.health]
+      labels  = { instance = n, tier = h.monitoring.tier, __param_module = h.monitoring.health_module }
+    } if h.monitoring.health != null]
+    service = [for n, h in local.watched : {
+      targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
+      labels  = { instance = n, service = n, tier = h.monitoring.tier }
+    } if length(h.monitoring.metrics) > 0]
+    # Proxmox nodes: node_exporter (Ansible `monitoring` tag) + the PVE API.
+    node = [for n, h in local.watched : {
+      targets = ["${h.ip}:9100"]
+      labels  = { instance = n, tier = h.monitoring.tier }
+    } if h.kind == "node"]
+    pve = [for n, h in local.watched : {
+      targets = [h.ip]
+      labels = {
+        instance        = n
+        tier            = h.monitoring.tier
+        __param_cluster = n == local.pve_cluster_node ? "1" : "0"
+        __param_node    = "1"
+      }
+    } if h.kind == "node"]
+    # The hEX: SNMPv3 (network/routeros/snmp.tf) and its resolver.
+    snmp = [{ targets = [local.host.hex.ip], labels = { instance = "hex", tier = local.host.hex.monitoring.tier } }]
+    dns  = [{ targets = [local.host.hex.ip], labels = { instance = "hex", tier = local.host.hex.monitoring.tier } }]
+  }
 }
 
 module "monitoring" {
@@ -58,6 +99,19 @@ resource "terraform_data" "monitoring_setup" {
       ${local.monitoring_ssh} 'pct exec ${module.monitoring.vmid} -- bash /root/monitoring/setup.sh'
     EOT
   }
+}
+
+# Scrape targets → /etc/prometheus/targets/<job>.json (targets.sh). Keyed on
+# the generated content, so editing lab.yaml re-pushes them.
+resource "terraform_data" "monitoring_targets" {
+  triggers_replace = [sha256(jsonencode(local.scrape_targets)), module.monitoring.generation]
+
+  provisioner "local-exec" {
+    command = "${local.monitoring_ssh} 'pct exec ${module.monitoring.vmid} -- python3 /root/monitoring/targets.py' <<'JSON'\n${jsonencode(local.scrape_targets)}\nJSON"
+  }
+
+  # setup.sh replaces /root/monitoring (where targets.py lives).
+  depends_on = [terraform_data.monitoring_setup]
 }
 
 # Read-only PVE API token for prometheus-pve-exporter (root-only: ACLs).

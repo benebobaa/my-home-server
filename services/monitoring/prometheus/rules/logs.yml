@@ -1,0 +1,25 @@
+# The lab log store — VictoriaLogs in CT 121 `logs` (services/logs), scraped
+# through the `service` job (metrics: [9428] in lab.yaml). Its being down is
+# TargetDown/HttpProbeFailed; these catch it running but not receiving.
+groups:
+  - name: logs
+    rules:
+      # Every node, guest and the hEX ship continuously (journald upload,
+      # syslog): a silent store means shipping broke, not a quiet lab.
+      - alert: LogsIngestionStopped
+        expr: sum by (instance) (rate(vl_rows_ingested_total{job="service", instance="logs"}[15m])) == 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "logs: VictoriaLogs has ingested nothing for 30 min — log shipping is broken"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#logsingestionstopped
+
+      # The disk cap (services/logs/setup.sh) drops the oldest days early when
+      # it is hit; sustained, that means retention is shorter than intended.
+      - alert: LogsNearDiskCap
+        expr: sum by (instance) (vl_data_size_bytes{job="service", instance="logs"}) > 5.5e9
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "logs: {{ $value | humanize1024 }}B stored, near the 6 GiB cap — retention is being cut short"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#logsneardiskcap

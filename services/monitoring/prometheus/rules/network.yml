@@ -2,12 +2,16 @@
 groups:
   - name: reachability
     rules:
+      # Severity from the host's tier in lab.yaml: critical → critical,
+      # standard → warning, best-effort → info (ADR 0008).
       - alert: HostUnreachable
         expr: probe_success{job="blackbox_icmp", role!="internet"} == 0
         for: 3m
-        labels: { severity: critical }
+        labels:
+          severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
           summary: "{{ $labels.instance }} does not answer ping"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostunreachable
 
       # Both public resolvers silent = the household uplink (Biznet) is down.
       # Telegram cannot be reached then either: this arrives when the line is
@@ -18,13 +22,18 @@ groups:
         labels: { severity: critical, instance: internet }
         annotations:
           summary: "Internet unreachable from the lab (1.1.1.1 and 8.8.8.8 silent)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#internetdown
 
+      # Every `health:` URL in lab.yaml (management UIs and apps). Severity
+      # from the tier, like HostUnreachable.
       - alert: HttpProbeFailed
         expr: probe_success{job="blackbox_http"} == 0
         for: 5m
-        labels: { severity: warning }
+        labels:
+          severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
-          summary: "{{ $labels.instance }}: management UI not answering"
+          summary: "{{ $labels.instance }}: health check failing (health URL in lab.yaml)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#httpprobefailed
 
       - alert: DnsResolverFailing
         expr: probe_success{job="blackbox_dns"} == 0
@@ -32,6 +41,7 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "hEX DNS resolver (10.10.10.1) is not resolving public names"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#dnsresolverfailing
 
   # hEX (RB750Gr3, 4-core MIPS, 256 MB) over SNMPv3, every 60 s.
   - name: router
@@ -43,6 +53,7 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "hEX ether1 (uplink to the Biznet router) link is down"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerwanlinkdown
 
       - alert: RouterCpuHigh
         expr: avg by (instance) (hrProcessorLoad{job="snmp_hex"}) > 85
@@ -50,6 +61,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX CPU at {{ $value }}% for 10 min (a DMZ tenant scan, a log flood?)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routercpuhigh
 
       - alert: RouterMemoryHigh
         expr: |
@@ -59,6 +71,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX memory {{ $value | humanizePercentage }} used"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routermemoryhigh
 
       # mtxrHlTemperature is in tenths of a degree.
       - alert: RouterHot
@@ -67,6 +80,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX board at {{ $value }} °C"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerhot
 
       # sysUpTime is in hundredths of a second.
       - alert: RouterRebooted
@@ -74,3 +88,4 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "hEX rebooted {{ $value | humanizeDuration }} ago — a power cut?"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerrebooted

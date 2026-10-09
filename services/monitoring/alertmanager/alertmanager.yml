@@ -4,6 +4,16 @@
 #   ping URL are read from files under /etc/prometheus/secrets/.
 #   A receiver whose secret is not set yet is swapped for `blackhole`, so the
 #   stack converges before the operator has created the accounts.
+#
+# Routing by severity (ADR 0008; every rule sets one, generic rules derive it
+# from the target's `tier` in lab.yaml):
+#   critical  Telegram now, repeated every 4 h while firing
+#   warning   Telegram, but held 23:00-07:00 WIB: still firing in the
+#             morning → it is sent then; resolved overnight → never sent
+#   info      Telegram without sound (a record, not a page)
+
+templates:
+  - /etc/prometheus/alertmanager-templates/*.tmpl
 
 route:
   receiver: telegram
@@ -21,13 +31,42 @@ route:
       group_interval: 1m
       repeat_interval: 1m
 
+    - matchers: ['severity="critical"']
+      receiver: telegram
+      repeat_interval: 4h
+
+    - matchers: ['severity="warning"']
+      receiver: telegram
+      mute_time_intervals: [night]
+
+    - matchers: ['severity="info"']
+      receiver: telegram_silent
+
+time_intervals:
+  - name: night
+    time_intervals:
+      - times:
+          - { start_time: "23:00", end_time: "24:00" }
+          - { start_time: "00:00", end_time: "07:00" }
+        location: Asia/Jakarta
+
 receivers:
   - name: telegram
     telegram_configs:
       - bot_token_file: /etc/prometheus/secrets/telegram_bot_token
         chat_id: __TELEGRAM_CHAT_ID__
         parse_mode: HTML
+        message: '{{ template "homelab.telegram" . }}'
         send_resolved: true
+
+  - name: telegram_silent
+    telegram_configs:
+      - bot_token_file: /etc/prometheus/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        message: '{{ template "homelab.telegram" . }}'
+        disable_notifications: true
+        send_resolved: false
 
   - name: healthchecks
     webhook_configs:

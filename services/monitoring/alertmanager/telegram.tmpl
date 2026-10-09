@@ -1,0 +1,11 @@
+{{/*
+  Telegram message (parse_mode HTML) for every alert group: severity, name,
+  one line per alert with its summary and runbook link
+  (docs/runbooks/alerts.md). Installed by setup.sh.
+*/}}
+{{ define "homelab.telegram" -}}
+{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}🔴{{ else if eq .CommonLabels.severity "warning" }}🟠{{ else }}🔵{{ end }}{{ else }}✅{{ end }} <b>{{ .CommonLabels.alertname }}</b> {{ .Status | toUpper }}{{ if eq .Status "firing" }} ({{ .CommonLabels.severity }}){{ end }}
+{{ range .Alerts }}
+• {{ .Annotations.summary }}{{ if .Annotations.runbook_url }} — <a href="{{ .Annotations.runbook_url }}">runbook</a>{{ end }}
+{{- end }}
+{{- end }}

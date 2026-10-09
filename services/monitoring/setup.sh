@@ -136,9 +136,17 @@ install -d -m 0755 /etc/prometheus/rules
 rm -f /etc/prometheus/rules/*.yml
 install -m 0644 "$SRC"/prometheus/rules/*.yml /etc/prometheus/rules/
 install -m 0644 "$SRC/prometheus/prometheus.yml" /etc/prometheus/prometheus.yml
+# Scrape targets are generated from lab.yaml and pushed by OpenTofu
+# (targets.py). The directory must exist before Prometheus starts, or its
+# file watch fails and new targets wait for the 5-minute re-read.
+install -d -m 0755 /etc/prometheus/targets
 promtool check config --syntax-only /etc/prometheus/prometheus.yml >/dev/null
 promtool check rules /etc/prometheus/rules/*.yml >/dev/null
-# alertmanager.yml is rendered by secrets.sh (it needs the chat id).
+# alertmanager.yml is rendered by secrets.sh (it needs the chat id); its
+# message templates are plain files.
+install -d -m 0755 /etc/prometheus/alertmanager-templates
+rm -f /etc/prometheus/alertmanager-templates/*.tmpl
+install -m 0644 "$SRC"/alertmanager/*.tmpl /etc/prometheus/alertmanager-templates/
 
 # --- Grafana ---------------------------------------------------------------------
 install -d -m 0755 /etc/systemd/system/grafana-server.service.d
@@ -170,6 +178,10 @@ for d in "${DASHBOARDS[@]}"; do
     rm -f "$tmp"
   fi
 done
+
+# Dashboards kept in the repo (the standard's Service view, app dashboards):
+# services/monitoring/grafana/dashboards/*.json.
+install -m 0644 "$SRC"/grafana/dashboards/*.json /var/lib/grafana/dashboards/
 
 # --- start -----------------------------------------------------------------------
 systemctl daemon-reload

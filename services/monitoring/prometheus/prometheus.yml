@@ -20,43 +20,50 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["127.0.0.1:9090"]
-        labels: { instance: monitoring }
+        labels: { instance: monitoring, tier: critical }
 
   - job_name: alertmanager
     static_configs:
       - targets: ["127.0.0.1:9093"]
-        labels: { instance: monitoring }
+        labels: { instance: monitoring, tier: critical }
 
-  # --- hosts: node_exporter (Ansible `monitoring` tag on the nodes) ----------
+  # --- generated targets ------------------------------------------------------
+  # Everything below except the internet probes comes from the `monitoring:`
+  # blocks in inventory/lab.yaml (ADR 0008): OpenTofu writes one file per job
+  # to /etc/prometheus/targets/ (targets.py). Never add a lab host here.
+  # Every generated target carries `instance` (inventory name) and `tier`.
+
+  # Proxmox nodes: node_exporter (Ansible `monitoring` tag). The CT's own
+  # exporter is local.
   - job_name: node
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/node.json]
     static_configs:
-      - targets: ["10.10.10.12:9100"]
-        labels: { instance: pve2 }
-      - targets: ["10.10.10.13:9100"]
-        labels: { instance: pve3 }
       - targets: ["127.0.0.1:9100"]
-        labels: { instance: monitoring }
+        labels: { instance: monitoring, tier: critical }
 
-  # --- Proxmox API: prometheus-pve-exporter (read-only PVEAuditor token) -----
-  # Cluster-wide series (guests, storage, quorum) come from ONE node only, or
-  # every series and alert would be doubled. pve2 = cluster + node config;
-  # pve3 = its node config (onboot flags of its guests) only.
+  # Proxmox API: prometheus-pve-exporter (read-only PVEAuditor token).
+  # Cluster-wide series (guests, storage, quorum) come from ONE node only
+  # (__param_cluster in the generated labels), or every series and alert
+  # would be doubled.
   - job_name: pve
     metrics_path: /pve
     params:
       module: [default]
-    static_configs:
-      - targets: ["10.10.10.12"]
-        labels: { instance: pve2, __param_cluster: "1", __param_node: "1" }
-      - targets: ["10.10.10.13"]
-        labels: { instance: pve3, __param_cluster: "0", __param_node: "1" }
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/pve.json]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
       - target_label: __address__
         replacement: 127.0.0.1:9221
 
-  # --- hEX router: SNMPv3 (read-only, monitoring IP only) --------------------
+  # App metrics: every `metrics: [ports]` in lab.yaml, at /metrics.
+  - job_name: service
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/service.json]
+
+  # hEX router: SNMPv3 (read-only, monitoring IP only).
   # 60 s: the hEX is a small MIPS box; SNMP walks cost it CPU.
   - job_name: snmp_hex
     scrape_interval: 60s
@@ -65,9 +72,8 @@ scrape_configs:
     params:
       module: [system, if_mib, hrDevice, hrStorage, mikrotik]
       auth: [hex_v3]
-    static_configs:
-      - targets: ["10.10.10.1"]
-        labels: { instance: hex }
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/snmp.json]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -75,25 +81,15 @@ scrape_configs:
         replacement: 127.0.0.1:9116
 
   # --- reachability: blackbox_exporter --------------------------------------
+  # Every live host with a monitoring block is pinged. The two public
+  # resolvers are not lab hosts: they stay here (role=internet).
   - job_name: blackbox_icmp
     metrics_path: /probe
     params:
       module: [icmp]
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/icmp.json]
     static_configs:
-      - targets: ["10.10.10.1"]
-        labels: { instance: hex }
-      - targets: ["192.168.99.2"]
-        labels: { instance: switch }
-      - targets: ["10.10.10.12"]
-        labels: { instance: pve2 }
-      - targets: ["10.10.10.13"]
-        labels: { instance: pve3 }
-      - targets: ["10.10.10.15"]
-        labels: { instance: admin-gw }
-      - targets: ["10.10.10.17"]
-        labels: { instance: admin-gw2 }
-      - targets: ["10.10.20.30"]
-        labels: { instance: archive }
       - targets: ["1.1.1.1"]
         labels: { instance: internet-cloudflare, role: internet }
       - targets: ["8.8.8.8"]
@@ -104,18 +100,12 @@ scrape_configs:
       - target_label: __address__
         replacement: 127.0.0.1:9115
 
+  # `health:` URLs. The module (http_2xx, or http_any for UIs that answer
+  # 401/redirects) comes per target as __param_module.
   - job_name: blackbox_http
     metrics_path: /probe
-    params:
-      module: [http_any]
-    static_configs:
-      # The SG108E's web server is tiny; http_any allows a slow first hit.
-      - targets: ["http://192.168.99.2/"]
-        labels: { instance: switch }
-      - targets: ["https://10.10.10.12:8006/"]
-        labels: { instance: pve2 }
-      - targets: ["https://10.10.10.13:8006/"]
-        labels: { instance: pve3 }
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/http.json]
     relabel_configs: *blackbox_relabel
 
   # The hEX resolver answers every lab VLAN: probe it like a client would.
@@ -123,7 +113,6 @@ scrape_configs:
     metrics_path: /probe
     params:
       module: [dns_public_name]
-    static_configs:
-      - targets: ["10.10.10.1"]
-        labels: { instance: hex }
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/dns.json]
     relabel_configs: *blackbox_relabel

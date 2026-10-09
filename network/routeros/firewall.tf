@@ -294,6 +294,28 @@ resource "routeros_ip_firewall_filter" "forward_monitoring_icmp" {
   place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
 }
 
+# Scrapes and health checks from the monitoring host into other VLANs: one
+# exact rule per host, ports from its `monitoring:` block in lab.yaml (metrics
+# ports + the health URL's port; ADR 0008). MGMT needs none (same VLAN); the
+# switch UI is covered by forward_switch_mgmt.
+resource "routeros_ip_firewall_filter" "forward_monitoring_scrape" {
+  for_each = {
+    for n, ports in module.lab.monitoring_ports : n => ports
+    if length(ports) > 0 && local.host[n].status == "live" && !contains(["mgmt", "native"], local.host[n].vlan)
+  }
+
+  chain            = "forward"
+  action           = "accept"
+  in_interface     = routeros_interface_vlan.mgmt.name
+  src_address_list = "monitoring"
+  dst_address      = local.host[each.key].ip
+  protocol         = "tcp"
+  dst_port         = join(",", [for p in each.value : tostring(p)])
+  comment          = "monitoring: scrape/health ${each.key}"
+  depends_on       = [routeros_ip_firewall_addr_list.monitoring]
+  place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
+}
+
 resource "routeros_ip_firewall_filter" "forward_no_biznet" {
   chain              = "forward"
   action             = "drop"

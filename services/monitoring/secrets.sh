@@ -40,7 +40,7 @@ am=$(mktemp)
   sed "s/__TELEGRAM_CHAT_ID__/${tg_chat:-1}/" "$SRC/alertmanager/alertmanager.yml"
 } > "$am"
 if [ -z "$tg_token" ] || [ -z "$tg_chat" ]; then
-  sed -i 's/^\(\s*receiver:\) telegram$/\1 blackhole/' "$am"
+  sed -i 's/^\(\s*receiver:\) telegram\(_silent\)\{0,1\}$/\1 blackhole/' "$am"
   echo "alertmanager: Telegram not configured yet → alerts go to blackhole"
 fi
 if [ -z "$hc_url" ]; then

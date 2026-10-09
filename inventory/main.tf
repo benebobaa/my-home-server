@@ -33,7 +33,44 @@ locals {
       status     = try(h.status, "live")
       dns        = try(h.dns, try(h.status, "live") == "live")
       note       = try(h.note, "")
+      monitoring = local.monitoring[name]
     }
+  }
+
+  # --- monitoring (the observability standard, ADR 0008) ----------------------
+  # `monitoring:` is either a block or the string "none". Normalised so every
+  # consumer sees the same shape; `{ip}` in a health URL is the host's IP.
+  monitoring = {
+    for name, h in local.raw.hosts : name => (
+      can(h.monitoring.tier) ? {
+        enabled       = true
+        tier          = h.monitoring.tier
+        health        = try(replace(h.monitoring.health, "{ip}", h.ip), null)
+        health_module = try(h.monitoring.health_module, "http_2xx")
+        metrics       = [for p in try(h.monitoring.metrics, []) : tonumber(p)]
+        logs          = try(h.monitoring.logs, false)
+        } : {
+        enabled       = false
+        tier          = null
+        health        = null
+        health_module = null
+        metrics       = []
+        logs          = false
+      }
+    )
+  }
+
+  # TCP ports the monitoring host connects to on each monitored host:
+  # metrics ports + the health URL's port. The router stack opens exactly
+  # these for hosts outside MGMT.
+  monitoring_ports = {
+    for name, m in local.monitoring : name => distinct(concat(
+      m.metrics,
+      m.health == null ? [] : [
+        for g in [regex("^(https?)://[^/:]+(?::([0-9]+))?", m.health)] :
+        tonumber(coalesce(g[1], g[0] == "https" ? "443" : "80"))
+      ],
+    ))
   }
 
   # --- validation: each list names the offenders ------------------------------
@@ -49,6 +86,15 @@ locals {
   bad_status   = [for n, h in local.hosts : "${n} (${h.status})" if !contains(["live", "planned"], h.status)]
   bad_guest    = [for n, h in local.hosts : n if contains(["lxc", "vm"], h.kind) && h.status == "live" && (h.vmid == null || h.node == null)]
   bad_node_ref = [for n, h in local.hosts : "${n} (node ${h.node})" if h.node != null && !contains([for m, x in local.hosts : m if x.kind == "node"], coalesce(h.node, "-"))]
+
+  # Every live host states how it is watched: a block, or `monitoring: none`.
+  no_monitoring = [for n, h in local.raw.hosts : n if try(h.status, "live") == "live" && try(h.monitoring, null) == null]
+  bad_monitoring = concat(
+    [for n, h in local.raw.hosts : "${n} (monitoring must be a block or \"none\")" if try(h.monitoring, null) != null && !can(h.monitoring.tier) && try(h.monitoring == "none", false) == false],
+    [for n, m in local.monitoring : "${n} (tier ${m.tier})" if m.enabled && !contains(["critical", "standard", "best-effort"], coalesce(m.tier, "-"))],
+    [for n, m in local.monitoring : "${n} (health ${m.health})" if m.health != null && !can(regex("^https?://", coalesce(m.health, "-")))],
+    [for n, m in local.monitoring : "${n} (health_module ${m.health_module})" if m.enabled && !contains(["http_2xx", "http_any"], coalesce(m.health_module, "-"))],
+  )
 }
 
 output "supernet" {
@@ -67,7 +113,7 @@ output "vlans" {
 }
 
 output "hosts" {
-  description = "Every host by name: kind, vlan, vlan_id, ip, cidr (ip/prefix), gateway, vmid, node, cluster_ip, status, dns, note."
+  description = "Every host by name: kind, vlan, vlan_id, ip, cidr (ip/prefix), gateway, vmid, node, cluster_ip, status, dns, note, monitoring (normalised: enabled, tier, health, health_module, metrics, logs)."
   value       = local.hosts
 
   precondition {
@@ -94,6 +140,19 @@ output "hosts" {
     condition     = length(local.bad_guest) == 0 && length(local.bad_node_ref) == 0
     error_message = "lab.yaml: live guests need vmid + node, and node must be a node host: ${join(", ", concat(local.bad_guest, local.bad_node_ref))}"
   }
+  precondition {
+    condition     = length(local.no_monitoring) == 0
+    error_message = "lab.yaml: live host without a monitoring block (add one, or `monitoring: none` with the reason in `note` — docs/standards/observability.md): ${join(", ", local.no_monitoring)}"
+  }
+  precondition {
+    condition     = length(local.bad_monitoring) == 0
+    error_message = "lab.yaml: bad monitoring block: ${join(", ", local.bad_monitoring)}"
+  }
+}
+
+output "monitoring_ports" {
+  description = "<name> => TCP ports the monitoring host connects to (metrics ports + the health URL's port)."
+  value       = local.monitoring_ports
 }
 
 output "dns_records" {

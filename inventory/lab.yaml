@@ -13,6 +13,14 @@
 #           other VLANs: .10-.49 static, .100-.199 DHCP (VLANs 30/40/50 only)
 #   status  live = exists now; planned = reserved, not built
 #   dns     A record <name>.home.arpa on the hEX (default: true when live)
+#   monitoring  required on every live host — the observability standard
+#           (ADR 0008, docs/standards/observability.md):
+#             tier           critical | standard | best-effort (alert severity)
+#             health         URL probed by blackbox; {ip} = this host's IP
+#             health_module  http_2xx (default) | http_any (UIs: 401/redirect ok)
+#             metrics        [ports] scraped at http://<ip>:<port>/metrics
+#             logs           true = ships its journal (or syslog) to `logs`
+#           or `monitoring: none` with the reason in `note`.
 
 # Every lab VLAN except the native switch segment lives inside this range
 # ("to anything in the lab" rules on the hEX).
@@ -20,13 +28,13 @@ supernet: 10.10.0.0/16
 
 vlans:
   native:  { id: 1,  cidr: 192.168.99.0/29, gateway: 192.168.99.1, note: switch management only }
-  mgmt:    { id: 10, cidr: 10.10.10.0/24,   gateway: 10.10.10.1,   note: nodes, PBS, admin }
-  servers: { id: 20, cidr: 10.10.20.0/24,   gateway: 10.10.20.1,   note: production guests, static IPs }
-  dmz:     { id: 25, cidr: 10.10.25.0/24,   gateway: 10.10.25.1,   note: tenant zone, exact pinholes only }
-  lab:     { id: 30, cidr: 10.10.30.0/24,   gateway: 10.10.30.1,   dhcp: true, note: testing, internet only, DHCP }
-  trusted: { id: 40, cidr: 10.10.40.0/24,   gateway: 10.10.40.1,   dhcp: true, note: operator devices, DHCP }
-  iot:     { id: 50, cidr: 10.10.50.0/24,   gateway: 10.10.50.1,   dhcp: true, note: IoT/guest, internet only, DHCP }
-  cluster: { id: 60, cidr: 10.10.60.0/24,   gateway: null,         note: corosync/migration, L2 only }
+  mgmt:    { id: 10, cidr: 10.10.10.0/24,   gateway: 10.10.10.1,   note: "nodes, PBS, admin" }
+  servers: { id: 20, cidr: 10.10.20.0/24,   gateway: 10.10.20.1,   note: "production guests, static IPs" }
+  dmz:     { id: 25, cidr: 10.10.25.0/24,   gateway: 10.10.25.1,   note: "tenant zone, exact pinholes only" }
+  lab:     { id: 30, cidr: 10.10.30.0/24,   gateway: 10.10.30.1,   dhcp: true, note: "testing, internet only, DHCP" }
+  trusted: { id: 40, cidr: 10.10.40.0/24,   gateway: 10.10.40.1,   dhcp: true, note: "operator devices, DHCP" }
+  iot:     { id: 50, cidr: 10.10.50.0/24,   gateway: 10.10.50.1,   dhcp: true, note: "IoT/guest, internet only, DHCP" }
+  cluster: { id: 60, cidr: 10.10.60.0/24,   gateway: null,         note: "corosync/migration, L2 only" }
 
 hosts:
   # --- network devices ------------------------------------------------------
@@ -35,11 +43,13 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.1
     note: MikroTik hEX RB750Gr3 (also 192.168.99.1 native, 192.168.88.1 OOB ether3)
+    monitoring: { tier: critical, logs: true } # SNMP + DNS probe: services/monitoring; logs = remote syslog
   switch:
     kind: device
     vlan: native
     ip: 192.168.99.2
     note: TP-Link SG108E
+    monitoring: { tier: standard, health: "http://{ip}/", health_module: http_any }
 
   # --- Proxmox nodes ----------------------------------------------------------
   pve1:
@@ -55,12 +65,14 @@ hosts:
     ip: 10.10.10.12
     cluster_ip: 10.10.60.12
     note: Asus i3 laptop, 12 GB; stateful guests
+    monitoring: { tier: critical, health: "https://{ip}:8006/", health_module: http_any, logs: true }
   pve3:
     kind: node
     vlan: mgmt
     ip: 10.10.10.13
     cluster_ip: 10.10.60.13
     note: Asus i3 laptop, 8 GB; stateless guests only (no-name SSD)
+    monitoring: { tier: critical, health: "https://{ip}:8006/", health_module: http_any, logs: true }
 
   # --- guests -----------------------------------------------------------------
   admin-gw:
@@ -70,6 +82,7 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.15
     note: Tailscale subnet router (services/admin-gw)
+    monitoring: { tier: standard, logs: true } # one of an HA pair
   admin-gw2:
     kind: lxc
     vmid: 102
@@ -77,6 +90,7 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.17
     note: second Tailscale subnet router, same routes — HA pair with admin-gw (services/admin-gw)
+    monitoring: { tier: standard, logs: true } # one of an HA pair
   archive:
     kind: lxc
     vmid: 110
@@ -85,6 +99,7 @@ hosts:
     ip: 10.10.20.30
     dns: false # no record yet; adding one is its own change
     note: family archive, File Browser over Tailscale (services/archive)
+    monitoring: { tier: standard, logs: true } # File Browser listens on localhost only (Tailscale serve): no health URL
   monitoring:
     kind: lxc
     vmid: 120
@@ -92,6 +107,16 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.16
     note: Prometheus, Alertmanager, Grafana (services/monitoring)
+    monitoring: { tier: critical, health: "http://{ip}:3000/api/health", logs: true }
+  logs:
+    kind: lxc
+    vmid: 121
+    node: pve2
+    vlan: mgmt
+    ip: 10.10.10.18
+    status: planned
+    note: VictoriaLogs — journald + hEX syslog for the whole lab (services/logs)
+    monitoring: { tier: standard, health: "http://{ip}:9428/health", metrics: [9428], logs: true }
 
   # --- reserved ---------------------------------------------------------------
   pbs:

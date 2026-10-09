@@ -11,6 +11,7 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "Cluster {{ $labels.id }} is NOT quorate: management actions are locked"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveclusternotquorate
 
       - alert: PveNodeDown
         expr: label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0
@@ -18,6 +19,7 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "Proxmox node {{ $labels.node }} is offline in the cluster"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvenodedown
 
       # Only guests that should be running: onboot=1 (the archive CT is
       # deliberately not boot-safe yet and is excluded by that).
@@ -30,6 +32,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is not running"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestdown
 
       # Directory storages (`local`: ISOs, templates, backups-to-come). The
       # thin pools are watched directly (hosts.yml, ThinPool*).
@@ -41,6 +44,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.id }} is {{ $value | humanizePercentage }} full"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvestoragefilling
 
       # Not yet: pve_not_backed_up_total — no guest is backed up until PBS
       # exists (README Status), so it would fire permanently. Add with PBS.

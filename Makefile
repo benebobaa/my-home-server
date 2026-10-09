@@ -63,8 +63,13 @@ ansible-lint:
 monitoring-config:
 	$(X) promtool check rules $(RULES)
 	$(X) promtool check config --syntax-only services/monitoring/prometheus/prometheus.yml
-	sed 's/__TELEGRAM_CHAT_ID__/1/' services/monitoring/alertmanager/alertmanager.yml \
+	sed -e 's/__TELEGRAM_CHAT_ID__/1/' \
+	    -e 's|/etc/prometheus/alertmanager-templates/|$(CURDIR)/services/monitoring/alertmanager/|' \
+	    services/monitoring/alertmanager/alertmanager.yml \
 	  | $(X) amtool check-config /dev/stdin >/dev/null && echo "amtool: alertmanager.yml OK"
+	$(X) amtool template render --template.glob='services/monitoring/alertmanager/*.tmpl' \
+	  --template.text='{{ template "homelab.telegram" . }}' >/dev/null && echo "amtool: templates OK"
+	python3 -c "import ast; ast.parse(open('services/monitoring/targets.py').read())" && echo "targets.py: syntax OK"
 
 secrets-scan:
 	$(X) gitleaks git --no-banner --redact .

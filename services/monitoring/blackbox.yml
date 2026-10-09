@@ -6,6 +6,16 @@ modules:
     icmp:
       preferred_ip_protocol: ip4
 
+  # App health endpoints (`health:` in lab.yaml, the default module): only a
+  # 2xx counts. Lab services use self-signed certificates.
+  http_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: true
+
   # Any HTTP answer counts as up (the switch login page, the PVE UI's 200/
   # redirect): this proves the management UIs respond, not that a login works.
   # The lab UIs use self-signed certificates.

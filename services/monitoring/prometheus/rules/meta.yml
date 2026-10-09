@@ -9,25 +9,32 @@ groups:
         labels: { severity: none }
         annotations:
           summary: "Always firing: proves Prometheus → Alertmanager → internet works"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#watchdog
 
+      # A failing scrape is a blind spot, not an outage: warning, or info
+      # for best-effort targets.
       - alert: TargetDown
         expr: up == 0
         for: 5m
-        labels: { severity: warning }
+        labels:
+          severity: '{{ if eq $labels.tier "best-effort" }}info{{ else }}warning{{ end }}'
         annotations:
           summary: "{{ $labels.job }}/{{ $labels.instance }}: scrape failing"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#targetdown
 
       - alert: PrometheusRuleFailures
         expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
         labels: { severity: warning }
         annotations:
           summary: "Prometheus rule evaluation failing ({{ $labels.rule_group }})"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#prometheusrulefailures
 
       - alert: AlertmanagerNotificationsFailing
         expr: increase(alertmanager_notifications_failed_total[15m]) > 0
         labels: { severity: warning }
         annotations:
           summary: "Alertmanager cannot deliver to {{ $labels.integration }}"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#alertmanagernotificationsfailing
 
       - alert: PrometheusTsdbNearRetentionCap
         expr: prometheus_tsdb_storage_blocks_bytes > 7e9
@@ -35,3 +42,4 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "Prometheus TSDB {{ $value | humanize1024 }}B of the 8 GB cap: oldest data is being dropped early"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#prometheustsdbnearretentioncap
