@@ -1,0 +1,76 @@
+# Reachability (blackbox_exporter) and the hEX router (SNMPv3).
+groups:
+  - name: reachability
+    rules:
+      - alert: HostUnreachable
+        expr: probe_success{job="blackbox_icmp", role!="internet"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.instance }} does not answer ping"
+
+      # Both public resolvers silent = the household uplink (Biznet) is down.
+      # Telegram cannot be reached then either: this arrives when the line is
+      # back, as a record of the outage.
+      - alert: InternetDown
+        expr: max(probe_success{job="blackbox_icmp", role="internet"}) == 0
+        for: 3m
+        labels: { severity: critical, instance: internet }
+        annotations:
+          summary: "Internet unreachable from the lab (1.1.1.1 and 8.8.8.8 silent)"
+
+      - alert: HttpProbeFailed
+        expr: probe_success{job="blackbox_http"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: management UI not answering"
+
+      - alert: DnsResolverFailing
+        expr: probe_success{job="blackbox_dns"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "hEX DNS resolver (10.10.10.1) is not resolving public names"
+
+  # hEX (RB750Gr3, 4-core MIPS, 256 MB) over SNMPv3, every 60 s.
+  - name: router
+    rules:
+      # ether1 = uplink to the Biznet router. Down = no internet for the lab.
+      - alert: RouterWanLinkDown
+        expr: ifOperStatus{job="snmp_hex", ifName="ether1"} != 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "hEX ether1 (uplink to the Biznet router) link is down"
+
+      - alert: RouterCpuHigh
+        expr: avg by (instance) (hrProcessorLoad{job="snmp_hex"}) > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "hEX CPU at {{ $value }}% for 10 min (a DMZ tenant scan, a log flood?)"
+
+      - alert: RouterMemoryHigh
+        expr: |
+          hrStorageUsed{job="snmp_hex", hrStorageDescr="main memory"}
+            / hrStorageSize{job="snmp_hex", hrStorageDescr="main memory"} > 0.90
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "hEX memory {{ $value | humanizePercentage }} used"
+
+      # mtxrHlTemperature is in tenths of a degree.
+      - alert: RouterHot
+        expr: mtxrHlTemperature{job="snmp_hex"} / 10 > 70
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "hEX board at {{ $value }} °C"
+
+      # sysUpTime is in hundredths of a second.
+      - alert: RouterRebooted
+        expr: sysUpTime{job="snmp_hex"} / 100 < 600
+        labels: { severity: info }
+        annotations:
+          summary: "hEX rebooted {{ $value | humanizeDuration }} ago — a power cut?"

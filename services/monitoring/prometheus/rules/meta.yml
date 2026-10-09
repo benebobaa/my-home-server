@@ -1,0 +1,37 @@
+# The monitoring stack watching itself.
+groups:
+  - name: meta
+    rules:
+      # Always firing. Routed to healthchecks.io (alertmanager.yml) as a
+      # dead-man's switch: when the pings stop, healthchecks.io alerts.
+      - alert: Watchdog
+        expr: vector(1)
+        labels: { severity: none }
+        annotations:
+          summary: "Always firing: proves Prometheus → Alertmanager → internet works"
+
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }}/{{ $labels.instance }}: scrape failing"
+
+      - alert: PrometheusRuleFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Prometheus rule evaluation failing ({{ $labels.rule_group }})"
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Alertmanager cannot deliver to {{ $labels.integration }}"
+
+      - alert: PrometheusTsdbNearRetentionCap
+        expr: prometheus_tsdb_storage_blocks_bytes > 7e9
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "Prometheus TSDB {{ $value | humanize1024 }}B of the 8 GB cap: oldest data is being dropped early"

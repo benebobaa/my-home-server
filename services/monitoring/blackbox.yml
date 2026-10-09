@@ -1,0 +1,28 @@
+# blackbox_exporter modules (installed by setup.sh to /etc/prometheus/blackbox.yml).
+modules:
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+
+  # Any HTTP answer counts as up (the switch login page, the PVE UI's 200/
+  # redirect): this proves the management UIs respond, not that a login works.
+  # The lab UIs use self-signed certificates.
+  http_any:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: [200, 301, 302, 401]
+      tls_config:
+        insecure_skip_verify: true
+
+  dns_public_name:
+    prober: dns
+    timeout: 5s
+    dns:
+      preferred_ip_protocol: ip4
+      query_name: cloudflare.com
+      query_type: A
+      valid_rcodes: [NOERROR]

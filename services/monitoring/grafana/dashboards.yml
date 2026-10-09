@@ -1,0 +1,11 @@
+# Dashboards from grafana.com, pinned by revision + sha256 in setup.sh.
+# Edits in the UI are not kept: change the pin instead.
+apiVersion: 1
+providers:
+  - name: homelab
+    folder: Homelab
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

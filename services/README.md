@@ -9,9 +9,10 @@ Built:
   (`proxmox/opentofu/`).
 - `archive/` — File Browser (read-only) over Tailscale for the family archive
   (VLAN 20 LXC) — provisioned by OpenTofu.
+- `monitoring/` — Prometheus, Alertmanager, Grafana + exporters (VLAN 10 LXC)
+  — provisioned by OpenTofu.
 
 Planned:
 
 - `edge/` — Traefik + WireGuard tunnel (DMZ LXC).
-- `monitoring/` — Uptime Kuma / Prometheus.
 - `backends/` — production apps (VLAN 20).

@@ -1,0 +1,46 @@
+# Proxmox cluster `homelab` — prometheus-pve-exporter (cluster series come
+# from pve2 only; see prometheus.yml).
+groups:
+  - name: cluster
+    rules:
+      # Two-node cluster: with either node down it is non-quorate, guests keep
+      # running but management (start/stop/config, backups) locks.
+      - alert: PveClusterNotQuorate
+        expr: pve_cluster_info{quorate!="1"} == 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Cluster {{ $labels.id }} is NOT quorate: management actions are locked"
+
+      - alert: PveNodeDown
+        expr: label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Proxmox node {{ $labels.node }} is offline in the cluster"
+
+      # Only guests that should be running: onboot=1 (the archive CT is
+      # deliberately not boot-safe yet and is excluded by that).
+      - alert: PveGuestDown
+        expr: |
+          (pve_up{id=~"(lxc|qemu)/.*"} == 0)
+            * on (id) group_left (name, node) pve_guest_info
+            and on (id) (pve_onboot_status == 1)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is not running"
+
+      # Directory storages (`local`: ISOs, templates, backups-to-come). The
+      # thin pools are watched directly (hosts.yml, ThinPool*).
+      - alert: PveStorageFilling
+        expr: |
+          pve_disk_usage_bytes{id=~"storage/.*", id!~"storage/.*/local-lvm"}
+            / pve_disk_size_bytes{id=~"storage/.*", id!~"storage/.*/local-lvm"} > 0.90
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.id }} is {{ $value | humanizePercentage }} full"
+
+      # Not yet: pve_not_backed_up_total — no guest is backed up until PBS
+      # exists (README Status), so it would fire permanently. Add with PBS.

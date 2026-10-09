@@ -1,0 +1,127 @@
+# Prometheus — lab monitoring (CT 120 `monitoring`, 10.10.10.16, VLAN 10).
+# Installed by setup.sh; validated with promtool before every reload.
+# Friendly `instance` names everywhere (pve2, hex, …) so alerts read well and
+# the inhibit rules in alertmanager.yml can match across jobs.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["127.0.0.1:9093"]
+
+scrape_configs:
+  # --- the monitoring stack itself ------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+        labels: { instance: monitoring }
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["127.0.0.1:9093"]
+        labels: { instance: monitoring }
+
+  # --- hosts: node_exporter (Ansible `monitoring` tag on the nodes) ----------
+  - job_name: node
+    static_configs:
+      - targets: ["10.10.10.12:9100"]
+        labels: { instance: pve2 }
+      - targets: ["10.10.10.13:9100"]
+        labels: { instance: pve3 }
+      - targets: ["127.0.0.1:9100"]
+        labels: { instance: monitoring }
+
+  # --- Proxmox API: prometheus-pve-exporter (read-only PVEAuditor token) -----
+  # Cluster-wide series (guests, storage, quorum) come from ONE node only, or
+  # every series and alert would be doubled. pve2 = cluster + node config;
+  # pve3 = its node config (onboot flags of its guests) only.
+  - job_name: pve
+    metrics_path: /pve
+    params:
+      module: [default]
+    static_configs:
+      - targets: ["10.10.10.12"]
+        labels: { instance: pve2, __param_cluster: "1", __param_node: "1" }
+      - targets: ["10.10.10.13"]
+        labels: { instance: pve3, __param_cluster: "0", __param_node: "1" }
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 127.0.0.1:9221
+
+  # --- hEX router: SNMPv3 (read-only, monitoring IP only) --------------------
+  # 60 s: the hEX is a small MIPS box; SNMP walks cost it CPU.
+  - job_name: snmp_hex
+    scrape_interval: 60s
+    scrape_timeout: 30s
+    metrics_path: /snmp
+    params:
+      module: [system, if_mib, hrDevice, hrStorage, mikrotik]
+      auth: [hex_v3]
+    static_configs:
+      - targets: ["10.10.10.1"]
+        labels: { instance: hex }
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 127.0.0.1:9116
+
+  # --- reachability: blackbox_exporter --------------------------------------
+  - job_name: blackbox_icmp
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    static_configs:
+      - targets: ["10.10.10.1"]
+        labels: { instance: hex }
+      - targets: ["192.168.99.2"]
+        labels: { instance: switch }
+      - targets: ["10.10.10.12"]
+        labels: { instance: pve2 }
+      - targets: ["10.10.10.13"]
+        labels: { instance: pve3 }
+      - targets: ["10.10.10.15"]
+        labels: { instance: admin-gw }
+      - targets: ["10.10.20.30"]
+        labels: { instance: archive }
+      - targets: ["1.1.1.1"]
+        labels: { instance: internet-cloudflare, role: internet }
+      - targets: ["8.8.8.8"]
+        labels: { instance: internet-google, role: internet }
+    relabel_configs: &blackbox_relabel
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+
+  - job_name: blackbox_http
+    metrics_path: /probe
+    params:
+      module: [http_any]
+    static_configs:
+      # The SG108E's web server is tiny; http_any allows a slow first hit.
+      - targets: ["http://192.168.99.2/"]
+        labels: { instance: switch }
+      - targets: ["https://10.10.10.12:8006/"]
+        labels: { instance: pve2 }
+      - targets: ["https://10.10.10.13:8006/"]
+        labels: { instance: pve3 }
+    relabel_configs: *blackbox_relabel
+
+  # The hEX resolver answers every lab VLAN: probe it like a client would.
+  - job_name: blackbox_dns
+    metrics_path: /probe
+    params:
+      module: [dns_public_name]
+    static_configs:
+      - targets: ["10.10.10.1"]
+        labels: { instance: hex }
+    relabel_configs: *blackbox_relabel

@@ -46,3 +46,48 @@ variable "archive_irene_password" {
   type        = string
   sensitive   = true
 }
+
+variable "monitoring_node_ssh_host" {
+  description = "SSH address of the node hosting the monitoring container (root login, key auth); used for pct exec and the root-only PVE token/notification steps."
+  type        = string
+  default     = "10.10.10.12"
+}
+
+variable "monitoring_telegram_bot_token" {
+  description = "Telegram bot token for alerts (from secrets.sops.env). Empty until the operator creates the bot: alerts then go nowhere."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "monitoring_telegram_chat_id" {
+  description = "Telegram chat id that receives alerts (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "monitoring_healthchecks_ping_url" {
+  description = "healthchecks.io ping URL for the Watchdog dead-man's switch (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "monitoring_grafana_admin_password" {
+  description = "Grafana admin password (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}
+
+variable "monitoring_snmp_auth_password" {
+  description = "SNMPv3 auth password of the hEX user `monitoring` — same value as network/routeros TF_VAR_snmp_auth_password (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}
+
+variable "monitoring_snmp_priv_password" {
+  description = "SNMPv3 privacy password of the hEX user `monitoring` — same value as network/routeros TF_VAR_snmp_priv_password (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}

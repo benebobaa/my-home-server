@@ -1,0 +1,51 @@
+# Alertmanager — one destination: the operator's Telegram.
+# Rendered by secrets.sh (the only file that sees the secrets):
+#   __TELEGRAM_CHAT_ID__ → the chat id; the bot token and the healthchecks.io
+#   ping URL are read from files under /etc/prometheus/secrets/.
+#   A receiver whose secret is not set yet is swapped for `blackhole`, so the
+#   stack converges before the operator has created the accounts.
+
+route:
+  receiver: telegram
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    # Dead-man's switch: Watchdog always fires, so healthchecks.io gets a ping
+    # every minute. When pings stop (power cut, pve2 down, internet down,
+    # Prometheus or Alertmanager dead) healthchecks.io alerts on its own.
+    - matchers: ['alertname="Watchdog"']
+      receiver: healthchecks
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/prometheus/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        send_resolved: true
+
+  - name: healthchecks
+    webhook_configs:
+      - url_file: /etc/prometheus/secrets/healthchecks_ping_url
+        send_resolved: false
+
+  - name: blackhole
+
+inhibit_rules:
+  # A host that does not answer ping is the one alert; do not also send
+  # "scrape failed" / "UI down" for it.
+  - source_matchers: ['alertname="HostUnreachable"']
+    target_matchers: ['alertname=~"TargetDown|HttpProbeFailed|DnsResolverFailing"']
+    equal: [instance]
+  # Internet down: the HTTP/DNS-to-outside alerts are symptoms of it.
+  - source_matchers: ['alertname="InternetDown"']
+    target_matchers: ['alertname="DnsResolverFailing"']
+  # A PVE node down explains its guests.
+  - source_matchers: ['alertname="PveNodeDown"']
+    target_matchers: ['alertname="PveGuestDown"']
+    equal: [node]
