@@ -29,6 +29,24 @@ resource "routeros_ip_firewall_addr_list" "admin_gw" {
   comment = "Tailscale admin gateway (CT 101 on pve3)"
 }
 
+resource "routeros_ip_firewall_addr_list" "monitoring" {
+  list    = "monitoring"
+  address = "10.10.10.16"
+  comment = "Prometheus (CT 120 on pve2)"
+}
+
+# What the monitoring host may ping outside its own VLAN (blackbox probes).
+resource "routeros_ip_firewall_addr_list" "monitored" {
+  for_each = {
+    "10.10.0.0/16" = "lab VLANs"
+    "192.168.99.2" = "SG108E switch"
+  }
+
+  list    = "monitored"
+  address = each.key
+  comment = each.value
+}
+
 resource "routeros_ip_firewall_addr_list" "biznet_lan" {
   list    = "biznet-lan"
   address = "192.168.18.0/24"
@@ -116,6 +134,19 @@ resource "routeros_ip_firewall_filter" "input_admin" {
   dst_port         = "22,443,8291"
   comment          = "admin: SSH, REST/WebFig, Winbox"
   depends_on       = [routeros_ip_firewall_filter.input_dns_tcp]
+}
+
+# SNMPv3 polling of the hEX itself (snmp.tf), from the monitoring host only.
+resource "routeros_ip_firewall_filter" "input_snmp_monitoring" {
+  chain            = "input"
+  action           = "accept"
+  in_interface     = routeros_interface_vlan.mgmt.name
+  src_address_list = "monitoring"
+  protocol         = "udp"
+  dst_port         = "161"
+  comment          = "monitoring: SNMP"
+  depends_on       = [routeros_ip_firewall_addr_list.monitoring]
+  place_before     = routeros_ip_firewall_filter.input_drop.id
 }
 
 resource "routeros_ip_firewall_filter" "input_oob" {
@@ -238,6 +269,21 @@ resource "routeros_ip_firewall_filter" "forward_switch_mgmt" {
   comment          = "admin to the switch management UI"
   place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
   depends_on       = [routeros_ip_firewall_filter.forward_admin_gw]
+}
+
+# Reachability probes (ping only) from the monitoring host into other VLANs
+# and the switch. Its HTTP probe of the switch UI is covered by
+# forward_switch_mgmt (MGMT is in admin-src).
+resource "routeros_ip_firewall_filter" "forward_monitoring_icmp" {
+  chain            = "forward"
+  action           = "accept"
+  in_interface     = routeros_interface_vlan.mgmt.name
+  src_address_list = "monitoring"
+  dst_address_list = "monitored"
+  protocol         = "icmp"
+  comment          = "monitoring: ping lab VLANs + switch"
+  depends_on       = [routeros_ip_firewall_addr_list.monitoring, routeros_ip_firewall_addr_list.monitored]
+  place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
 }
 
 resource "routeros_ip_firewall_filter" "forward_no_biznet" {

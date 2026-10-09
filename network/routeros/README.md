@@ -44,6 +44,7 @@ State is encrypted (`encryption.tf`, enforced) and committed. See
 | `queues.tf` | DMZ ↔ internet bandwidth cap |
 | `dns.tf` | internal `home.arpa` names on the hEX resolver |
 | `system.tf` | NTP client, MAC-access / discovery limits, plaintext services off |
+| `snmp.tf` | SNMPv3 read-only user `monitoring` (answers 10.10.10.16 only); factory `public` community disabled |
 
 ## Procedures
 
