@@ -94,6 +94,8 @@ locals {
     [for n, m in local.monitoring : "${n} (tier ${m.tier})" if m.enabled && !contains(["critical", "standard", "best-effort"], coalesce(m.tier, "-"))],
     [for n, m in local.monitoring : "${n} (health ${m.health})" if m.health != null && !can(regex("^https?://", coalesce(m.health, "-")))],
     [for n, m in local.monitoring : "${n} (health_module ${m.health_module})" if m.enabled && !contains(["http_2xx", "http_any"], coalesce(m.health_module, "-"))],
+    # The DMZ never pushes into MGMT (ADR 0008): monitoring pulls from it.
+    [for n, m in local.monitoring : "${n} (logs: true in the DMZ)" if m.logs && try(local.raw.hosts[n].vlan, "") == "dmz"],
   )
 }
 

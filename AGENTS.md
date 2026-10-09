@@ -61,7 +61,7 @@ cd ansible
 ansible-playbook proxmox-nodes.yml --check --diff | cat   # drift report
 ansible-playbook proxmox-nodes.yml --tags storage | cat   # converge one area
 ansible-playbook proxmox-nodes.yml --limit pve3 | cat
-# tags: repos, logind, grub, network, ssh, gpu, storage, monitoring, verify,
+# tags: repos, logind, grub, network, ssh, gpu, storage, monitoring, logging, verify,
 #       upgrade (explicit only), cluster (explicit only)
 
 ./scripts/hex-snapshot.sh   # router config export → network/routeros/snapshots/

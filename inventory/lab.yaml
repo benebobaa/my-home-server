@@ -114,7 +114,6 @@ hosts:
     node: pve2
     vlan: mgmt
     ip: 10.10.10.18
-    status: planned
     note: VictoriaLogs — journald + hEX syslog for the whole lab (services/logs)
     monitoring: { tier: standard, health: "http://{ip}:9428/health", metrics: [9428], logs: true }
 

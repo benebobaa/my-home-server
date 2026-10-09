@@ -727,6 +727,53 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Logs (VictoriaLogs \u2014 journald, hEX syslog)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "logs",
+      "title": "Logs",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 14
+      },
+      "description": "journald hosts match _HOSTNAME; syslog senders (the hEX, identity hex-lab) match hostname by prefix.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "queryType": "instant",
+          "maxLines": 500,
+          "expr": "_stream:{_HOSTNAME=\"$service\"} or _stream:{hostname=~\"$service.*\"}"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
     }
   ]
 }

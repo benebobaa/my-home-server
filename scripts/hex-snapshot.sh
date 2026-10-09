@@ -17,7 +17,7 @@ fi
 : "${ROS_USERNAME:?ROS_USERNAME missing from $secrets}"
 host="${ROS_HOST:-192.168.99.1}"
 
-stamp="$(date +%F-%H%M)"
+stamp="$(date +%F-%H%M%S)"  # seconds: before/after snapshots of one apply can share a minute
 out="$repo_root/network/routeros/snapshots/hex-${stamp}.rsc"
 tmp="$(mktemp)"
 

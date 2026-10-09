@@ -19,6 +19,8 @@
 
   vars:
     admin_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+    # The lab's addresses (ADR 0007): read, never retyped here.
+    lab: "{{ lookup('file', playbook_dir + '/../inventory/lab.yaml') | from_yaml }}"
     pve_nic: nic0            # USB NIC name (pinned by the installer)
     cluster_name: homelab
     cluster_seed: 10.10.10.13
@@ -488,6 +490,59 @@
         - prometheus-node-exporter-lvm.timer
       tags: monitoring
 
+    # ---------------------------------------------------------------- logging
+    # The node's journal → the lab log store (VictoriaLogs, CT 121 `logs`;
+    # ADR 0008). The same setup as services/logs/ship.sh in the containers:
+    # systemd-journal-upload with a saved cursor, so it catches up after an
+    # outage of the store. Its address comes from inventory/lab.yaml.
+    - name: Install systemd-journal-upload
+      ansible.builtin.apt:
+        name: systemd-journal-remote
+        state: present
+        install_recommends: false
+      tags: logging
+
+    # The package also ships a journal receiver (port 19532): keep it off.
+    - name: Keep the journal receiver off
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        masked: true
+        state: stopped
+      loop:
+        - systemd-journal-remote.socket
+        - systemd-journal-remote.service
+      tags: logging
+
+    - name: Ensure the journal-upload drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/journal-upload.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: logging
+
+    - name: Point journal-upload at the log store
+      ansible.builtin.copy:
+        dest: /etc/systemd/journal-upload.conf.d/homelab.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # managed by ansible/proxmox-nodes.yml (tag logging)
+          [Upload]
+          URL=http://{{ lab.hosts.logs.ip }}:9428/insert/journald
+      notify: Restart journal-upload
+      tags: logging
+
+    - name: Enable journal-upload
+      ansible.builtin.systemd_service:
+        name: systemd-journal-upload.service
+        enabled: true
+        state: started
+      tags: logging
+
     # ----------------------------------------------------------------- verify
     - name: Read FQDN
       ansible.builtin.command: hostname -f
@@ -678,6 +733,11 @@
       tags: [cluster, never]
 
   handlers:
+    - name: Restart journal-upload
+      ansible.builtin.systemd_service:
+        name: systemd-journal-upload.service
+        state: restarted
+
     - name: Restart node_exporter
       ansible.builtin.systemd_service:
         name: prometheus-node-exporter.service

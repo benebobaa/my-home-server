@@ -316,6 +316,27 @@ resource "routeros_ip_firewall_filter" "forward_monitoring_scrape" {
   place_before     = routeros_ip_firewall_filter.forward_no_biznet.id
 }
 
+# Log shipping into the log store (VictoriaLogs, CT 121 on MGMT; ADR 0008):
+# one exact rule per host outside MGMT with `logs: true`, journald upload on
+# 9428 only. The DMZ never qualifies (lab.yaml refuses logs: true there).
+resource "routeros_ip_firewall_filter" "forward_logs_ingest" {
+  for_each = {
+    for n, h in local.host : n => h
+    if h.status == "live" && h.monitoring.logs && contains(["lxc", "vm"], h.kind) && !contains(["mgmt", "native", "dmz"], h.vlan)
+  }
+
+  chain       = "forward"
+  action      = "accept"
+  src_address = each.value.ip
+  dst_address = local.host.logs.ip
+  protocol    = "tcp"
+  dst_port    = "9428"
+  comment     = "logs: ${each.key} ships its journal"
+  depends_on  = [routeros_ip_firewall_filter.forward_monitoring_icmp]
+  # (rp_filter on the hEX drops spoofed sources: src_address is enough.)
+  place_before = routeros_ip_firewall_filter.forward_no_biznet.id
+}
+
 resource "routeros_ip_firewall_filter" "forward_no_biznet" {
   chain              = "forward"
   action             = "drop"

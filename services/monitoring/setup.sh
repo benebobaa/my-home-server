@@ -14,6 +14,8 @@ export DEBIAN_FRONTEND=noninteractive
 
 PVE_EXPORTER_VERSION=3.10.1
 GRAFANA_VERSION=13.2.3
+# Grafana plugin for the log store (services/logs): signed, from grafana.com.
+VLOGS_PLUGIN_VERSION=0.32.0
 GRAFANA_KEY_FPR=B53AE77BADB630A683046005963FA27710458545  # gitleaks:allow (public key fingerprint)
 # Debian cannot ship a generated snmp.yml (MIB licensing): use upstream's, for
 # the same release as the packaged exporter. Kept beside, not over, Debian's
@@ -161,6 +163,13 @@ Environment=GF_USERS_ALLOW_SIGN_UP=false
 Environment=GF_AUTH_ANONYMOUS_ENABLED=false
 EOF
 install -m 0644 "$SRC/grafana/datasource.yml" /etc/grafana/provisioning/datasources/homelab.yml
+vlogs_json=/var/lib/grafana/plugins/victoriametrics-logs-datasource/plugin.json
+if [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["info"]["version"])' "$vlogs_json" 2>/dev/null)" != "$VLOGS_PLUGIN_VERSION" ]; then
+  grafana cli --homepath /usr/share/grafana --config /etc/grafana/grafana.ini \
+    --pluginsDir /var/lib/grafana/plugins \
+    plugins install victoriametrics-logs-datasource "$VLOGS_PLUGIN_VERSION" >/dev/null
+  chown -R grafana:grafana /var/lib/grafana/plugins
+fi
 install -m 0644 "$SRC/grafana/dashboards.yml" /etc/grafana/provisioning/dashboards/homelab.yml
 install -d -m 0755 /var/lib/grafana/dashboards
 for d in "${DASHBOARDS[@]}"; do
