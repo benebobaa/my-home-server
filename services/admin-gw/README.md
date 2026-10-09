@@ -75,7 +75,7 @@ port (hEX + switch only).
   `proxmox/opentofu/files/admin-gw-root-config.sh`, re-run one gateway at a
   time with `tofu apply -replace='terraform_data.admin_gw_tun["admin-gw2"]'`.
 - Stuck UIs while the gateway is "online": see the recovery steps in the
-  [RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md#recovery-procedure-until-action-2-lands-in-a-runbook).
+  [RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md#recovery-procedure).
 - `provision.sh` re-runs on **both** gateways at the next `tofu apply` after
   it is edited (its hash is a trigger). It is idempotent and does not restart
   tailscaled; to be careful, apply one at a time with

@@ -100,27 +100,35 @@ limits throughput only.
 | # | Action | Type | Status |
 | --- | --- | --- | --- |
 | 1 | A second Tailscale subnet router on pve2, advertising the same routes (Tailscale HA failover). One sick gateway then no longer cuts off access, and either can be restarted without a fallback. Already an open item in design §9. | Prevent | **Done** 2026-10-09 (`3e488bb`): `admin-gw2`, CT 102 on pve2. Failover tested both ways: stopping either gateway's tailscaled gave a 55–75 s gap, then the other served (UIs 200 in 0.2 s, 59 ms, 0% loss). Limit: failover happens on *offline*, not on *degraded*, so a sick-but-online gateway, as in this incident, still needs the restart below. |
-| 2 | Recovery procedure in a runbook: the parallel-ping test, then a tailscaled restart with the pve3 fallback armed (steps below). | Mitigate | Open |
-| 3 | Watch the access path itself: evaluate scraping tailscaled's client metrics on `admin-gw` into Prometheus, plus an alert on DERP or peer errors. | Detect | Open: evaluate |
-| 4 | Lab Wi-Fi AP on VLAN 40 (design §9, switch P6), so admin at home is local and does not depend on the relay. | Reduce dependency | Open: hardware |
+| 2 | Recovery procedure in a runbook | Mitigate | Declined (operator, 2026-10-09): the procedure below is enough, and the admin-gw README links here |
+| 3 | Watch the access path itself (tailscaled metrics, alerts on DERP or peer errors) | Detect | Declined (operator): the operator is the only user of the path and notices at once; both gateways already have ping probes |
+| 4 | Lab Wi-Fi AP on VLAN 40 (design §9, switch P6) | Reduce dependency | Declined (operator): the relay at ~55 ms is fine for admin UIs; reconsider only if admin at home feels slow |
 | — | hEX port forward of UDP 41641 | — | Rejected: behind CGNAT it cannot give a direct path, and it breaks the zero-inbound principle |
 
-## Recovery procedure (until action 2 lands in a runbook)
+## Recovery procedure
+
+Applies when a gateway is online but degraded (hung UIs, high loss). An
+offline gateway fails over by itself in about a minute.
 
 ```bash
-# 1. Localise: is it only admin-gw? (archive = control)
-ping -c30 <admin-gw tailnet IP> & ping -c30 <archive tailnet IP> & wait
-# admin-gw bad and archive steady at ~55 ms means admin-gw's tailscaled; go on.
+# 1. Which gateway is serving, and is it the sick one? archive is the control:
+#    it goes over the same relay but not through a gateway.
+tailscale status --json | jq -r '.Peer[] | select(.PrimaryRoutes) | .HostName'
+ping -c30 <serving gateway tailnet IP> & ping -c30 <archive tailnet IP> & wait
+#    Gateway bad while archive is steady at ~55 ms: its tailscaled is degraded.
 
-# 2. Arm a fallback on pve3 (admin-gw is the path to pve3)
-ssh root@10.10.10.13 'systemd-run --on-active=240 --unit=ts-fallback pct reboot 101'
+# 2. Restart it by hopping through the OTHER gateway's own tailnet IP
+#    (peer-to-peer, not the broken subnet route). Tested 2026-10-09.
+#    admin-gw  (CT 101 on pve3) sick:
+ssh -J root@<admin-gw2 tailnet IP> root@10.10.10.13 'pct exec 101 -- systemctl restart tailscaled'
+#    admin-gw2 (CT 102 on pve2) sick:
+ssh -J root@<admin-gw tailnet IP> root@10.10.10.12 'pct exec 102 -- systemctl restart tailscaled'
 
-# 3. Restart tailscaled; run it detached so the SSH drop doesn't kill it
-ssh root@<admin-gw tailnet IP> 'systemd-run --on-active=2 systemctl restart tailscaled'
-
-# 4. Verify (expect ~55 ms, 0% loss), then cancel the fallback
-ssh root@10.10.10.13 'systemctl stop ts-fallback.timer'
+# 3. Verify: the ping to the gateway is ~55 ms with 0% loss, and the UIs load.
 ```
 
 `tailscale debug rebind` is **not** enough. It helped for 6 minutes on
-2026-10-09, then the problem came back.
+2026-10-09, then the problem came back. On 2026-10-09 there was only one
+gateway, so the restart had to be covered by an armed fallback
+(`systemd-run --on-active=240 pct reboot 101` on pve3). With the pair, the
+other gateway serves while one restarts.
