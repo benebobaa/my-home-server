@@ -99,7 +99,7 @@ limits throughput only.
 
 | # | Action | Type | Status |
 | --- | --- | --- | --- |
-| 1 | A second Tailscale subnet router on pve2, advertising the same routes (Tailscale HA failover). One sick gateway then no longer cuts off access, and either can be restarted without a fallback. Already an open item in design §9. | Prevent | Open: needs an operator yes and a lab.yaml entry |
+| 1 | A second Tailscale subnet router on pve2, advertising the same routes (Tailscale HA failover). One sick gateway then no longer cuts off access, and either can be restarted without a fallback. Already an open item in design §9. | Prevent | **Done** 2026-10-09 (`3e488bb`): `admin-gw2`, CT 102 on pve2. Failover tested both ways: stopping either gateway's tailscaled gave a 55–75 s gap, then the other served (UIs 200 in 0.2 s, 59 ms, 0% loss). Limit: failover happens on *offline*, not on *degraded*, so a sick-but-online gateway, as in this incident, still needs the restart below. |
 | 2 | Recovery procedure in a runbook: the parallel-ping test, then a tailscaled restart with the pve3 fallback armed (steps below). | Mitigate | Open |
 | 3 | Watch the access path itself: evaluate scraping tailscaled's client metrics on `admin-gw` into Prometheus, plus an alert on DERP or peer errors. | Detect | Open: evaluate |
 | 4 | Lab Wi-Fi AP on VLAN 40 (design §9, switch P6), so admin at home is local and does not depend on the relay. | Reduce dependency | Open: hardware |

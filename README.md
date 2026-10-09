@@ -57,7 +57,7 @@ sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 - [x] First client on VLAN 40: DHCP, DNS, internet, hEX + switch management verified
 - [x] Proxmox: pve2 + pve3 (laptops) installed, Ansible-managed, clustered (`homelab`)
 - [x] Remote admin: `admin-gw` (Tailscale subnet router) — OpenTofu
-- [ ] Remote admin HA (2026-10-09): `admin-gw2` on pve2, same routes — built; waiting for Tailscale login, route approval and a failover test ([RCA](docs/incidents/2026-10-09-remote-access-degraded.md))
+- [x] Remote admin HA (2026-10-09): `admin-gw2` on pve2, same routes; failover tested both ways (~1 min gap) ([RCA](docs/incidents/2026-10-09-remote-access-degraded.md))
 - [x] GPUs (2× MX130): driver + boot-safe shared LXC passthrough ([ADR 0003](docs/decisions/0003-lxc-gpu-passthrough.md))
 - [x] Foundation audit (2026-10-08): router NTP + MAC-access hardening, host cleanup, zero drift (`tofu plan` / `ansible --check`)
 - [x] DMZ hardened as the tenant zone (2026-10-08): SMTP-25 and non-public egress blocked, 50/50 Mbps cap, exact pinholes; `home.arpa` names on the hEX

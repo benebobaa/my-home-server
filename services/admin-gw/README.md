@@ -15,7 +15,7 @@ because both ends sit behind CGNAT — that is by design (zero inbound).
 | --- | --- |
 | Hosts | `admin-gw`: CT `101` on `pve3`, `10.10.10.15` · `admin-gw2`: CT `102` on `pve2`, `10.10.10.17` (each unprivileged, 1 core, 512 MB RAM, 3 GB disk) |
 | Network | VLAN 10 (MGMT), static IPs from `inventory/lab.yaml`, gw `10.10.10.1` |
-| HA | Both advertise the same routes. Clients use one (the primary) and Tailscale moves them to the other when it goes offline, within seconds. Since 2026-10-09 ([RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md)) |
+| HA | Both advertise the same routes. Clients use one (the primary) and Tailscale moves them to the other when it goes offline. Measured 2026-10-09: about a 55–75 s gap, then the other gateway serves at the same latency. The primary is sticky: it stays where it failed over to. Since 2026-10-09 ([RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md)) |
 | Device | `/dev/net/tun` passed through (Tailscale needs it) |
 | Boot | `onboot` — comes back automatically with the node |
 | Routes | advertises `10.10.10.0/24` (nodes + hEX), `192.168.99.0/29` (switch + recovery) |
