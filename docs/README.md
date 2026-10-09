@@ -3,6 +3,7 @@
 | Area | What's inside |
 | --- | --- |
 | [`design/`](design/) | The living network design — required reading |
+| [`hardware.md`](hardware.md) | What each device is: models, parts, serials, disk health |
 | [`runbooks/`](runbooks/) | Step-by-step procedures for humans (often under pressure) |
 | [`decisions/`](decisions/) | ADRs — short notes on why things are the way they are |
 
