@@ -22,4 +22,8 @@ jobs:
           fetch-depth: 0 # gitleaks scans the whole history
           persist-credentials: false
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+      # tflint evaluates file(var.admin_ssh_public_key_path) in
+      # proxmox/opentofu/inventory.tf; the runner has no key. A throwaway one
+      # is only read, never used to connect.
+      - run: mkdir -p ~/.ssh && ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
       - run: make check
