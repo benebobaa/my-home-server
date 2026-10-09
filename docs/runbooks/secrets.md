@@ -43,8 +43,18 @@ Proxmox token has a `!`) need no shell quoting.
 
 | File | Holds |
 | --- | --- |
-| `proxmox/opentofu/secrets.sops.env` | `PROXMOX_VE_API_TOKEN`, `TF_VAR_state_passphrase` |
-| `network/routeros/secrets.sops.env` | `ROS_USERNAME`, `ROS_PASSWORD`, `TF_VAR_state_passphrase` |
+| `proxmox/opentofu/secrets.sops.env` | `PROXMOX_VE_API_TOKEN`, `TF_VAR_state_passphrase`, archive passwords, `TF_VAR_monitoring_*` (Grafana admin, SNMPv3 auth/priv, Telegram bot token + chat id, healthchecks.io ping URL) |
+| `network/routeros/secrets.sops.env` | `ROS_USERNAME`, `ROS_PASSWORD`, `TF_VAR_state_passphrase`, `TF_VAR_snmp_auth_password`, `TF_VAR_snmp_priv_password` |
+
+The SNMPv3 pair is deliberately in **both** files: the router stack sets it,
+the monitoring CT uses it. Rotate together: `sops edit` both files with the
+same new values, then `tofu apply` in `network/routeros` and then in
+`proxmox/opentofu`. Compare them without printing:
+`[ "$(sops decrypt --extract '["TF_VAR_snmp_auth_password"]' network/routeros/secrets.sops.env)" = "$(sops decrypt --extract '["TF_VAR_monitoring_snmp_auth_password"]' proxmox/opentofu/secrets.sops.env)" ] && echo match`.
+
+Not in any file: the PVE API token of `prometheus@pve` (monitoring). It is
+created on pve2 and written straight into CT 120. To rotate it, run
+`pveum user token remove prometheus@pve monitoring` and then `tofu apply -replace=terraform_data.monitoring_pve_token`.
 | `*/terraform.tfstate` | encrypted state (AES-GCM, PBKDF2 key) — `encryption.tf`, `enforced = true` |
 
 The old plaintext `.env` files are no longer used by anything in the repo.

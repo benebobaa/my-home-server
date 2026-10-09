@@ -68,6 +68,7 @@ flowchart TB
 | Postgres LXC (Kubeletto, future, pve2) |  |  | 10.10.20.21 (VLAN 20) |
 | K3s VM (Kubeletto tenant cluster, future) |  |  | 10.10.25.20 (VLAN 25) |
 | admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
+| monitoring LXC (Prometheus/Grafana, CT 120, pve2) | 10.10.10.16 |  |  |
 | archive LXC (File Browser over Tailscale, CT 110, pve2) |  |  | 10.10.20.30 (VLAN 20) |
 | edge LXC (deferred VPS path only) |  |  | 10.10.25.10, wg 10.99.0.2 |
 | hEX OOB (ether3) |  |  | 192.168.88.1/24 |
@@ -329,7 +330,7 @@ backend home_https
 
 - **Backups:** PBS for VMs/LXC (target to be decided, ideally not on the same cluster), plus config exports for hEX, SG108E and VPS.
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
-- **Monitoring (later):** Uptime Kuma or Prometheus on VLAN 10/20, with alerts if the public tunnel drops (an external check, so it still fires when home is down).
+- **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, and a healthchecks.io dead-man's switch fires when home goes dark. Still to add: an external check of the public tunnel once it exists.
 
 ## 8. Build order and rollback
 
