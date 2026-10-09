@@ -385,6 +385,77 @@
       when: live_swappiness.stdout | trim != '10'
       tags: storage
 
+    # ------------------------------------------------------------- monitoring
+    # Host metrics for Prometheus (CT 120 `monitoring`, 10.10.10.16 — see
+    # services/monitoring/). node_exporter + Debian's textfile collectors:
+    # SMART attributes every 15 min (smartmon.sh: `smartctl -i -H -A` only,
+    # never a self-test — see docs/runbooks/disk-rescue.md) and LVM thin-pool
+    # data/metadata fill every minute (lvm-prom-collector -t).
+    - name: Install node_exporter + textfile collectors
+      ansible.builtin.apt:
+        name:
+          - prometheus-node-exporter
+          - prometheus-node-exporter-collectors
+          - moreutils          # sponge, used by the collector units
+        install_recommends: false
+        state: present
+      tags: monitoring
+
+    # MGMT address only: the default 0.0.0.0 would also listen on the
+    # VLAN 60 cluster link. systemd collector → alerts on failed units.
+    - name: Configure node_exporter (bind MGMT IP, textfile dir, systemd)
+      ansible.builtin.copy:
+        dest: /etc/default/prometheus-node-exporter
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+          ARGS="--web.listen-address={{ ansible_host }}:9100 --collector.textfile.directory=/var/lib/prometheus/node-exporter --collector.systemd"
+        mode: "0644"
+      notify: restart node_exporter
+      tags: monitoring
+
+    - name: Install the thin-pool collector service + timer
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - name: prometheus-node-exporter-lvm.service
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+            [Unit]
+            Description=Collect LVM thin-pool fill for prometheus-node-exporter
+
+            [Service]
+            Type=oneshot
+            ExecStart=/bin/sh -o pipefail -c "/usr/share/prometheus-node-exporter-collectors/lvm-prom-collector -t | sponge /var/lib/prometheus/node-exporter/lvm.prom"
+        - name: prometheus-node-exporter-lvm.timer
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+            [Unit]
+            Description=Collect LVM thin-pool fill every minute
+
+            [Timer]
+            OnBootSec=30s
+            OnUnitActiveSec=1min
+
+            [Install]
+            WantedBy=timers.target
+      loop_control:
+        label: "{{ item.name }}"
+      tags: monitoring
+
+    - name: Enable node_exporter and the collector timers
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop:
+        - prometheus-node-exporter.service
+        - prometheus-node-exporter-smartmon.timer
+        - prometheus-node-exporter-lvm.timer
+      tags: monitoring
+
     # ----------------------------------------------------------------- verify
     - name: Read FQDN
       ansible.builtin.command: hostname -f
@@ -548,6 +619,11 @@
       tags: [cluster, never]
 
   handlers:
+    - name: restart node_exporter
+      ansible.builtin.systemd_service:
+        name: prometheus-node-exporter.service
+        state: restarted
+
     - name: update grub
       ansible.builtin.command: update-grub
 

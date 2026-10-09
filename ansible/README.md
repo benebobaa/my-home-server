@@ -30,6 +30,7 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 | root `authorized_keys` (admin key) | `~/.ssh/id_ed25519.pub` on the operator machine |
 | stock PVE recommended package `pve-nvidia-vgpu-helper` present | this playbook (`repos` tag) |
 | Storage (`--tags storage`): guest thin pool auto-extends at 80% (LVM profile `homelab-thin-autoextend` on `pve/data`), weekly `pct fstrim` of running containers (`pct-fstrim.timer`), `vm.swappiness = 10` | this playbook |
+| Monitoring (`--tags monitoring`): `prometheus-node-exporter` on the MGMT IP only (`:9100`, systemd collector on), Debian's textfile collectors: SMART every 15 min (`smartmon` timer, attributes only — never a self-test), LVM thin-pool fill every minute (`prometheus-node-exporter-lvm.timer`), apt | this playbook — scraped by CT 120 (`services/monitoring/`) |
 | GPU hosts (`--tags gpu`): NVIDIA modules at boot, `/dev/nvidia-uvm` created at boot, `nvidia-persistenced`; `dkms` + `proxmox-default-headers` (dkms rebuilds nvidia for every new kernel) + `nvtop`; NVIDIA's CUDA apt repo **absent** | hosts with `has_nvidia_gpu=true` in `inventory.ini` — see `docs/runbooks/gpu-lxc-passthrough.md` |
 
 ## What it verifies (read-only asserts)
