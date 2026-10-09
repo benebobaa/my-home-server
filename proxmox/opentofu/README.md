@@ -14,6 +14,25 @@ the Proxmox side (containers today, VMs later) under the same discipline.
 | `monitoring` (CT 120, pve2) | Prometheus, Alertmanager, Grafana + exporters; read-only PVE token and PVE → Telegram notifications (root steps on pve2). See `services/monitoring/`. |
 | Debian 13 template | Downloaded to `local` (vztmpl) on pve3 and pve2, referenced by the containers. |
 
+Addresses, VMIDs and nodes come from [`inventory/lab.yaml`](../../inventory/lab.yaml)
+(`inventory.tf`). Containers are built with
+[`modules/lxc-guest`](modules/lxc-guest/README.md) (archive excepted until its
+ZFS rebuild — ADR 0007).
+
+## Adding a guest
+
+1. Add it to `inventory/lab.yaml` (VMID and IP by the conventions at the top
+   of that file). `make inventory` validates it.
+2. A `<name>.tf` here: `module "<name>" { source = "./modules/lxc-guest" ... }`
+   with `host = local.host["<name>"]`.
+3. Its provisioning as `terraform_data` keyed on `module.<name>.generation`
+   (and the hash of its files), run through `local.node_ssh[module.<name>.node]`
+   + `pct exec` — see `monitoring.tf`.
+4. `services/<name>/` for what runs inside. In-guest config is moving to
+   Ansible roles (ADR 0007): new services start there when practical.
+5. Router side (if it needs a pinhole or a DNS name): `network/routeros`
+   picks up the DNS record from the inventory automatically.
+
 **Not** managed here: the nodes themselves (golden configs + runbooks in
 `proxmox/`) and the switch (config backup in `network/switch/`).
 
@@ -75,7 +94,7 @@ returned to the pool when the guest discards it:
   over-commit.
 - **Placement:** stateful guests (databases, monitoring data) on `pve2`;
   `pve3`'s no-name SSD gets stateless/rebuildable guests only.
-- Move the container between nodes by changing `admin_gw_node`
+- Move a guest between nodes by changing its `node` in `inventory/lab.yaml`
   (`migrate = true` → offline migration, short downtime; useful after the
   cluster exists).
 - The interactive Tailscale login + route approval stay manual by design

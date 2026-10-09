@@ -11,10 +11,10 @@
 # The token secret is shown only once, at creation. It goes straight from here
 # into the container with `pct exec` and never leaves the cluster. If the CT's
 # copy is missing (CT rebuilt) or the token is gone, the token is recreated.
-# Idempotent.
+# Idempotent. Argument: the monitoring CT's VMID (from inventory/lab.yaml).
 set -euo pipefail
 
-CT=120
+CT=${1:?usage: monitoring-pve-token.sh <vmid>}
 PVE_USER=prometheus@pve
 TOKEN=monitoring
 CONF=/etc/prometheus/pve.yml

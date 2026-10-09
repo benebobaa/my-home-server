@@ -7,9 +7,10 @@
 # /etc/sysctl.d — no host-root needed for that.)
 #
 # Idempotent: reboots the container only when something actually changed.
+# Argument: admin-gw's VMID (from inventory/lab.yaml).
 set -euo pipefail
 
-VMID=101
+VMID=${1:?usage: admin-gw-root-config.sh <vmid>}
 CONF="/etc/pve/lxc/${VMID}.conf"
 
 if grep -q '^dev0:' "$CONF"; then

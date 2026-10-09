@@ -65,6 +65,7 @@ sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 - [ ] Family archive, final: Irene's `Captures` re-encoded (~12 % size) so everything fits in two copies; then pve2's HDD becomes a ZFS pool (needs an explicit yes, destructive)
 - [x] Monitoring (2026-10-09): Prometheus + Alertmanager + Grafana in CT 120 on pve2 (`10.10.10.16`, VLAN 10). It watches both nodes (SMART, thin pool, AC power, temperatures), the cluster (quorum, guests), the hEX over SNMPv3, and ping/HTTP/DNS reachability ([ADR 0006](docs/decisions/0006-monitoring-stack.md), `services/monitoring/`)
 - [x] Alert channel (2026-10-09): Telegram (`@benehomeserver_bot`) for Alertmanager and Proxmox notifications; healthchecks.io check `homelab-watchdog` (5 min period + 5 min grace) as the dead-man's switch, pinged every minute by the Watchdog
+- [x] Repo architecture for growth (2026-10-09, [ADR 0007](docs/decisions/0007-repo-architecture-for-growth.md)): pinned toolchain (`mise.toml`), `make check` + CI, secret scan in the hook; `inventory/lab.yaml` as the single source of addresses for both Tofu stacks; `modules/lxc-guest` (admin-gw, monitoring moved in, no rebuild). Next: Ansible inventory + Prometheus targets from `lab.yaml`, guest config as Ansible roles
 - [ ] Foundation, before any stateful service: backups (PBS + test restore), UPS + clean shutdown, secrets (SOPS), encrypted IaC state, quorum tie-breaker
 - [ ] Databases → apps
 - [ ] Proxmox: pve1 (desktop, RTX 3060) — being built

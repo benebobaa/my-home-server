@@ -18,9 +18,12 @@ resource "proxmox_download_file" "debian_13_template_pve2" {
   overwrite_unmanaged = true
 }
 
+# Not on modules/lxc-guest yet (ADR 0007): its root/user steps re-run on any
+# change and need the hand-mounted sources. It moves to the module when it is
+# rebuilt on ZFS.
 resource "proxmox_virtual_environment_container" "archive" {
-  node_name = "pve2"
-  vm_id     = 110
+  node_name = local.host.archive.node
+  vm_id     = local.host.archive.vmid
 
   description = "archive — File Browser (read-only) over Tailscale for the family archive. Managed by OpenTofu: proxmox/opentofu."
   tags        = ["archive", "tofu"]
@@ -61,25 +64,25 @@ resource "proxmox_virtual_environment_container" "archive" {
 
     dns {
       domain  = "home.arpa"
-      servers = ["10.10.20.1"]
+      servers = [local.host.archive.gateway]
     }
 
     ip_config {
       ipv4 {
-        address = "10.10.20.30/24"
-        gateway = "10.10.20.1"
+        address = local.host.archive.cidr
+        gateway = local.host.archive.gateway
       }
     }
 
     user_account {
-      keys = [trimspace(file(pathexpand(var.admin_ssh_public_key_path)))]
+      keys = [local.admin_ssh_public_key]
     }
   }
 
   network_interface {
     name    = "eth0"
     bridge  = "vmbr0"
-    vlan_id = 20
+    vlan_id = local.host.archive.vlan_id
   }
 
   operating_system {
@@ -105,10 +108,10 @@ resource "proxmox_virtual_environment_container" "archive" {
 
     connection {
       type                = "ssh"
-      host                = "10.10.20.30"
+      host                = local.host.archive.ip
       user                = "root"
       private_key         = file(pathexpand(var.admin_ssh_private_key_path))
-      bastion_host        = "10.10.10.15"
+      bastion_host        = local.host["admin-gw"].ip
       bastion_user        = "root"
       bastion_private_key = file(pathexpand(var.admin_ssh_private_key_path))
       timeout             = "3m"
@@ -122,10 +125,10 @@ resource "proxmox_virtual_environment_container" "archive" {
 
     connection {
       type                = "ssh"
-      host                = "10.10.20.30"
+      host                = local.host.archive.ip
       user                = "root"
       private_key         = file(pathexpand(var.admin_ssh_private_key_path))
-      bastion_host        = "10.10.10.15"
+      bastion_host        = local.host["admin-gw"].ip
       bastion_user        = "root"
       bastion_private_key = file(pathexpand(var.admin_ssh_private_key_path))
       timeout             = "3m"
@@ -146,7 +149,7 @@ resource "terraform_data" "archive_root_config" {
   }
 
   provisioner "local-exec" {
-    command = "ssh -i ${pathexpand(var.admin_ssh_private_key_path)} -o BatchMode=yes -o StrictHostKeyChecking=accept-new root@${var.archive_node_ssh_host} 'bash -s' < ${path.module}/files/archive-root-config.sh"
+    command = "${local.node_ssh[local.host.archive.node]} 'bash -s' < ${path.module}/files/archive-root-config.sh"
   }
 }
 
@@ -167,9 +170,9 @@ resource "terraform_data" "archive_users" {
   provisioner "local-exec" {
     command = <<-EOT
       set -eu
-      SSH="ssh -i ${pathexpand(var.admin_ssh_private_key_path)} -o BatchMode=yes -o StrictHostKeyChecking=yes root@${var.archive_node_ssh_host}"
-      $SSH 'pct exec 110 -- sh -c "cat > /usr/local/sbin/archive-users.sh && chmod 0700 /usr/local/sbin/archive-users.sh"' < ${path.module}/../../services/archive/users.sh
-      printf 'BENE_PASSWORD=%s\nIRENE_PASSWORD=%s\n' "$BENE_PASSWORD" "$IRENE_PASSWORD" | $SSH 'pct exec 110 -- /usr/local/sbin/archive-users.sh'
+      SSH="${local.node_ssh[local.host.archive.node]}"
+      $SSH 'pct exec ${local.host.archive.vmid} -- sh -c "cat > /usr/local/sbin/archive-users.sh && chmod 0700 /usr/local/sbin/archive-users.sh"' < ${path.module}/../../services/archive/users.sh
+      printf 'BENE_PASSWORD=%s\nIRENE_PASSWORD=%s\n' "$BENE_PASSWORD" "$IRENE_PASSWORD" | $SSH 'pct exec ${local.host.archive.vmid} -- /usr/local/sbin/archive-users.sh'
     EOT
 
     environment = {
