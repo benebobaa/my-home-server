@@ -9,3 +9,14 @@ datasources:
     url: http://127.0.0.1:9090
     isDefault: true
     editable: false
+  # Alerts + silences in the Grafana UI (Alertmanager itself listens on
+  # localhost only: it has no login).
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://127.0.0.1:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

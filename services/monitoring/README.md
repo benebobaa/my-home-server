@@ -9,15 +9,16 @@ stack and why VLAN 10: [ADR 0006](../../docs/decisions/0006-monitoring-stack.md)
 | --- | --- |
 | Grafana | `http://10.10.10.16:3000` (or `monitoring.home.arpa`), user `admin`. Password: `sops decrypt --extract '["TF_VAR_monitoring_grafana_admin_password"]' proxmox/opentofu/secrets.sops.env` |
 | Prometheus | `http://10.10.10.16:9090` (targets, alerts, ad-hoc queries; no login, MGMT only) |
-| Alertmanager | `http://10.10.10.16:9093` (active alerts, silences) |
+| Alertmanager | `127.0.0.1:9093` in the CT only: it has no login, and whoever reaches it can silence alerts. Alerts and silences: Grafana → Alerting (Alertmanager datasource), or `amtool` in the CT |
 | Retention | 30 days, capped at 8 GB (12 GB disk) |
 | Built by | `proxmox/opentofu/monitoring.tf` → `setup.sh`, `secrets.sh` (in guest), `files/monitoring-pve-token.sh`, `files/monitoring-pve-notify.sh` (pve2, root) |
 | Host side | Ansible `--tags monitoring` (node_exporter + SMART/thin-pool collectors on pve2/pve3) |
 | Router side | `network/routeros/snmp.tf` (SNMPv3 user `monitoring`) + firewall `monitoring` rules |
 
 All of it is reachable from the operator Mac over Tailscale (admin-gw routes
-10.10.10.0/24). Prometheus and Alertmanager have no login: they are reachable
-only from TRUSTED, MGMT and admin-gw, the same as the Proxmox UIs.
+10.10.10.0/24). Prometheus has no login. It is read-only (no admin or
+lifecycle API) and reachable only from TRUSTED, MGMT and admin-gw, the same
+as the Proxmox UIs.
 
 ## What is watched
 
@@ -48,6 +49,15 @@ validated with `promtool` before a reload. Highlights:
 Inhibitions (`alertmanager/alertmanager.yml`): an unreachable host suppresses
 its own scrape and probe alerts, and a node that is down suppresses its
 guests' alerts.
+
+**Not yet verified: a cold reboot of a node.** CT 120 survived a cold
+restart (`pct stop`/`start`), and the host units are enabled for boot. But
+AGENTS.md proves boot-safety with a node reboot, and none was possible on
+2026-10-09: pve2 holds the paused `scrounge-ntfs` recovery and the hand
+mounts the archive CT needs, and pve3 has the `/mnt/cap-*` rescue mounts.
+Do it with the next planned pve2 reboot, following the remount steps in
+`services/archive/README.md`. Then check that `pct list` shows 120 running
+and that all targets are up.
 
 Not yet: backups (`pve_not_backed_up_total`, with PBS), the public tunnel
 (an external HTTP check, with Cloudflare Tunnel), hEX remote syslog / logs,
@@ -91,8 +101,9 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   already open to `10.10.0.0/16` + the switch (`forward_monitoring_icmp`).
   Anything else (an exporter port) needs a new exact rule in
   `network/routeros/firewall.tf`.
-- **Silence** during planned work: Alertmanager UI → New Silence, or
-  `amtool silence add instance=pve3 --duration 1h --comment reboot`.
+- **Silence** during planned work: Grafana → Alerting → Silences
+  (Alertmanager datasource), or
+  `ssh root@10.10.10.12 'pct exec 120 -- amtool --alertmanager.url=http://127.0.0.1:9093 silence add instance=pve3 --duration 1h --comment reboot'`.
 - **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
   `DASHBOARDS`). UI edits are not saved: bump the pin, or add a JSON file to
   the repo.

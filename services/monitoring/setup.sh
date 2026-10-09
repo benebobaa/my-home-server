@@ -45,6 +45,7 @@ echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stab
   > /etc/apt/sources.list.d/grafana.list
 
 apt-get update -qq
+apt-mark unhold grafana >/dev/null 2>&1 || true   # a held package refuses a new pin
 apt-get install -y -qq --no-install-recommends \
   ca-certificates curl python3-venv \
   prometheus prometheus-alertmanager prometheus-blackbox-exporter \
@@ -94,10 +95,12 @@ cat > /etc/default/prometheus <<'EOF'
 # managed by services/monitoring/setup.sh
 ARGS="--storage.tsdb.retention.time=30d --storage.tsdb.retention.size=8GB --web.listen-address=:9090"
 EOF
-# Alertmanager: single instance, no gossip port.
+# Alertmanager: single instance, no gossip port, localhost only — it has no
+# login, and whoever reaches it can silence alerts. Silences go through
+# Grafana (authenticated; Alertmanager datasource) or amtool in the CT.
 cat > /etc/default/prometheus-alertmanager <<'EOF'
 # managed by services/monitoring/setup.sh
-ARGS="--cluster.listen-address= --web.listen-address=:9093"
+ARGS="--cluster.listen-address= --web.listen-address=127.0.0.1:9093"
 EOF
 # Exporters: localhost only (Prometheus is the only client).
 cat > /etc/default/prometheus-blackbox-exporter <<'EOF'
