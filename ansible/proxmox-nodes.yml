@@ -413,6 +413,33 @@
       notify: restart node_exporter
       tags: monitoring
 
+    # Binding the MGMT IP races the network at boot: on pve2's 2026-10-09
+    # reboot it started before 10.10.10.12 existed ("cannot assign requested
+    # address"), burned systemd's 5 quick restarts and stayed dead.
+    - name: Ensure the node_exporter drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-node-exporter.service.d
+        state: directory
+        mode: "0755"
+      tags: monitoring
+
+    - name: Start node_exporter after the network, retry until the MGMT IP exists
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/prometheus-node-exporter.service.d/homelab.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+          [Unit]
+          Wants=network-online.target
+          After=network-online.target
+          StartLimitIntervalSec=0
+
+          [Service]
+          Restart=always
+          RestartSec=5s
+        mode: "0644"
+      notify: restart node_exporter
+      tags: monitoring
+
     - name: Install the thin-pool collector service + timer
       ansible.builtin.copy:
         dest: "/etc/systemd/system/{{ item.name }}"
@@ -581,6 +608,23 @@
       check_mode: false
       tags: verify
 
+    - name: Read node_exporter state
+      ansible.builtin.shell: |
+        echo "exporter=$(systemctl is-active prometheus-node-exporter)"
+        ss -ltnH "sport = :9100" | awk '{print "listen=" $4}'
+      register: exporter_state
+      changed_when: false
+      check_mode: false
+      tags: verify
+
+    - name: Assert node_exporter runs on the MGMT IP only
+      ansible.builtin.assert:
+        that:
+          - "'exporter=active' in exporter_state.stdout"
+          - "exporter_state.stdout_lines | select('match', '^listen=') | list == ['listen=' + ansible_host + ':9100']"
+        fail_msg: "node_exporter drifted: {{ exporter_state.stdout_lines }}"
+      tags: verify
+
     - name: Assert thin-pool autoextend, monitoring, swappiness, trim timer
       ansible.builtin.assert:
         that:
@@ -623,6 +667,7 @@
       ansible.builtin.systemd_service:
         name: prometheus-node-exporter.service
         state: restarted
+        daemon_reload: true
 
     - name: update grub
       ansible.builtin.command: update-grub

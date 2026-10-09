@@ -50,14 +50,12 @@ Inhibitions (`alertmanager/alertmanager.yml`): an unreachable host suppresses
 its own scrape and probe alerts, and a node that is down suppresses its
 guests' alerts.
 
-**Not yet verified: a cold reboot of a node.** CT 120 survived a cold
-restart (`pct stop`/`start`), and the host units are enabled for boot. But
-AGENTS.md proves boot-safety with a node reboot, and none was possible on
-2026-10-09: pve2 holds the paused `scrounge-ntfs` recovery and the hand
-mounts the archive CT needs, and pve3 has the `/mnt/cap-*` rescue mounts.
-Do it with the next planned pve2 reboot, following the remount steps in
-`services/archive/README.md`. Then check that `pct list` shows 120 running
-and that all targets are up.
+**Cold reboot, verified 2026-10-09:** both nodes rebooted. CT 120 and
+admin-gw came back on their own, and all targets were up again. The first
+reboot found node_exporter dead on pve2: it bound the MGMT IP before the
+address existed and used up systemd's 5 quick restarts. It now starts after
+`network-online.target` and retries without limit (Ansible drop-in). A
+second pve2 cold reboot had it listening at 12.9 s on the first try.
 
 Not yet: backups (`pve_not_backed_up_total`, with PBS), the public tunnel
 (an external HTTP check, with Cloudflare Tunnel), hEX remote syslog / logs,
