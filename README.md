@@ -64,7 +64,7 @@ sops exec-env secrets.sops.env 'tofu apply'   # commit it to the device
 - [x] Family archive, interim (2026-10-09): per-person tree (`irene/ bene/ clara/ family/`) as the verified second copy on pve2's SSD; read-only File Browser over Tailscale for Bene + Irene ([ADR 0005](docs/decisions/0005-family-archive-over-tailscale.md), `services/archive/`). Not boot-safe yet
 - [ ] Family archive, final: Irene's `Captures` re-encoded (~12 % size) so everything fits in two copies; then pve2's HDD becomes a ZFS pool (needs an explicit yes, destructive)
 - [x] Monitoring (2026-10-09): Prometheus + Alertmanager + Grafana in CT 120 on pve2 (`10.10.10.16`, VLAN 10). It watches both nodes (SMART, thin pool, AC power, temperatures), the cluster (quorum, guests), the hEX over SNMPv3, and ping/HTTP/DNS reachability ([ADR 0006](docs/decisions/0006-monitoring-stack.md), `services/monitoring/`)
-- [ ] Alert channel: Telegram bot + healthchecks.io dead-man's switch are wired and route to `blackhole` until the operator creates the two accounts (`services/monitoring/README.md` § Operator steps)
+- [ ] Alert channel: Telegram live (2026-10-09, `@benehomeserver_bot`; Alertmanager + Proxmox notifications). healthchecks.io dead-man's switch still to create: the Watchdog routes to `blackhole` until then (`services/monitoring/README.md` § Operator steps)
 - [ ] Foundation, before any stateful service: backups (PBS + test restore), UPS + clean shutdown, secrets (SOPS), encrypted IaC state, quorum tie-breaker
 - [ ] Databases → apps
 - [ ] Proxmox: pve1 (desktop, RTX 3060) — being built
