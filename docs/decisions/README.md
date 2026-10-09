@@ -11,3 +11,4 @@ never edited — supersede them with a new one.
 | [0004](0004-public-ingress-cloudflare-tunnel.md) | Public ingress through Cloudflare Tunnel; VPS path deferred |
 | [0005](0005-family-archive-over-tailscale.md) | Family archive served over Tailscale node sharing, not Cloudflare Tunnel |
 | [0006](0006-monitoring-stack.md) | Monitoring: Prometheus + Alertmanager + Grafana on VLAN 10, Telegram, external dead-man's switch |
+| [0007](0007-repo-architecture-for-growth.md) | Repo architecture for growth: one inventory, an LXC module, Ansible for guest config |
