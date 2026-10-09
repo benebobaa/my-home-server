@@ -22,19 +22,36 @@ as the Proxmox UIs.
 
 ## What is watched
 
+Targets are **generated from the `monitoring:` blocks in `inventory/lab.yaml`**
+(ADR 0008): `proxmox/opentofu/monitoring.tf` writes one file per job to
+`/etc/prometheus/targets/` through `targets.py`, and Prometheus picks the
+files up on change. Every generated target carries `instance` (inventory
+name) and `tier`. `prometheus.yml` keeps only the stack's own localhost
+targets and the two internet probes.
+
 | Job | Targets | How |
 | --- | --- | --- |
 | `node` | pve2, pve3 (`:9100` on the MGMT IP), the CT itself | node_exporter + textfile collectors: SMART every 15 min (`smartctl -i -H -A`, never a self-test), LVM thin pool every minute, apt |
 | `pve` | cluster `homelab` via pve2 (guests, storage, quorum); pve3's node config | prometheus-pve-exporter 3.10.1 (venv), token `prometheus@pve!monitoring` (PVEAuditor) |
 | `snmp_hex` | hEX `10.10.10.1` | snmp_exporter, SNMPv3 authPriv (SHA/AES), modules `system if_mib hrDevice hrStorage mikrotik`. A walk takes ~2.5 s every 60 s, about 1 % CPU on the hEX |
-| `blackbox_icmp` | hex, switch, pve2, pve3, admin-gw, archive, 1.1.1.1, 8.8.8.8 | ping |
-| `blackbox_http` | switch UI, both PVE UIs | any HTTP answer |
+| `blackbox_icmp` | every live host with a monitoring block, 1.1.1.1, 8.8.8.8 | ping |
+| `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`) | HTTP |
+| `service` | every `metrics:` port (today: the log store, CT 121) | `/metrics` |
 | `blackbox_dns` | hEX resolver | resolves `cloudflare.com` |
 
 ## Alerts
 
 Rules live in `prometheus/rules/`, one file per area. Every rule set is
-validated with `promtool` before a reload. Highlights:
+validated with `promtool` before a reload. Every rule has a `runbook_url`
+into [`docs/runbooks/alerts.md`](../../docs/runbooks/alerts.md); the Telegram
+message (`alertmanager/telegram.tmpl`) links it.
+
+**Routing by severity** (`alertmanager/alertmanager.yml`): `critical` →
+Telegram now, repeated every 4 h; `warning` → Telegram, held 23:00–07:00
+WIB; `info` → Telegram without sound. `HostUnreachable`, `HttpProbeFailed`
+and `TargetDown` take their severity from the host's `tier`.
+
+Highlights:
 
 | Alert | Why it exists |
 | --- | --- |
@@ -95,16 +112,19 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   streams the directory into the CT, runs `setup.sh`, then `secrets.sh`
   (`terraform_data.monitoring_setup`, keyed on the files' hashes). Never edit
   configs in the CT: the next apply overwrites them.
-- **A new scrape target** in another VLAN needs the hEX to allow it: ICMP is
-  already open to `10.10.0.0/16` + the switch (`forward_monitoring_icmp`).
-  Anything else (an exporter port) needs a new exact rule in
-  `network/routeros/firewall.tf`.
+- **A new host or target:** its `monitoring:` block in `inventory/lab.yaml`
+  ([the standard](../../docs/standards/observability.md)), then `tofu apply` in
+  `network/routeros` (the exact scrape rule for hosts outside MGMT is
+  generated) and in `proxmox/opentofu` (targets are re-pushed). Never add a
+  lab host to `prometheus.yml`.
 - **Silence** during planned work: Grafana → Alerting → Silences
   (Alertmanager datasource), or
   `ssh root@10.10.10.12 'pct exec 120 -- amtool --alertmanager.url=http://127.0.0.1:9093 silence add instance=pve3 --duration 1h --comment reboot'`.
 - **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
-  `DASHBOARDS`). UI edits are not saved: bump the pin, or add a JSON file to
-  the repo.
+  `DASHBOARDS`), plus JSON in `grafana/dashboards/` (the shared **Service**
+  dashboard; app dashboards as `app-<name>.json`). UI edits are not saved.
+- **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
+  the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
   packages (security updates via apt). Grafana is pinned and held
   (`GRAFANA_VERSION`). pve-exporter is pinned (`PVE_EXPORTER_VERSION`). The
@@ -123,6 +143,12 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   (`PrivateTmp=true`).
 - `amtool check-config` rejects `chat_id: 0`. The unconfigured placeholder is
   `1` on a receiver that is not routed to.
+- `amtool check-config` ignores a template glob that matches nothing, so it
+  never checks the template. `make check` renders it with
+  `amtool template render` instead.
+- Prometheus must start after `/etc/prometheus/targets/` exists, or its file
+  watch fails and new target files wait for the 5-minute re-read
+  (`setup.sh` creates it).
 - Tofu prints `(output suppressed due to sensitive value in config)` for these
   steps, because the SSH key path variable is marked sensitive. To debug, run
   the same command by hand: `ssh root@10.10.10.12 'pct exec 120 -- bash /root/monitoring/setup.sh'`.

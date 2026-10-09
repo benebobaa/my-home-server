@@ -1,0 +1,13 @@
+# → services/monitoring/prometheus/rules/app-myapp.yml (only if the generic
+# HostUnreachable / HttpProbeFailed / TargetDown are not enough).
+# Every rule: severity (critical | warning | info), summary, runbook_url.
+groups:
+  - name: app-myapp
+    rules:
+      - alert: MyappQueueBacklog
+        expr: myapp_queue_depth{job="service", instance="myapp"} > 1000
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "myapp: {{ $value }} jobs queued for 15 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/services/myapp/README.md#queue-backlog

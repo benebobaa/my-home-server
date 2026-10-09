@@ -1,0 +1,42 @@
+# → proxmox/opentofu/myapp.tf. Service notes: services/myapp/README.md
+#
+# Everything in the guest is converged through the node's pinned root SSH +
+# `pct exec` (never a direct SSH to the CT: its host key changes on rebuild).
+
+locals {
+  myapp_dir = "${path.module}/../../services/myapp"
+  myapp_ssh = local.node_ssh[local.host.myapp.node]
+  myapp_files_sha = sha256(join("", [
+    for f in sort(fileset(local.myapp_dir, "**")) :
+    filesha256("${local.myapp_dir}/${f}") if f != "README.md"
+  ]))
+}
+
+module "myapp" {
+  source = "./modules/lxc-guest"
+
+  host             = local.host.myapp
+  description      = "myapp — what it is. Managed by OpenTofu: proxmox/opentofu."
+  tags             = ["myapp", "tofu"]
+  template_file_id = proxmox_download_file.debian_13_template_pve2.id
+  ssh_public_key   = local.admin_ssh_public_key
+
+  memory_mb = 512
+  disk_gb   = 4
+}
+
+resource "terraform_data" "myapp_setup" {
+  triggers_replace = [local.myapp_files_sha, module.myapp.generation]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -eu
+      COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.myapp_dir} -cf - . \
+        | ${local.myapp_ssh} 'pct exec ${module.myapp.vmid} -- sh -c "rm -rf /root/myapp && mkdir -p /root/myapp && tar -xf - -C /root/myapp"'
+      ${local.myapp_ssh} 'pct exec ${module.myapp.vmid} -- bash /root/myapp/setup.sh'
+    EOT
+  }
+}
+
+# Also, with `logs: true`: add `myapp = module.myapp.generation` to
+# local.guest_generation in logs.tf (log shipping is then automatic).

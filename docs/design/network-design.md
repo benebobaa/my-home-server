@@ -316,7 +316,8 @@ backend home_https
 
 - **Backups:** PBS for VMs/LXC (target to be decided, ideally not on the same cluster), plus config exports for hEX, SG108E and VPS.
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
-- **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, and a healthchecks.io dead-man's switch fires when home goes dark. Still to add: an external check of the public tunnel once it exists.
+- **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, routed by severity, and a healthchecks.io dead-man's switch fires when home goes dark. Every host declares how it is watched in `inventory/lab.yaml`, and targets and firewall rules are generated from that ([ADR 0008](../decisions/0008-observability-standard.md), [standard](../standards/observability.md)).
+- **Logs:** VictoriaLogs in CT 121 `logs` on VLAN 10 (`services/logs/`). Nodes and containers ship their journal; the hEX sends remote syslog (UDP 5514). Still to add: an external check of the public tunnel once it exists.
 
 ## 8. Build order and rollback
 
@@ -334,7 +335,7 @@ backend home_https
 
 - Household Wi-Fi works before and after the hEX is plugged in.
 - No lab VLAN can reach the Biznet LAN (ping the Biznet router's LAN IP from LAB; it must fail).
-- LAB, IOT and SERVERS cannot reach MGMT or TRUSTED.
+- LAB, IOT and SERVERS cannot reach MGMT or TRUSTED. One exception per log-shipping SERVERS host: TCP 9428 to the log store only (`forward_logs_ingest`, ADR 0008).
 - IOT cannot reach any internal subnet; internet works from every VLAN.
 - DMZ can reach only its exact pinholes; no SMTP-25 or non-public egress; internet capped (§4).
 - Proxmox UI (8006) and SSH respond only from TRUSTED/MGMT.
@@ -351,4 +352,4 @@ backend home_https
 - Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
 - VPS provider and region (only if an ADR 0004 trigger fires). If the VPS becomes the DMZ's egress exit, that needs policy routing, and `rp-filter=strict` does not work with routing tables: switch to `loose` and keep the per-interface pins on the accepts.
 - DMZ tenants can resolve `home.arpa` names through the hEX (the names are unreachable from the DMZ, but they leak). Fix when Kubeletto moves in: drop DNS from `vlan25-dmz` on the input chain, before the LAN DNS accept, and point the K3s VM at a public resolver.
-- The `dmz-smtp` / `dmz-private` log rules would flood the hEX's 1000-line memory log under a tenant scan, and cost CPU on the MIPS. With monitoring: remote syslog, or rate-limit the log rules.
+- The `dmz-smtp` / `dmz-private` log rules would flood the hEX's 1000-line memory log under a tenant scan, and cost CPU on the MIPS. Remote syslog is live (ADR 0008), so the lines are kept off-box; rate-limiting the log rules is still open.

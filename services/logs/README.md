@@ -21,7 +21,10 @@ apps follow: [docs/standards/observability.md](../../docs/standards/observabilit
 | hEX | BSD syslog over UDP → `:5514` (RouterOS sends this format over UDP only) | `network/routeros/logging.tf` |
 
 journal-upload keeps a cursor: after an outage of the store it resumes where
-it stopped, with the sender's own journal as the buffer. On first start it
+it stopped, with the sender's own journal as the buffer (tested 2026-10-10:
+CT 121 stopped for a minute, pve3's uploader kept retrying without hitting
+systemd's start limit, and the line logged during the outage arrived 40 s
+after the store came back; idle senders recovered on their own). On first start it
 sends the whole local journal. Lines older than the 30-day retention are
 dropped at ingest (`vl_rows_dropped_total{reason="too_small_timestamp"}`),
 which is expected.
@@ -66,6 +69,8 @@ _time:1h level:err                                 # every error in the last hou
 
 - LogsQL reads `-` and `:` as operators: `observability-standard` is not a
   word search. Quote it.
+- A bare word searches the message (`_msg`) only. `logger -t mytag hello`
+  is found by `hello`, not by `mytag`; use `SYSLOG_IDENTIFIER:mytag`.
 - `-syslog.streamFields.udp` is an array flag. It prints oddly in the
   startup log, but it works: `proc_id` is stored and not part of the stream.
 - Installing `systemd-journal-remote` (for the uploader) also ships a

@@ -15,10 +15,13 @@ Read `docs/design/network-design.md` before changing anything network-facing.
 | Proxmox hosts (pve2, pve3) | Ansible, one playbook, tagged | `ansible/proxmox-nodes.yml` |
 | Switch | no provider — config backup + runbook | `network/switch/` |
 | In-guest setup | scripts run by Tofu provisioners | `services/<name>/` |
+| Observability (targets, log shipping, alert routing) | generated from each host's `monitoring:` block | `inventory/lab.yaml` → `services/monitoring/`, `services/logs/` |
 
 Addresses, VMIDs and node placement are changed in `inventory/lab.yaml` only
 (ADR 0007); an IP typed into a `.tf` file is a review finding. New LXC
-guests use `proxmox/opentofu/modules/lxc-guest`.
+guests use `proxmox/opentofu/modules/lxc-guest`. Every live host needs a
+`monitoring:` block (ADR 0008): new services follow
+`docs/standards/observability.md` and start from `services/_template/`.
 
 Change the code, then converge. A hand edit on a router, host or guest is
 **drift**; when a one-off manual step is unavoidable (a disk format, a package
@@ -130,6 +133,7 @@ Procedures (edit, rotate, recover): `docs/runbooks/secrets.md`.
 | Kind | Where | Rule |
 | --- | --- | --- |
 | Why a choice was made | `docs/decisions/NNNN-*.md` + index | Accepted ADRs are never edited; supersede with a new one |
+| What every host/app must provide | `docs/standards/` | Change with an ADR |
 | How to do a procedure | `docs/runbooks/` | Update when the procedure changes |
 | Measurements / trials | `docs/experiments/` | |
 | What broke and why (RCA) | `docs/incidents/YYYY-MM-DD-*.md` | Timeline, evidence, action items; link the fix commits |
@@ -140,7 +144,8 @@ Reach for the runbook before acting on its area: GPU passthrough to LXC
 (`gpu-lxc-passthrough.md`), Secure Boot/DKMS signing (`secure-boot-mok.md`),
 cluster join/recovery (`proxmox-cluster.md`), node install
 (`proxmox-install.md`), power operations (`node-ops.md`), router/switch
-bootstrap (`hex-bootstrap.md`, `switch-bootstrap.md`).
+bootstrap (`hex-bootstrap.md`, `switch-bootstrap.md`), what an alert means
+(`alerts.md`).
 
 ## Working with the operator
 

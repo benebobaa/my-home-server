@@ -1,0 +1,14 @@
+# → inventory/lab.yaml, under hosts:. VMIDs and IPs follow the conventions in
+# that file's header (apps: VMID 200-299; VLAN 20: .10-.49 static).
+  myapp:
+    kind: lxc
+    vmid: 201
+    node: pve2                 # stateful → pve2; stateless/rebuildable → pve3
+    vlan: servers
+    ip: 10.10.20.40
+    note: what it is, in one line (services/myapp)
+    monitoring:
+      tier: standard           # critical | standard | best-effort
+      health: "http://{ip}:8080/healthz"
+      metrics: [8080]          # drop if the app has no /metrics
+      logs: true
