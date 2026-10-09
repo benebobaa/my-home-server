@@ -29,6 +29,14 @@ resource "routeros_ip_firewall_addr_list" "admin_gw" {
   comment = "Tailscale admin gateway (CT 101 on pve3)"
 }
 
+# Second subnet router, same routes: Tailscale HA pair with admin-gw
+# (RCA docs/incidents/2026-10-09-remote-access-degraded.md).
+resource "routeros_ip_firewall_addr_list" "admin_gw2" {
+  list    = "admin-gw"
+  address = local.host["admin-gw2"].ip
+  comment = "Tailscale admin gateway 2 (CT 102 on pve2)"
+}
+
 resource "routeros_ip_firewall_addr_list" "monitoring" {
   list    = "monitoring"
   address = local.host.monitoring.ip
@@ -71,8 +79,8 @@ resource "routeros_ip_firewall_addr_list" "non_public" {
 }
 
 # --- anti-spoofing ----------------------------------------------------------------
-# The allow rules below trust source addresses (TRUSTED 10.10.40.0/24, admin-gw
-# 10.10.10.15, the K3s VM). Without source validation, any VLAN (notably the
+# The allow rules below trust source addresses (TRUSTED 10.10.40.0/24, the
+# admin-gw list, the K3s VM). Without source validation, any VLAN (notably the
 # DMZ tenant zone) could forge those sources and be forwarded into MGMT. Strict
 # reverse-path filtering drops a packet whose source is not routed back out the
 # interface it arrived on. Safe here: single WAN, no policy routing, and

@@ -26,8 +26,9 @@ purge), record it in the commit body and the relevant runbook.
 
 ## Reaching the lab
 
-The operator Mac reaches everything over Tailscale via `admin-gw` (CT 101 on
-pve3). SSH is key-based.
+The operator Mac reaches everything over Tailscale via a pair of subnet
+routers with the same routes: `admin-gw` (CT 101 on pve3) and `admin-gw2`
+(CT 102 on pve2). Tailscale fails over between them. SSH is key-based.
 
 | Target | Address |
 | --- | --- |
@@ -96,8 +97,10 @@ matters.
   guests keep running, but management actions lock. Reboot one node at a time
   and wait for `pvecm status` → `Quorate: Yes` before touching the other.
   Agents may reboot nodes themselves as part of ongoing work, on those terms.
-- pve3 hosts `admin-gw`, the remote-access path. It comes back by itself
-  after a reboot; confirm it with `pct list`.
+- `admin-gw` (pve3) and `admin-gw2` (pve2) are the remote-access path, one
+  per node, so a node reboot never cuts access. Both come back by
+  themselves after a reboot; confirm with `pct list`. Rebuild or restart
+  them one at a time.
 - **Placement**: stateful guests (databases, monitoring data, PBS primary) go
   on pve2. pve3 has a no-name SSD and gets only stateless or rebuildable
   guests. pve1 (desktop, RTX 3060) is not built yet and will run on demand,

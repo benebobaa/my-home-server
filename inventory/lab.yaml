@@ -70,6 +70,13 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.15
     note: Tailscale subnet router (services/admin-gw)
+  admin-gw2:
+    kind: lxc
+    vmid: 102
+    node: pve2
+    vlan: mgmt
+    ip: 10.10.10.17
+    note: second Tailscale subnet router, same routes — HA pair with admin-gw (services/admin-gw)
   archive:
     kind: lxc
     vmid: 110

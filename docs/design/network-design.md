@@ -140,6 +140,7 @@ add list=admin-src address=10.10.10.0/24
 add list=dmz-backends address=10.10.20.21 comment="add one entry per exposed backend"
 add list=biznet-lan address=192.168.1.0/24 comment="VERIFY: actual Biznet LAN subnet"
 add list=admin-gw address=10.10.10.15
+add list=admin-gw address=10.10.10.17
 
 /ip firewall filter
 # input
@@ -175,7 +176,7 @@ add chain=forward action=drop comment="default drop"
 | LAB | no | no | no | n/a | no | no | yes |
 | IOT | no | no | no | no | no | n/a | yes |
 
-The Biznet/household LAN is blocked from every lab VLAN (rule `biznet-lan`), and `admin-gw` is the only MGMT host allowed to reach other internal VLANs.
+The Biznet/household LAN is blocked from every lab VLAN (rule `biznet-lan`), and the `admin-gw` pair (10.10.10.15, 10.10.10.17) are the only MGMT hosts allowed to reach other internal VLANs.
 
 **DMZ = tenant zone (as built 2026-10-08).** VLAN 25 will run other people's
 code (Kubeletto tenant workloads), and its egress leaves from the household's
@@ -344,7 +345,7 @@ backend home_https
 
 - Biznet LAN subnet: verify no overlap and set the `biznet-lan` entry.
 - Own-device Wi-Fi for the lab later (optional AP on P6); until then use the wired workstation on P7.
-- Remote admin: Tailscale chosen (`admin-gw`); tailnet policy as code and a second subnet router on pve2 still to do.
+- Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy as code still to do.
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - PBS target and the role of the 8GB laptop (full member vs quorum-only).
 - Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.

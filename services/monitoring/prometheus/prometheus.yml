@@ -90,6 +90,8 @@ scrape_configs:
         labels: { instance: pve3 }
       - targets: ["10.10.10.15"]
         labels: { instance: admin-gw }
+      - targets: ["10.10.10.17"]
+        labels: { instance: admin-gw2 }
       - targets: ["10.10.20.30"]
         labels: { instance: archive }
       - targets: ["1.1.1.1"]
