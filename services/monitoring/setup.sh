@@ -14,7 +14,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 PVE_EXPORTER_VERSION=3.10.1
 GRAFANA_VERSION=13.2.3
-GRAFANA_KEY_FPR=B53AE77BADB630A683046005963FA27710458545
+GRAFANA_KEY_FPR=B53AE77BADB630A683046005963FA27710458545  # gitleaks:allow (public key fingerprint)
 # Debian cannot ship a generated snmp.yml (MIB licensing): use upstream's, for
 # the same release as the packaged exporter. Kept beside, not over, Debian's
 # conffile /etc/prometheus/snmp.yml.
@@ -164,6 +164,7 @@ for d in "${DASHBOARDS[@]}"; do
     echo "$sha  $tmp" | sha256sum -c --quiet
     # Import-style dashboards reference ${DS_PROMETHEUS}; file provisioning
     # does not substitute inputs, so point them at the provisioned uid.
+    # shellcheck disable=SC2016  # a literal ${DS_PROMETHEUS}, not an expansion
     sed 's/\${DS_PROMETHEUS}/prometheus/g' "$tmp" > "$out"
     echo "$sha" > "$out.sha256"
     rm -f "$tmp"

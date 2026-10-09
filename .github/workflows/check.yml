@@ -1,0 +1,25 @@
+# Static checks on every push and PR: the same `make check` as on the
+# operator's Mac, with the same pinned tools (mise.toml).
+#
+# No secrets here, by design. Plans and drift checks need the age key and
+# the lab network: they stay on the operator's machine (`make drift`).
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the whole history
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+      - run: make check

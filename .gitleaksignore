@@ -1,0 +1,4 @@
+# gitleaks false positives in history (make secrets-scan). New ones: prefer an
+# inline `# gitleaks:allow` with the reason.
+# Grafana's public apt-key fingerprint, flagged as a generic API key.
+17154fc132289967d20b44cc945d34bfee82dc8b:services/monitoring/setup.sh:generic-api-key:17

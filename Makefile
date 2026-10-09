@@ -1,0 +1,76 @@
+# One entrypoint for checking and converging the lab.
+#
+#   make check   static checks: format, validate, lint, rule files, secret scan.
+#                No secrets needed; CI runs exactly this.
+#   make plan    tofu plan on both stacks (needs the age key)
+#   make drift   plan + Ansible --check --diff (needs the age key + lab access)
+#   make fmt     rewrite Tofu files in canonical format
+#
+# Tools come from mise.toml (`mise install` once). Every tool runs through
+# `mise exec` so the pinned versions win over whatever else is on PATH.
+
+SHELL := /bin/bash
+.SHELLFLAGS := -euo pipefail -c
+X := mise exec --
+
+STACKS      := network/routeros proxmox/opentofu
+SHELL_FILES := $(shell git ls-files '*.sh' .githooks/pre-commit)
+RULES       := services/monitoring/prometheus/rules/*.yml
+
+.PHONY: check fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan fmt plan drift
+
+check: fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan
+	@echo "check: all passed"
+
+fmt-check:
+	$(X) tofu fmt -check -recursive $(STACKS)
+
+# -backend=false: validation needs the providers, not the state. The
+# RouterOS provider insists on a username even to validate: give it a dummy.
+validate:
+	@for s in $(STACKS); do \
+	  echo "validate: $$s"; \
+	  $(X) tofu -chdir=$$s init -backend=false -input=false -no-color >/dev/null || exit 1; \
+	  ROS_USERNAME=validate ROS_PASSWORD=validate $(X) tofu -chdir=$$s validate -no-color || exit 1; \
+	done
+
+tflint:
+	@for s in $(STACKS); do \
+	  echo "tflint: $$s"; \
+	  $(X) tflint --chdir=$$s --config="$(CURDIR)/.tflint.hcl" --init >/dev/null || exit 1; \
+	  $(X) tflint --chdir=$$s --config="$(CURDIR)/.tflint.hcl" || exit 1; \
+	done
+
+shellcheck:
+	$(X) shellcheck $(SHELL_FILES)
+
+yamllint:
+	$(X) yamllint --strict .
+
+# Ansible aborts on non-blocking stdio in some shells: pipe through cat.
+ansible-lint:
+	cd ansible && $(X) ansible-lint proxmox-nodes.yml 2>&1 | cat; exit $${PIPESTATUS[0]}
+
+# The same checks setup.sh / secrets.sh run in the CT before a reload.
+monitoring-config:
+	$(X) promtool check rules $(RULES)
+	$(X) promtool check config --syntax-only services/monitoring/prometheus/prometheus.yml
+	sed 's/__TELEGRAM_CHAT_ID__/1/' services/monitoring/alertmanager/alertmanager.yml \
+	  | $(X) amtool check-config /dev/stdin >/dev/null && echo "amtool: alertmanager.yml OK"
+
+secrets-scan:
+	$(X) gitleaks git --no-banner --redact .
+
+fmt:
+	$(X) tofu fmt -recursive $(STACKS)
+
+plan:
+	@for s in $(STACKS); do \
+	  echo "== $$s"; \
+	  (cd $$s && $(X) sops exec-env secrets.sops.env 'tofu plan -no-color' 2>&1 \
+	    | grep -vE 'field was lost|Schema development' \
+	    | grep -E '^ *[#~+-] |Plan:|No changes|Error' || true); \
+	done
+
+drift: plan
+	cd ansible && $(X) ansible-playbook proxmox-nodes.yml --check --diff 2>&1 | cat | sed -n '/PLAY RECAP/,$$p'

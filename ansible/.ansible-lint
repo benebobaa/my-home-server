@@ -1,0 +1,7 @@
+# ansible-lint (make ansible-lint). Long lines allowed, as in the repo's
+# .yamllint: systemd units and shell one-liners inside `content: |` blocks
+# cannot be wrapped without changing the deployed files.
+profile: production
+offline: true
+skip_list:
+  - yaml[line-length]

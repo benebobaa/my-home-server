@@ -1,0 +1,19 @@
+# yamllint (make yamllint). Long lines are allowed: rule summaries and
+# Ansible shell lines read better unwrapped.
+extends: default
+
+ignore: |
+  .terraform/
+  **/.terraform/
+
+rules:
+  line-length: disable
+  document-start: disable
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  braces:
+    max-spaces-inside: 1
+  comments-indentation: disable

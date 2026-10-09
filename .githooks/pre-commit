@@ -28,4 +28,15 @@ while IFS= read -r f; do
   esac
 done < <(git diff --cached --name-only --diff-filter=ACM)
 
+# Secret patterns in the staged diff (tokens, keys) — the checks above only
+# know file types. Pinned gitleaks via mise when available; CI scans the
+# whole history either way (make secrets-scan).
+if command -v mise >/dev/null 2>&1 && mise which gitleaks >/dev/null 2>&1; then
+  mise exec -- gitleaks git --pre-commit --staged --redact --no-banner --log-level warn || fail=1
+elif command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --pre-commit --staged --redact --no-banner --log-level warn || fail=1
+else
+  echo "warning: gitleaks not installed — staged diff not scanned (mise install)" >&2
+fi
+
 exit "$fail"

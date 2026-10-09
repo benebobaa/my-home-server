@@ -37,6 +37,12 @@ VLANs and static IPs: `docs/design/network-design.md` §2.
 ## Commands
 
 ```bash
+# Toolchain: pinned in mise.toml (same versions in CI). Once per machine:
+mise install
+make check   # static: tofu fmt/validate, tflint, shellcheck, yamllint,
+             # ansible-lint, promtool/amtool, gitleaks — CI runs exactly this
+make drift   # both tofu plans + Ansible --check (needs the age key + lab)
+
 # OpenTofu — secrets come from SOPS, decrypted into the process env only
 cd network/routeros   # or proxmox/opentofu
 tofu init
@@ -73,7 +79,9 @@ matters.
    Anything that must survive a boot is proven by a **cold reboot**: live
    checks once missed a `/dev/nvidia-uvm` that only existed because a CUDA
    app had already run during that boot.
-5. Update the docs the change touches (below), then commit that piece alone.
+5. `make check` passes (CI runs it on every push; the pre-commit hook scans
+   the staged diff for secrets).
+6. Update the docs the change touches (below), then commit that piece alone.
    The commit body says what was wrong, why, and how it was verified. Pushing
    is the operator's call.
 

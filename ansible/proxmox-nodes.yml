@@ -98,7 +98,7 @@
         path: /etc/default/grub
         regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?!.*usbcore\.autosuspend=-1).*)"$'
         replace: '\1 usbcore.autosuspend=-1"'
-      notify: update grub
+      notify: Update grub
       tags: grub
 
     # ---------------------------------------------------------------- network
@@ -121,7 +121,8 @@
         src: "{{ playbook_dir | dirname }}/proxmox/nodes/{{ inventory_hostname }}/interfaces"
         dest: /etc/network/interfaces
         backup: true
-      notify: warn reboot for network
+        mode: "0644"
+      notify: Warn reboot for network
       tags: network
 
     # -------------------------------------------------------------------- ssh
@@ -135,7 +136,9 @@
     # /root/.ssh/authorized_keys is a PVE-managed symlink to
     # /etc/pve/priv/authorized_keys (cluster-shared, 0600 root:www-data) —
     # we ensure the key's presence, not the link's mode.
-    - name: Authorize the admin key for root
+    # No `mode`: the path is PVE's symlink into /etc/pve/priv (pmxcfs owns the
+    # permissions there).
+    - name: Authorize the admin key for root  # noqa: risky-file-permissions
       ansible.builtin.lineinfile:
         path: /root/.ssh/authorized_keys
         line: "{{ admin_pubkey }}"
@@ -200,7 +203,7 @@
           nvidia_modeset
         mode: "0644"
       when: has_nvidia_gpu | default(false)
-      notify: reload nvidia modules
+      notify: Reload nvidia modules
       tags: gpu
 
     - name: Install the nvidia-persistenced systemd unit
@@ -301,6 +304,7 @@
     - name: Attach the autoextend profile to the guest thin pool
       ansible.builtin.command: lvchange --metadataprofile homelab-thin-autoextend pve/data
       when: thin_profile.stdout | trim != 'homelab-thin-autoextend'
+      changed_when: true
       tags: storage
 
     # Proxmox trims VM disks (with discard=on) but never container volumes:
@@ -383,6 +387,7 @@
     - name: Apply swappiness now
       ansible.builtin.command: sysctl -p /etc/sysctl.d/90-homelab.conf
       when: live_swappiness.stdout | trim != '10'
+      changed_when: true
       tags: storage
 
     # ------------------------------------------------------------- monitoring
@@ -410,7 +415,7 @@
           # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
           ARGS="--web.listen-address={{ ansible_host }}:9100 --collector.textfile.directory=/var/lib/prometheus/node-exporter --collector.systemd"
         mode: "0644"
-      notify: restart node_exporter
+      notify: Restart node_exporter
       tags: monitoring
 
     # Binding the MGMT IP races the network at boot: on pve2's 2026-10-09
@@ -437,7 +442,7 @@
           Restart=always
           RestartSec=5s
         mode: "0644"
-      notify: restart node_exporter
+      notify: Restart node_exporter
       tags: monitoring
 
     - name: Install the thin-pool collector service + timer
@@ -525,7 +530,9 @@
         fail_msg: "GRUB has the fix but the kernel didn't get it — reboot pending?"
       tags: verify
 
-    - name: Read sleep target state
+    # Read-only probes below use systemctl directly: the systemd module would
+    # report masked/inactive units as failures or need extra parsing.
+    - name: Read sleep target state  # noqa: command-instead-of-module
       ansible.builtin.command: systemctl is-enabled sleep.target
       register: sleep_state
       changed_when: false
@@ -581,7 +588,7 @@
       when: has_nvidia_gpu | default(false)
       tags: verify
 
-    - name: Read nvidia-persistenced state
+    - name: Read nvidia-persistenced state  # noqa: command-instead-of-module
       ansible.builtin.command: systemctl is-active nvidia-persistenced.service
       register: persistenced_state
       changed_when: false
@@ -599,10 +606,13 @@
 
     - name: Read storage safety state
       ansible.builtin.shell: |
+        set -o pipefail
         echo "profile=$(lvs --noheadings -o lv_profile pve/data | tr -d ' ')"
         echo "monitor=$(lvs --noheadings -o seg_monitor pve/data | tr -d ' ')"
         echo "swappiness=$(cat /proc/sys/vm/swappiness)"
         echo "trimtimer=$(systemctl is-active pct-fstrim.timer)"
+      args:
+        executable: /bin/bash
       register: storage_state
       changed_when: false
       check_mode: false
@@ -610,8 +620,11 @@
 
     - name: Read node_exporter state
       ansible.builtin.shell: |
+        set -o pipefail
         echo "exporter=$(systemctl is-active prometheus-node-exporter)"
         ss -ltnH "sport = :9100" | awk '{print "listen=" $4}'
+      args:
+        executable: /bin/bash
       register: exporter_state
       changed_when: false
       check_mode: false
@@ -652,6 +665,7 @@
       when:
         - pvecm_status.rc != 0
         - cluster_creator | default(false) | bool
+      changed_when: true
       tags: [cluster, never]
 
     - name: Join the cluster (other nodes)
@@ -660,25 +674,27 @@
       when:
         - pvecm_status.rc != 0
         - not (cluster_creator | default(false) | bool)
+      changed_when: true
       tags: [cluster, never]
 
   handlers:
-    - name: restart node_exporter
+    - name: Restart node_exporter
       ansible.builtin.systemd_service:
         name: prometheus-node-exporter.service
         state: restarted
         daemon_reload: true
 
-    - name: update grub
+    - name: Update grub
       ansible.builtin.command: update-grub
+      changed_when: true
 
-    - name: warn reboot for network
+    - name: Warn reboot for network
       ansible.builtin.debug:
         msg: >-
           /etc/network/interfaces changed — reboot {{ inventory_hostname }}
           to apply it (the live session keeps the old config until then).
 
-    - name: reload nvidia modules
+    - name: Reload nvidia modules
       ansible.builtin.command: "modprobe {{ item }}"
       loop:
         - nvidia_uvm
