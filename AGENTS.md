@@ -129,6 +129,7 @@ Procedures (edit, rotate, recover): `docs/runbooks/secrets.md`.
 | Why a choice was made | `docs/decisions/NNNN-*.md` + index | Accepted ADRs are never edited; supersede with a new one |
 | How to do a procedure | `docs/runbooks/` | Update when the procedure changes |
 | Measurements / trials | `docs/experiments/` | |
+| What broke and why (RCA) | `docs/incidents/YYYY-MM-DD-*.md` | Timeline, evidence, action items; link the fix commits |
 | What the hardware is | `docs/hardware.md` | Update when a part changes |
 | What is done / next | `README.md` → Status | Keep it current |
 
