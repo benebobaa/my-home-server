@@ -6,7 +6,7 @@
 # Requires the DMZ to be excluded from fasttrack (firewall.tf).
 resource "routeros_queue_simple" "dmz_internet" {
   name      = "dmz-internet"
-  target    = ["10.10.25.0/24"]
+  target    = [local.vlan.dmz.cidr]
   dst       = "ether1"
   max_limit = "50M/50M"
   comment   = "DMZ <-> internet cap (upload/download)"

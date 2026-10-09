@@ -3,7 +3,7 @@
 # --- LAB -----------------------------------------------------------------------
 resource "routeros_ip_pool" "lab" {
   name   = "pool30-lab"
-  ranges = ["10.10.30.100-10.10.30.199"]
+  ranges = [local.dhcp_range.lab]
 }
 
 resource "routeros_ip_dhcp_server" "lab" {
@@ -15,15 +15,15 @@ resource "routeros_ip_dhcp_server" "lab" {
 }
 
 resource "routeros_ip_dhcp_server_network" "lab" {
-  address    = "10.10.30.0/24"
-  gateway    = "10.10.30.1"
-  dns_server = ["10.10.30.1"]
+  address    = local.vlan.lab.cidr
+  gateway    = local.vlan.lab.gateway
+  dns_server = [local.vlan.lab.gateway]
 }
 
 # --- TRUSTED -------------------------------------------------------------------
 resource "routeros_ip_pool" "trusted" {
   name   = "pool40-trusted"
-  ranges = ["10.10.40.100-10.10.40.199"]
+  ranges = [local.dhcp_range.trusted]
 }
 
 resource "routeros_ip_dhcp_server" "trusted" {
@@ -35,15 +35,15 @@ resource "routeros_ip_dhcp_server" "trusted" {
 }
 
 resource "routeros_ip_dhcp_server_network" "trusted" {
-  address    = "10.10.40.0/24"
-  gateway    = "10.10.40.1"
-  dns_server = ["10.10.40.1"]
+  address    = local.vlan.trusted.cidr
+  gateway    = local.vlan.trusted.gateway
+  dns_server = [local.vlan.trusted.gateway]
 }
 
 # --- IOT/GUEST -------------------------------------------------------------------
 resource "routeros_ip_pool" "iot" {
   name   = "pool50-iot"
-  ranges = ["10.10.50.100-10.10.50.199"]
+  ranges = [local.dhcp_range.iot]
 }
 
 resource "routeros_ip_dhcp_server" "iot" {
@@ -55,7 +55,7 @@ resource "routeros_ip_dhcp_server" "iot" {
 }
 
 resource "routeros_ip_dhcp_server_network" "iot" {
-  address    = "10.10.50.0/24"
-  gateway    = "10.10.50.1"
-  dns_server = ["10.10.50.1"]
+  address    = local.vlan.iot.cidr
+  gateway    = local.vlan.iot.gateway
+  dns_server = [local.vlan.iot.gateway]
 }

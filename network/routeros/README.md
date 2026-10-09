@@ -37,6 +37,7 @@ State is encrypted (`encryption.tf`, enforced) and committed. See
 | `bootstrap.rsc` / `bootstrap.local.rsc` | access-layer bootstrap (see runbook) |
 | `snapshots/` | `/export` dumps, taken before/after changes |
 | `versions.tf`, `provider.tf`, `variables.tf` | stack scaffolding |
+| `inventory.tf` | loads `inventory/lab.yaml`: VLANs (ids, gateways, DHCP ranges) and host addresses for DNS, address lists, pinholes, SNMP |
 | `interfaces.tf` | WAN port, VLANs on the `ether5` trunk, interface lists |
 | `addressing.tf` | gateways + WAN DHCP client |
 | `dhcp.tf` | DHCP pools/servers for VLANs 30/40/50 |

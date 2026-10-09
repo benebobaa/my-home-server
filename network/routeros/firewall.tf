@@ -7,39 +7,39 @@
 # --- address lists --------------------------------------------------------------
 resource "routeros_ip_firewall_addr_list" "admin_src_trusted" {
   list    = "admin-src"
-  address = "10.10.40.0/24"
+  address = local.vlan.trusted.cidr
   comment = "TRUSTED"
 }
 
 resource "routeros_ip_firewall_addr_list" "admin_src_mgmt" {
   list    = "admin-src"
-  address = "10.10.10.0/24"
+  address = local.vlan.mgmt.cidr
   comment = "MGMT"
 }
 
 resource "routeros_ip_firewall_addr_list" "admin_src_native" {
   list    = "admin-src"
-  address = "192.168.99.0/29"
+  address = local.vlan.native.cidr
   comment = "switch management / P1 recovery segment"
 }
 
 resource "routeros_ip_firewall_addr_list" "admin_gw" {
   list    = "admin-gw"
-  address = "10.10.10.15"
+  address = local.host["admin-gw"].ip
   comment = "Tailscale admin gateway (CT 101 on pve3)"
 }
 
 resource "routeros_ip_firewall_addr_list" "monitoring" {
   list    = "monitoring"
-  address = "10.10.10.16"
+  address = local.host.monitoring.ip
   comment = "Prometheus (CT 120 on pve2)"
 }
 
 # What the monitoring host may ping outside its own VLAN (blackbox probes).
 resource "routeros_ip_firewall_addr_list" "monitored" {
   for_each = {
-    "10.10.0.0/16" = "lab VLANs"
-    "192.168.99.2" = "SG108E switch"
+    (local.supernet)       = "lab VLANs"
+    (local.host.switch.ip) = "SG108E switch"
   }
 
   list    = "monitored"
@@ -172,8 +172,8 @@ resource "routeros_ip_firewall_filter" "forward_fasttrack" {
   chain            = "forward"
   action           = "fasttrack-connection"
   connection_state = "established,related"
-  src_address      = "!10.10.25.0/24"
-  dst_address      = "!10.10.25.0/24"
+  src_address      = "!${local.vlan.dmz.cidr}"
+  dst_address      = "!${local.vlan.dmz.cidr}"
   comment          = "offload established flows (not the DMZ)"
   depends_on       = [routeros_ip_firewall_filter.input_drop]
 }
@@ -199,7 +199,7 @@ resource "routeros_ip_firewall_filter" "forward_invalid" {
 resource "routeros_ip_firewall_filter" "forward_dmz_no_smtp" {
   chain              = "forward"
   action             = "drop"
-  src_address        = "10.10.25.0/24"
+  src_address        = local.vlan.dmz.cidr
   out_interface_list = routeros_interface_list.wan.name
   protocol           = "tcp"
   dst_port           = "25"
@@ -212,7 +212,7 @@ resource "routeros_ip_firewall_filter" "forward_dmz_no_smtp" {
 resource "routeros_ip_firewall_filter" "forward_dmz_no_private" {
   chain              = "forward"
   action             = "drop"
-  src_address        = "10.10.25.0/24"
+  src_address        = local.vlan.dmz.cidr
   out_interface_list = routeros_interface_list.wan.name
   dst_address_list   = "non-public"
   depends_on         = [routeros_ip_firewall_addr_list.non_public]
@@ -226,8 +226,8 @@ resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
   chain        = "forward"
   action       = "accept"
   in_interface = routeros_interface_vlan.trusted.name
-  src_address  = "10.10.40.0/24"
-  dst_address  = "10.10.0.0/16"
+  src_address  = local.vlan.trusted.cidr
+  dst_address  = local.supernet
   comment      = "TRUSTED to internal"
   depends_on   = [routeros_ip_firewall_filter.forward_invalid]
 }
@@ -241,8 +241,8 @@ resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
   action        = "accept"
   in_interface  = routeros_interface_vlan.dmz.name
   out_interface = routeros_interface_vlan.servers.name
-  src_address   = "10.10.25.20"
-  dst_address   = "10.10.20.21"
+  src_address   = local.host.k3s.ip
+  dst_address   = local.host.postgres.ip
   protocol      = "tcp"
   dst_port      = "5432"
   comment       = "DMZ pinhole: K3s VM to Postgres"
@@ -254,7 +254,7 @@ resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   action           = "accept"
   in_interface     = routeros_interface_vlan.mgmt.name
   src_address_list = "admin-gw"
-  dst_address      = "10.10.0.0/16"
+  dst_address      = local.supernet
   comment          = "admin-gw to internal"
   depends_on       = [routeros_ip_firewall_filter.forward_trusted_internal]
 }
@@ -263,7 +263,7 @@ resource "routeros_ip_firewall_filter" "forward_switch_mgmt" {
   chain            = "forward"
   action           = "accept"
   src_address_list = "admin-src"
-  dst_address      = "192.168.99.2"
+  dst_address      = local.host.switch.ip
   protocol         = "tcp"
   dst_port         = "80,443"
   comment          = "admin to the switch management UI"

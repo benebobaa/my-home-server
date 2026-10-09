@@ -16,4 +16,9 @@ rules:
     min-spaces-from-content: 1
   braces:
     max-spaces-inside: 1
+  # inventory/lab.yaml aligns its VLAN table in columns on purpose.
+  colons:
+    ignore: inventory/lab.yaml
+  commas:
+    ignore: inventory/lab.yaml
   comments-indentation: disable

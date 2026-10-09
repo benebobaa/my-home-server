@@ -1,0 +1,114 @@
+# The lab's hosts and addresses — the single source of truth (ADR 0007).
+#
+# Read by both OpenTofu stacks through the `inventory/` module (validated
+# there: unique IPs and VMIDs, every IP inside its VLAN). Change an address
+# here, never in a .tf file. Next consumers: the Ansible inventory and the
+# Prometheus targets.
+#
+# Conventions
+#   VMIDs   101-109 access/edge     110-119 storage/data
+#           120-129 observability   130-139 databases
+#           200-299 apps            300-399 tenant (DMZ)
+#   IPs     .1 gateway (hEX); MGMT .11-.13 nodes, .14 PBS, .15+ infra guests;
+#           other VLANs: .10-.49 static, .100-.199 DHCP (VLANs 30/40/50 only)
+#   status  live = exists now; planned = reserved, not built
+#   dns     A record <name>.home.arpa on the hEX (default: true when live)
+
+# Every lab VLAN except the native switch segment lives inside this range
+# ("to anything in the lab" rules on the hEX).
+supernet: 10.10.0.0/16
+
+vlans:
+  native:  { id: 1,  cidr: 192.168.99.0/29, gateway: 192.168.99.1, note: switch management only }
+  mgmt:    { id: 10, cidr: 10.10.10.0/24,   gateway: 10.10.10.1,   note: nodes, PBS, admin }
+  servers: { id: 20, cidr: 10.10.20.0/24,   gateway: 10.10.20.1,   note: production guests, static IPs }
+  dmz:     { id: 25, cidr: 10.10.25.0/24,   gateway: 10.10.25.1,   note: tenant zone, exact pinholes only }
+  lab:     { id: 30, cidr: 10.10.30.0/24,   gateway: 10.10.30.1,   dhcp: true, note: testing, internet only, DHCP }
+  trusted: { id: 40, cidr: 10.10.40.0/24,   gateway: 10.10.40.1,   dhcp: true, note: operator devices, DHCP }
+  iot:     { id: 50, cidr: 10.10.50.0/24,   gateway: 10.10.50.1,   dhcp: true, note: IoT/guest, internet only, DHCP }
+  cluster: { id: 60, cidr: 10.10.60.0/24,   gateway: null,         note: corosync/migration, L2 only }
+
+hosts:
+  # --- network devices ------------------------------------------------------
+  hex:
+    kind: device
+    vlan: mgmt
+    ip: 10.10.10.1
+    note: MikroTik hEX RB750Gr3 (also 192.168.99.1 native, 192.168.88.1 OOB ether3)
+  switch:
+    kind: device
+    vlan: native
+    ip: 192.168.99.2
+    note: TP-Link SG108E
+
+  # --- Proxmox nodes ----------------------------------------------------------
+  pve1:
+    kind: node
+    vlan: mgmt
+    ip: 10.10.10.11
+    cluster_ip: 10.10.60.11
+    status: planned
+    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060 (on demand)
+  pve2:
+    kind: node
+    vlan: mgmt
+    ip: 10.10.10.12
+    cluster_ip: 10.10.60.12
+    note: Asus i3 laptop, 12 GB; stateful guests
+  pve3:
+    kind: node
+    vlan: mgmt
+    ip: 10.10.10.13
+    cluster_ip: 10.10.60.13
+    note: Asus i3 laptop, 8 GB; stateless guests only (no-name SSD)
+
+  # --- guests -----------------------------------------------------------------
+  admin-gw:
+    kind: lxc
+    vmid: 101
+    node: pve3
+    vlan: mgmt
+    ip: 10.10.10.15
+    note: Tailscale subnet router (services/admin-gw)
+  archive:
+    kind: lxc
+    vmid: 110
+    node: pve2
+    vlan: servers
+    ip: 10.10.20.30
+    dns: false # no record yet; adding one is its own change
+    note: family archive, File Browser over Tailscale (services/archive)
+  monitoring:
+    kind: lxc
+    vmid: 120
+    node: pve2
+    vlan: mgmt
+    ip: 10.10.10.16
+    note: Prometheus, Alertmanager, Grafana (services/monitoring)
+
+  # --- reserved ---------------------------------------------------------------
+  pbs:
+    kind: vm
+    vlan: mgmt
+    ip: 10.10.10.14
+    status: planned
+    note: Proxmox Backup Server
+  postgres:
+    kind: lxc
+    node: pve2
+    vlan: servers
+    ip: 10.10.20.21
+    status: planned
+    note: Kubeletto's Postgres (DMZ pinhole from k3s on 5432)
+  k3s:
+    kind: vm
+    vlan: dmz
+    ip: 10.10.25.20
+    status: planned
+    note: Kubeletto tenant cluster (cloudflared + Traefik)
+  edge:
+    kind: lxc
+    vlan: dmz
+    ip: 10.10.25.10
+    status: planned
+    note: deferred VPS path only (wg 10.99.0.2)

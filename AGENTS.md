@@ -9,11 +9,16 @@ Read `docs/design/network-design.md` before changing anything network-facing.
 
 | Layer | Tool | Where |
 | --- | --- | --- |
+| Addresses, VMIDs, placement (single source) | YAML, validated by a Tofu module | `inventory/lab.yaml` |
 | Router (hEX, RouterOS 7) | OpenTofu, `terraform-routeros/routeros` | `network/routeros/` |
 | Proxmox guests (LXC/VM) | OpenTofu, `bpg/proxmox` | `proxmox/opentofu/` |
 | Proxmox hosts (pve2, pve3) | Ansible, one playbook, tagged | `ansible/proxmox-nodes.yml` |
 | Switch | no provider — config backup + runbook | `network/switch/` |
 | In-guest setup | scripts run by Tofu provisioners | `services/<name>/` |
+
+Addresses, VMIDs and node placement are changed in `inventory/lab.yaml` only
+(ADR 0007); an IP typed into a `.tf` file is a review finding. New LXC
+guests use `proxmox/opentofu/modules/lxc-guest`.
 
 Change the code, then converge. A hand edit on a router, host or guest is
 **drift**; when a one-off manual step is unavoidable (a disk format, a package

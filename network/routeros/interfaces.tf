@@ -15,42 +15,42 @@ resource "routeros_interface_ethernet" "wan" {
 resource "routeros_interface_vlan" "mgmt" {
   name      = "vlan10-mgmt"
   interface = "ether5"
-  vlan_id   = 10
+  vlan_id   = local.vlan.mgmt.id
   comment   = "MGMT"
 }
 
 resource "routeros_interface_vlan" "servers" {
   name      = "vlan20-servers"
   interface = "ether5"
-  vlan_id   = 20
+  vlan_id   = local.vlan.servers.id
   comment   = "SERVERS"
 }
 
 resource "routeros_interface_vlan" "dmz" {
   name      = "vlan25-dmz"
   interface = "ether5"
-  vlan_id   = 25
+  vlan_id   = local.vlan.dmz.id
   comment   = "DMZ"
 }
 
 resource "routeros_interface_vlan" "lab" {
   name      = "vlan30-lab"
   interface = "ether5"
-  vlan_id   = 30
+  vlan_id   = local.vlan.lab.id
   comment   = "LAB"
 }
 
 resource "routeros_interface_vlan" "trusted" {
   name      = "vlan40-trusted"
   interface = "ether5"
-  vlan_id   = 40
+  vlan_id   = local.vlan.trusted.id
   comment   = "TRUSTED"
 }
 
 resource "routeros_interface_vlan" "iot" {
   name      = "vlan50-iot"
   interface = "ether5"
-  vlan_id   = 50
+  vlan_id   = local.vlan.iot.id
   comment   = "IOT/GUEST"
 }
 

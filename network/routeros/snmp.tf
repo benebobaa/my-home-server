@@ -28,7 +28,7 @@ resource "routeros_snmp" "this" {
 
 resource "routeros_snmp_community" "monitoring" {
   name                    = "monitoring"
-  addresses               = ["10.10.10.16/32"]
+  addresses               = ["${local.host.monitoring.ip}/32"]
   security                = "private"
   authentication_protocol = "SHA1"
   authentication_password = var.snmp_auth_password

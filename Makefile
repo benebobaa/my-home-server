@@ -14,16 +14,24 @@ SHELL := /bin/bash
 X := mise exec --
 
 STACKS      := network/routeros proxmox/opentofu
+MODULES     := inventory proxmox/opentofu/modules/lxc-guest
 SHELL_FILES := $(shell git ls-files '*.sh' .githooks/pre-commit)
 RULES       := services/monitoring/prometheus/rules/*.yml
 
-.PHONY: check fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan fmt plan drift
+.PHONY: check inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan fmt plan drift
 
-check: fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan
+check: inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan
 	@echo "check: all passed"
 
+# inventory/lab.yaml: unique IPs/VMIDs, IPs inside their VLAN, known nodes.
+# Preconditions only run at plan time; the module has no providers or state,
+# so it plans without secrets.
+inventory:
+	$(X) tofu -chdir=inventory init -backend=false -input=false -no-color >/dev/null
+	$(X) tofu -chdir=inventory plan -input=false -no-color -lock=false >/dev/null && echo "inventory: lab.yaml OK"
+
 fmt-check:
-	$(X) tofu fmt -check -recursive $(STACKS)
+	$(X) tofu fmt -check -recursive $(STACKS) $(MODULES)
 
 # -backend=false: validation needs the providers, not the state. The
 # RouterOS provider insists on a username even to validate: give it a dummy.
@@ -35,7 +43,7 @@ validate:
 	done
 
 tflint:
-	@for s in $(STACKS); do \
+	@for s in $(STACKS) $(MODULES); do \
 	  echo "tflint: $$s"; \
 	  $(X) tflint --chdir=$$s --config="$(CURDIR)/.tflint.hcl" --init >/dev/null || exit 1; \
 	  $(X) tflint --chdir=$$s --config="$(CURDIR)/.tflint.hcl" || exit 1; \
@@ -62,7 +70,7 @@ secrets-scan:
 	$(X) gitleaks git --no-banner --redact .
 
 fmt:
-	$(X) tofu fmt -recursive $(STACKS)
+	$(X) tofu fmt -recursive $(STACKS) $(MODULES)
 
 plan:
 	@for s in $(STACKS); do \

@@ -16,3 +16,6 @@ tfplan
 
 # macOS
 .DS_Store
+
+# ansible-lint cache
+.ansible/

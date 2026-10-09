@@ -57,24 +57,9 @@ flowchart TB
 | 60 | CLUSTER | 10.10.60.0/24 | none | Corosync/migration, L2 only, not on router |
 | 999 | BLACKHOLE | none | none | Unused native VLAN for trunk ports |
 
-**Static addresses**
+**Static addresses** live in [`inventory/lab.yaml`](../../inventory/lab.yaml), the single source of truth ([ADR 0007](../decisions/0007-repo-architecture-for-growth.md)). It holds every node, guest, device and reserved address with its VLAN and VMID, plus the VMID and IP conventions. Both OpenTofu stacks read it, and `make check` validates it. Outside the lab VLANs: hEX OOB (ether3) `192.168.88.1/24`; the deferred VPS path's WireGuard `10.99.0.1` (VPS) / `10.99.0.2` (edge).
 
-| Host | MGMT (VLAN 10) | CLUSTER (VLAN 60) | Other |
-| --- | --- | --- | --- |
-| pve1 (desktop: Ryzen 5 5600, 32GB, RTX 3060) | 10.10.10.11 | 10.10.60.11 |  |
-| pve2 (Asus i3 laptop, 12GB) | 10.10.10.12 | 10.10.60.12 |  |
-| pve3 (Asus i3 laptop, 8GB) | 10.10.10.13 | 10.10.60.13 |  |
-| PBS (future) | 10.10.10.14 |  |  |
-| Postgres LXC (Kubeletto, future, pve2) |  |  | 10.10.20.21 (VLAN 20) |
-| K3s VM (Kubeletto tenant cluster, future) |  |  | 10.10.25.20 (VLAN 25) |
-| admin-gw LXC (Tailscale subnet router) | 10.10.10.15 |  |  |
-| monitoring LXC (Prometheus/Grafana, CT 120, pve2) | 10.10.10.16 |  |  |
-| archive LXC (File Browser over Tailscale, CT 110, pve2) |  |  | 10.10.20.30 (VLAN 20) |
-| edge LXC (deferred VPS path only) |  |  | 10.10.25.10, wg 10.99.0.2 |
-| hEX OOB (ether3) |  |  | 192.168.88.1/24 |
-| VPS |  |  | wg 10.99.0.1 |
-
-Internal DNS: hEX resolver, names under `home.arpa` (`network/routeros/dns.tf`). Public names (`kubeletto.com`, `kubeletto.app`) are authoritative on **Cloudflare DNS** only. No split-horizon: HSTS `includeSubDomains; preload` makes every public subdomain HTTPS-only, so LAN clients go through Cloudflare like everyone else.
+Internal DNS: hEX resolver, names under `home.arpa` (`network/routeros/dns.tf`, generated from `lab.yaml` for hosts with `dns: true`). Public names (`kubeletto.com`, `kubeletto.app`) are authoritative on **Cloudflare DNS** only. No split-horizon: HSTS `includeSubDomains; preload` makes every public subdomain HTTPS-only, so LAN clients go through Cloudflare like everyone else.
 
 ## 3. SG108E configuration
 
