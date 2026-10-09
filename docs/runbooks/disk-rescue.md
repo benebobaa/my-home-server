@@ -71,7 +71,9 @@ until the replacement disk arrives.
 
 - pve2: thin LV `pve/rescue-staging` mounted at `/mnt/staging` (not in fstab).
 - pve2 HDD `sda4` (old Windows E:, contents copied to staging first) mounted
-  read-write with `ntfs3 -o force` at `/mnt/e4`, overriding the Fast Startup dirty flag; it
+  at `/mnt/e4`: read-write with `ntfs3 -o force` during the rescue and
+  re-encode (overriding the Fast Startup dirty flag), **read-only** since the
+  2026-10-09 reboot (`services/archive/README.md`); it
   holds `_pve3-rescue/sda2.img` and a second copy of the extracted pve3 files
   (`_pve3-rescue/extract/`).
 - Packages: pve2 `ntfs-3g gddrescue ddrutility scrounge-ntfs`;

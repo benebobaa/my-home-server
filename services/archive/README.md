@@ -67,8 +67,20 @@ If it is tightened, keep shared users → `archive:443` allowed.
 ## Not boot-safe yet
 
 `start_on_boot = false`: `/mnt/staging` and `/mnt/e4` are mounted by hand
-(rescue leftovers, not in fstab). After a pve2 reboot: remount them, then
-`pct start 110`. This goes away when the archive moves to a ZFS pool on the HDD.
+(rescue leftovers, not in fstab). This goes away when the archive moves to a
+ZFS pool on the HDD. After a pve2 reboot (done this way 2026-10-09):
+
+```sh
+ssh root@10.10.10.12
+mount -o discard /dev/pve/rescue-staging /mnt/staging
+mount -t ntfs3 -o ro UUID=285A98915A985D7E /mnt/e4   # pve2 HDD sda4, read-only
+pct start 110
+```
+
+`/mnt/e4` is read-only now: the re-encodes are finished, and it holds the only
+copy of the original `Captures`. Remount it `rw,force` only for a deliberate
+write. Check: the archive URL loads, `irene/zoom-recordings` lists 288 files,
+and the `HostUnreachable` alert for `archive` resolves.
 
 ## Maintenance
 
