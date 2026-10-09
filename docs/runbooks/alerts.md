@@ -51,6 +51,18 @@ shows the error. A host outside MGMT needs the hEX scrape rule
 **Fix:** restart the exporter. If it is a new target, `tofu apply` in
 `network/routeros`.
 
+### RemoteAccessDown
+**Meaning:** both Tailscale subnet routers (`admin-gw` on pve3, `admin-gw2`
+on pve2) have been unreachable for 3 min. Nothing in the lab is reachable
+remotely. One gateway down is only `HostUnreachable` (warning): the pair
+fails over.
+**Check:** from home (VLAN 40 or the OOB port), `pct list` on both nodes.
+Both nodes down at once → power (`HostOnBattery`, healthchecks.io).
+**Fix:** start or restart the gateways (`pct start 101` on pve3,
+`pct start 102` on pve2); a gateway that is up but degraded needs its
+`tailscaled` restarted (`services/admin-gw/README.md`). Physical access may
+be needed: the operator.
+
 ### InternetDown
 **Meaning:** 1.1.1.1 and 8.8.8.8 both silent for 3 min: the Biznet uplink is
 down. Telegram is unreachable while it lasts; this arrives afterwards.

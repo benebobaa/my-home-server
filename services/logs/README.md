@@ -62,6 +62,11 @@ _time:1h level:err                                 # every error in the last hou
 - **A new container that ships logs:** `logs: true` in its `lab.yaml` block,
   and its recreation marker in `local.guest_generation` (`logs.tf`); the plan
   fails until it is there.
+- **The archive CT ships too** (`log_shipping["archive"]`), but it stays
+  stopped after a pve2 reboot until the operator remounts its disks
+  (`services/archive/README.md`). In that window, a `tofu apply` that
+  re-runs shipping (any `ship.sh` edit) fails on `pct exec 110`: remount
+  first, or apply with `-target` around it.
 - **Upgrade:** bump `VL_VERSION` and `VL_SHA256` (from the release's
   `victoria-logs-linux-amd64-<ver>_checksums.txt`), apply.
 

@@ -13,6 +13,19 @@ groups:
           summary: "{{ $labels.instance }} does not answer ping"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostunreachable
 
+      # The admin gateways are an HA pair (tier standard: one down is a
+      # warning). Both down = no remote access to the lab at all: critical.
+      # Telegram still works then (CT 120 does not depend on Tailscale).
+      - alert: RemoteAccessDown
+        expr: |
+          count(probe_success{job="blackbox_icmp", instance=~"admin-gw.*"} == 0)
+            == count(probe_success{job="blackbox_icmp", instance=~"admin-gw.*"})
+        for: 3m
+        labels: { severity: critical, instance: admin-gw-pair }
+        annotations:
+          summary: "Both Tailscale admin gateways are unreachable: no remote access to the lab"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#remoteaccessdown
+
       # Both public resolvers silent = the household uplink (Biznet) is down.
       # Telegram cannot be reached then either: this arrives when the line is
       # back, as a record of the outage.
