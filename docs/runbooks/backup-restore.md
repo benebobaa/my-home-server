@@ -1,0 +1,86 @@
+# Backup and restore (PBS)
+
+Every guest is backed up nightly at 02:30 to PBS (CT 111 on pve3, storage
+`pbs`). Why and what is not covered (bind mounts — the family archive):
+[ADR 0009](../decisions/0009-backups-pbs-on-pve3.md). Service:
+[`services/pbs/`](../../services/pbs/README.md).
+
+Run commands on a node as root (`ssh root@10.10.10.12` or `.13`).
+
+## See what exists
+
+```bash
+pvesm list pbs                       # every backup: volid, size, VMID
+pvesm list pbs --vmid 120            # one guest
+pvesm status --storage pbs           # storage active? how full?
+pvesh get /cluster/backup/nightly    # the job
+```
+
+The PVE UI shows the same under Datacenter → Storage `pbs` → Backups, with
+a **Restore** button and **File Restore** for single files.
+
+## Back up now
+
+```bash
+vzdump <vmid> --storage pbs --mode snapshot        # one guest, on its node
+vzdump --all 1 --exclude 111 --storage pbs --mode snapshot   # all guests on this node
+```
+
+## Restore a whole guest — test first, then for real
+
+**Test restore (no risk to the live guest)** — what was done on 2026-10-10:
+
+```bash
+# on pve3 (more free thin pool than pve2)
+vol=$(pvesm list pbs --vmid 120 | awk 'NR>1 {print $1}' | tail -1)   # newest
+pct restore 9120 "$vol" --storage local-lvm --unique 1    # new VMID, new MAC
+pct set 9120 --delete net0 --onboot 0 --hostname restore-test   # no IP clash
+pct start 9120
+pct exec 9120 -- curl -s '127.0.0.1:9090/api/v1/query?query=count(up)'   # data there?
+pct stop 9120 && pct destroy 9120 --purge 1
+```
+
+Result then: 3.7 GiB in 45 s; Prometheus answered from data written before
+the backup (26 targets at 05:30Z, pve3's boot at 22:23:54Z).
+
+**Real restore (the guest is broken or gone):**
+
+1. Stop the broken guest: `pct stop <vmid>`.
+2. Restore over it: `pct restore <vmid> <volid> --storage local-lvm --force 1`
+   (on the node it should run on; `--force` replaces the existing disk).
+3. `pct start <vmid>`; check its service and the Service dashboard.
+4. Converge: `tofu plan` in `proxmox/opentofu` should be `No changes`. If
+   setup steps are keyed on the container's MAC (`generation`), a restore
+   with `--unique 0` keeps the MAC and nothing re-runs.
+
+A guest that is easier rebuilt than restored (admin-gw, logs) can also just
+be rebuilt with `tofu apply` (`-replace` on its module); its data is then
+the backup's to restore if needed.
+
+## Restore single files
+
+PVE UI → storage `pbs` → pick the backup → **File Restore** → browse and
+download. CLI equivalent from inside the PBS CT:
+
+```bash
+pct exec 111 -- proxmox-backup-client catalog dump <snapshot> --repository 'pve@pbs!cluster@localhost:main'
+```
+
+(needs the token secret; the UI is simpler.)
+
+## If PBS itself is gone
+
+The backups are on CT 111's root disk on pve3. Rebuild the CT with
+`tofu apply` only if the volume is lost anyway; otherwise restore the CT's
+disk first. The datastore survives a CT rebuild only if its volume is kept.
+After a rebuild, `terraform_data.pbs_link` recreates the token and storage
+entry.
+
+## When it fails
+
+- **Nightly job failed** → Telegram (PVE notification). Read the task log:
+  PVE UI → node → Tasks, or `journalctl -u pvescheduler`.
+- **Verify/GC/prune failed** → Telegram (PBS notification). In the CT:
+  `proxmox-backup-manager task list`.
+- **`PveGuestNotBackedUp`** → a guest is outside the job: see
+  [alerts.md](alerts.md#pveguestnotbackedup).

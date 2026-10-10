@@ -55,7 +55,15 @@ Or `monitoring: none`, with the reason in `note`.
 | The Service dashboard (pick the host) | Grafana → Homelab → Service |
 | The hEX rules for the above, if it lives outside MGMT | generated in `network/routeros/firewall.tf` |
 
-## 4. Optional, when the app is worth it
+## 4. Backups (ADR 0009)
+
+Every guest is in the nightly PBS job automatically (`--all`). What that
+does **not** cover: **bind mounts** (host directories mounted into the
+guest). Keep an app's state on its own volume, not a bind mount — or the app
+README must say how that state is backed up. `PveGuestNotBackedUp` fires if
+a guest falls out of the job.
+
+## 5. Optional, when the app is worth it
 
 - **App alerts:** `services/monitoring/prometheus/rules/app-<name>.yml`. Every
   rule needs `severity` (`critical` / `warning` / `info`), a `summary`, and a
@@ -64,7 +72,7 @@ Or `monitoring: none`, with the reason in `note`.
 - **App dashboard:** `services/monitoring/grafana/dashboards/app-<name>.json`,
   datasource uids `prometheus` and `victorialogs`.
 
-## 5. Onboarding checklist
+## 6. Onboarding checklist
 
 1. Add the host with its `monitoring:` block to `inventory/lab.yaml`;
    `make inventory`.
@@ -79,9 +87,11 @@ Or `monitoring: none`, with the reason in `note`.
    - The Service dashboard shows it, including logs.
    - Stop its service once: `HttpProbeFailed` fires (silence it first if
      it's the middle of the night).
-5. `make check`, update the service README, commit.
+5. After the next nightly run (or `vzdump <vmid> --storage pbs`), its
+   backup is listed: `pvesm list pbs --vmid <vmid>`.
+6. `make check`, update the service README, commit.
 
-## 6. Severity and routing
+## 7. Severity and routing
 
 | severity | Telegram | When |
 | --- | --- | --- |

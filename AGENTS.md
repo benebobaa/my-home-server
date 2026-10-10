@@ -145,7 +145,7 @@ Reach for the runbook before acting on its area: GPU passthrough to LXC
 cluster join/recovery (`proxmox-cluster.md`), node install
 (`proxmox-install.md`), power operations (`node-ops.md`), router/switch
 bootstrap (`hex-bootstrap.md`, `switch-bootstrap.md`), what an alert means
-(`alerts.md`).
+(`alerts.md`), restoring from backup (`backup-restore.md`).
 
 ## Working with the operator
 

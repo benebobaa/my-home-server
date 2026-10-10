@@ -2,7 +2,7 @@
 
 Copy this directory to `services/<name>/` and follow
 [docs/standards/observability.md](../../docs/standards/observability.md)
-§5 (the onboarding checklist). Nothing here is applied: it is not referenced
+§6 (the onboarding checklist). Nothing here is applied: it is not referenced
 by any stack.
 
 | File | Becomes |

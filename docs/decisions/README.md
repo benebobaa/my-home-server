@@ -13,3 +13,4 @@ never edited — supersede them with a new one.
 | [0006](0006-monitoring-stack.md) | Monitoring: Prometheus + Alertmanager + Grafana on VLAN 10, Telegram, external dead-man's switch |
 | [0007](0007-repo-architecture-for-growth.md) | Repo architecture for growth: one inventory, an LXC module, Ansible for guest config |
 | [0008](0008-observability-standard.md) | Observability standard: every host declares how it is watched in lab.yaml; severity routing; logs in VictoriaLogs (CT 121) |
+| [0009](0009-backups-pbs-on-pve3.md) | Backups: Proxmox Backup Server in a container on pve3, nightly, every guest; the archive's bind mounts not yet covered |
