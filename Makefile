@@ -13,7 +13,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 X := mise exec --
 
-STACKS      := network/routeros proxmox/opentofu
+STACKS      := network/routeros network/cloudflare proxmox/opentofu
 MODULES     := inventory proxmox/opentofu/modules/lxc-guest
 SHELL_FILES := $(shell git ls-files '*.sh' .githooks/pre-commit)
 RULES       := services/monitoring/prometheus/rules/*.yml

@@ -11,6 +11,7 @@ Read `docs/design/network-design.md` before changing anything network-facing.
 | --- | --- | --- |
 | Addresses, VMIDs, placement (single source) | YAML, validated by a Tofu module | `inventory/lab.yaml` |
 | Router (hEX, RouterOS 7) | OpenTofu, `terraform-routeros/routeros` | `network/routeros/` |
+| Public DNS + tunnel (Cloudflare) | OpenTofu, `cloudflare/cloudflare` | `network/cloudflare/` |
 | Proxmox guests (LXC/VM) | OpenTofu, `bpg/proxmox` | `proxmox/opentofu/` |
 | Proxmox hosts (pve2, pve3) | Ansible, one playbook, tagged | `ansible/proxmox-nodes.yml` |
 | Switch | no provider — config backup + runbook | `network/switch/` |
@@ -55,7 +56,7 @@ make check   # static: tofu fmt/validate, tflint, shellcheck, yamllint,
 make drift   # both tofu plans + Ansible --check (needs the age key + lab)
 
 # OpenTofu — secrets come from SOPS, decrypted into the process env only
-cd network/routeros   # or proxmox/opentofu
+cd network/routeros   # or network/cloudflare, proxmox/opentofu
 tofu init
 sops exec-env secrets.sops.env 'tofu plan'
 sops exec-env secrets.sops.env 'tofu apply'
