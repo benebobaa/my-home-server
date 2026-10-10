@@ -2,8 +2,12 @@
 # K3s for Kubeletto's tenant cluster: the server (`k3s`, pve2) or an agent
 # (`k3s-worker`, pve3). Idempotent. Run by OpenTofu (proxmox/opentofu/k3s.tf)
 # through the pinned root SSH to the node and `qm guest exec ... bash -s`,
-# with one line prepended on stdin: K3S_TOKEN=<cluster join token> (from
-# random_password.k3s_token, encrypted state; never argv, never echoed).
+# with token lines prepended on stdin (random_password, encrypted state;
+# never argv, never echoed):
+#   server: K3S_TOKEN=<server token>  K3S_AGENT_TOKEN=<agent token>
+#   agent:  K3S_AGENT_TOKEN=<agent token>  — only. The server token can join
+#           control-plane nodes (cluster admin); the worker runs tenant code
+#           and must never hold it.
 #
 #   install.sh server
 #   install.sh agent <server-ip>
@@ -17,7 +21,12 @@ set -euo pipefail
 
 ROLE=${1:?usage: install.sh server | agent <server-ip>}
 SERVER_IP=${2:-}
-[ -n "${K3S_TOKEN:-}" ] || { echo "k3s: K3S_TOKEN missing on stdin" >&2; exit 1; }
+[ -n "${K3S_AGENT_TOKEN:-}" ] || { echo "k3s: K3S_AGENT_TOKEN missing on stdin" >&2; exit 1; }
+if [ "$ROLE" = server ]; then
+  [ -n "${K3S_TOKEN:-}" ] || { echo "k3s: K3S_TOKEN missing on stdin" >&2; exit 1; }
+elif [ -n "${K3S_TOKEN:-}" ]; then
+  echo "k3s: refusing the server token on an agent" >&2; exit 1
+fi
 
 K3S_VERSION=v1.35.5+k3s1
 # install.sh at that release tag, checked by sha256 (it then verifies the
@@ -37,16 +46,24 @@ export DEBIAN_FRONTEND=noninteractive
 command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl ca-certificates; }
 
 install -d -m 0755 /etc/rancher/k3s
-before=$({ cat /etc/rancher/k3s/config.yaml /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/token 2>/dev/null || true; } | sha256sum)
+files=(/etc/rancher/k3s/config.yaml /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/token /etc/rancher/k3s/agent-token)
+before=$({ cat "${files[@]}" 2>/dev/null || true; } | sha256sum)
 
 umask 077
-printf '%s' "$K3S_TOKEN" > /etc/rancher/k3s/token
+if [ "$ROLE" = server ]; then
+  printf '%s' "$K3S_TOKEN" > /etc/rancher/k3s/token
+  printf '%s' "$K3S_AGENT_TOKEN" > /etc/rancher/k3s/agent-token
+else
+  printf '%s' "$K3S_AGENT_TOKEN" > /etc/rancher/k3s/token   # the agent token, as its join token
+  rm -f /etc/rancher/k3s/agent-token
+fi
 umask 022
 
 if [ "$ROLE" = server ]; then
   cat > /etc/rancher/k3s/config.yaml <<'EOF'
 # managed by services/k3s/install.sh (homeserver repo) — edit there.
 token-file: /etc/rancher/k3s/token
+agent-token-file: /etc/rancher/k3s/agent-token
 write-kubeconfig-mode: "0600"
 disable:
   - traefik
@@ -80,7 +97,7 @@ mirrors:
     endpoint:
       - "http://10.43.229.215:5000"
 EOF
-after=$(cat /etc/rancher/k3s/config.yaml /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/token | sha256sum)
+after=$({ cat "${files[@]}" 2>/dev/null || true; } | sha256sum)
 
 if [ "$(k3s --version 2>/dev/null | awk 'NR==1 {print $3}')" != "$K3S_VERSION" ]; then
   tmp=$(mktemp)

@@ -35,8 +35,21 @@ Service at the pinned ClusterIP `10.43.229.215`, so the default service CIDR
 rest on**, kubeconfig 0600, no debug logging, kubelet reservations sized for
 5 GB / 3 GB (server 512 Mi + 512 Mi, worker 256 Mi + 256 Mi).
 
-The join token is `random_password.k3s_token` (encrypted state), sent to the
-guests on the agent's stdin and stored in `/etc/rancher/k3s/token` (0600).
+Two join tokens (`random_password`, encrypted state), sent on the guest
+agent's stdin, stored 0600:
+
+- the **server token** (`k3s_token`) joins control-plane nodes — effectively
+  cluster admin — and exists only on `k3s`;
+- the **agent token** (`k3s_agent_token`) joins workers only; it is the one
+  token `k3s-worker` (tenant code) holds. `install.sh` refuses a server
+  token on an agent.
+
+The registry mirror is plain HTTP to a pinned ClusterIP, as on the rented
+cluster. Accepted: Kubeletto stamps every tenant image as
+`registry.kubeletto.com/...@sha256:<digest>` and containerd verifies pulled
+content against the digest, so whoever answers on that IP can deny an image
+but not substitute one; claiming the IP needs Kubernetes API rights tenants
+do not have.
 
 ## Placement rule for Kubeletto (decided 2026-10-11)
 
