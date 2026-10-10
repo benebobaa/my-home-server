@@ -13,6 +13,7 @@ Read `docs/design/network-design.md` before changing anything network-facing.
 | Router (hEX, RouterOS 7) | OpenTofu, `terraform-routeros/routeros` | `network/routeros/` |
 | Public DNS + tunnel (Cloudflare) | OpenTofu, `cloudflare/cloudflare` | `network/cloudflare/` |
 | Proxmox guests (LXC/VM) | OpenTofu, `bpg/proxmox` | `proxmox/opentofu/` |
+| Proxmox firewall (datacenter switch, per-VM ipfilter) | OpenTofu + a root script | `proxmox/opentofu/firewall.tf` |
 | Proxmox hosts (pve2, pve3) | Ansible, one playbook, tagged | `ansible/proxmox-nodes.yml` |
 | Switch | no provider — config backup + runbook | `network/switch/` |
 | In-guest setup | scripts run by Tofu provisioners | `services/<name>/` |

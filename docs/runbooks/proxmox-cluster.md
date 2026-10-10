@@ -53,6 +53,15 @@ PVE 9 gotchas, both handled by the flags above:
     the dump and written back to `/etc/pve/nodes/<node>/lxc/<id>.conf`;
     volumes and snapshots were untouched.
 
+**Right after a join: the Proxmox firewall.** The datacenter firewall is on
+(since 2026-10-11, for the K3s VMs' anti-spoofing: `proxmox/opentofu/firewall.tf`),
+with every host's own firewall explicitly off. A newly joined node has no
+`host.fw`, and the host default is **on** with a DROP input policy, so its
+management path sits behind the PVE default rules until it is switched off.
+Add the node to `inventory/lab.yaml` and converge `proxmox/opentofu` (the
+node set re-triggers `terraform_data.pve_firewall`), or by hand at once:
+`pvesh set /nodes/<node>/firewall/options --enable 0`.
+
 ## 4. Verify
 
 ```bash

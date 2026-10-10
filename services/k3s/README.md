@@ -61,17 +61,24 @@ blocked, on the server it connects). So Kubeletto's platform manifests get
 rehearsal. It is also the trust boundary: tenant code and platform code on
 different VMs.
 
-## Open before tenant workloads run
+## Anti-spoofing (Proxmox firewall)
 
-The VMs' NICs have the Proxmox firewall off: the worker could claim
-`10.10.25.20` inside VLAN 25 and pass the Postgres pinhole (pg_hba still
-wants the password). Fix: per-VM firewall with ipfilter/macfilter (needs the
-datacenter firewall on, hosts' own firewalls off) — its own change, before
-the rehearsal deploys tenants.
+Both VMs share VLAN 25, and the worker runs tenant code. Each NIC has the
+Proxmox firewall on with ipfilter + macfilter (`proxmox/opentofu/firewall.tf`):
+a VM may send only from its own address (its `ipfilter-net0` ipset) and MAC,
+so the worker cannot claim `10.10.25.20` and pass the Postgres pinhole.
+Policies are ACCEPT; the filter is the protection. This needs the datacenter
+firewall on, with every host's own firewall explicitly off
+(`files/pve-firewall.sh`). Containers are unaffected (their NICs have
+`firewall=0`). Consequence: no floating address (kube-vip, MetalLB L2) on these
+NICs without an ipset entry. Rollback: `pvesh set /cluster/firewall/options --enable 0`.
 
 ## Verified (2026-10-11)
 
 Both nodes Ready; secrets encryption Enabled; pods on both nodes resolve
 public DNS, reach HTTPS and the in-cluster API, and cannot reach Proxmox;
 Postgres reachable from the server's pods only. `qm stop/start` of both VMs:
-both nodes Ready again.
+both nodes Ready again. Anti-spoofing: a spoofed `10.10.25.99` on the worker
+cannot reach the gateway (100 % loss, the ipfilter DROP counter rises) while
+its real address can; nodes, pods, Postgres from the server and the icmp
+probes unaffected.

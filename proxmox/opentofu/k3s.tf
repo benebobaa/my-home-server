@@ -12,15 +12,9 @@
 # `qm guest exec` (the guest agent, installed by cloud-init). The VM itself
 # runs no SSH and holds no admin key (tenant code runs there).
 #
-# OPEN — must close before tenant workloads run here (the rehearsal): the
-# NICs have the Proxmox firewall off, so nothing stops one VM claiming the
-# other's address inside VLAN 25. The hEX's rp-filter only checks the
-# interface, so the worker (where tenant code runs) could source traffic as
-# 10.10.25.20 and pass the Postgres pinhole; pg_hba still demands the
-# kubeletto password. Fix: per-VM firewall with ipfilter/macfilter (an
-# ipfilter-net0 ipset holding each VM's address), which needs the
-# datacenter firewall switched on with the hosts' own firewalls kept off —
-# it touches the management path, so it is its own change.
+# Anti-spoofing: the NICs have the Proxmox firewall on with
+# ipfilter/macfilter (firewall.tf), so the worker (tenant code) cannot claim
+# 10.10.25.20 inside VLAN 25 and pass the Postgres pinhole.
 #
 # DMZ specifics: the hEX drops DNS from the DMZ (tenants must not enumerate
 # home.arpa), so the VM resolves through public resolvers; no log shipping
@@ -123,9 +117,10 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   }
 
   network_device {
-    bridge  = "vmbr0"
-    vlan_id = local.host.k3s.vlan_id
-    model   = "virtio"
+    bridge   = "vmbr0"
+    vlan_id  = local.host.k3s.vlan_id
+    model    = "virtio"
+    firewall = true # ipfilter/macfilter: firewall.tf
   }
 
   # Cloud images have no VGA console: use the serial one.
@@ -202,9 +197,10 @@ resource "proxmox_virtual_environment_vm" "k3s_worker" {
   }
 
   network_device {
-    bridge  = "vmbr0"
-    vlan_id = local.host["k3s-worker"].vlan_id
-    model   = "virtio"
+    bridge   = "vmbr0"
+    vlan_id  = local.host["k3s-worker"].vlan_id
+    model    = "virtio"
+    firewall = true # ipfilter/macfilter: firewall.tf
   }
 
   serial_device {}
