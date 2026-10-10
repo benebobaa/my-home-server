@@ -14,11 +14,14 @@ resource "routeros_system_ntp_client" "this" {
 # they must not face WAN: before this, anyone on the household Wi-Fi could
 # reach the hEX login over MAC-WinBox. The OOB port (ether3) and all lab VLANs
 # keep MAC access — only WAN is excluded.
+# MAC-Telnet, MAC-WinBox and neighbor discovery listen on this list. The DMZ
+# is excluded: tenant workloads (arbitrary code) must not reach the router's
+# L2 management services or see it in neighbor discovery.
 resource "routeros_interface_list" "not_wan" {
   name    = "NOT-WAN"
   include = "all"
-  exclude = routeros_interface_list.wan.name
-  comment = "every interface except the household side"
+  exclude = "${routeros_interface_list.wan.name},${routeros_interface_list.dmz.name}"
+  comment = "every interface except the household side and the tenant zone"
 }
 
 resource "routeros_tool_mac_server" "this" {

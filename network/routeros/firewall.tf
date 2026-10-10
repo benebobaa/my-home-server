@@ -114,6 +114,29 @@ resource "routeros_ip_firewall_filter" "input_icmp" {
   depends_on = [routeros_ip_firewall_filter.input_invalid]
 }
 
+# The DMZ resolves through public resolvers, not the hEX: the hEX serves the
+# lab's home.arpa names, which tenants must not enumerate. (Placed ahead of
+# the LAN DNS accepts; the DMZ has no DHCP.)
+resource "routeros_ip_firewall_filter" "input_dmz_dns_udp" {
+  chain        = "input"
+  action       = "drop"
+  in_interface = routeros_interface_vlan.dmz.name
+  protocol     = "udp"
+  dst_port     = "53"
+  comment      = "DMZ: no DNS from the router (public resolvers only)"
+  place_before = routeros_ip_firewall_filter.input_dns_dhcp_udp.id
+}
+
+resource "routeros_ip_firewall_filter" "input_dmz_dns_tcp" {
+  chain        = "input"
+  action       = "drop"
+  in_interface = routeros_interface_vlan.dmz.name
+  protocol     = "tcp"
+  dst_port     = "53"
+  comment      = "DMZ: no DNS from the router (public resolvers only)"
+  place_before = routeros_ip_firewall_filter.input_dns_dhcp_udp.id
+}
+
 resource "routeros_ip_firewall_filter" "input_dns_dhcp_udp" {
   chain             = "input"
   action            = "accept"

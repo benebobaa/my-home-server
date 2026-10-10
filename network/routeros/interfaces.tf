@@ -65,6 +65,17 @@ resource "routeros_interface_list" "lan" {
   comment = "the lab side"
 }
 
+# The tenant zone on its own, so management-plane features can exclude it.
+resource "routeros_interface_list" "dmz" {
+  name    = "DMZ"
+  comment = "the tenant zone (vlan25)"
+}
+
+resource "routeros_interface_list_member" "dmz_vlan25" {
+  list      = routeros_interface_list.dmz.name
+  interface = routeros_interface_vlan.dmz.name
+}
+
 resource "routeros_interface_list_member" "wan_ether1" {
   list      = routeros_interface_list.wan.name
   interface = "ether1"
