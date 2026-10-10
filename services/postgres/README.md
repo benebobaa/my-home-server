@@ -12,8 +12,8 @@ What an app must do to use it: [docs/standards/apps.md](../../docs/standards/app
 | Cluster | `18/main`, UTF8, builtin `C.UTF-8` collation, data checksums on; 2 cores, 2 GB (`shared_buffers` 512 MB), 20 GB root disk |
 | Apps connect | `postgres.home.arpa:5432`, database = user = `<app>`, `sslmode=require`, from VLAN 20 only |
 | Admin | `ssh root@10.10.10.12` → `pct exec 130 -- runuser -u postgres -- psql` (peer auth; no superuser over the network) |
-| Metrics | `postgres_exporter` on `:9187` (Debian package), role `prometheus` over the unix socket, no password. Alerts: `app-postgres.yml` |
-| Logs | journal (`log_destination = syslog`, ident `postgres`) → VictoriaLogs: `_stream:{_HOSTNAME="postgres"} SYSLOG_IDENTIFIER:=postgres` |
+| Metrics | `postgres_exporter` on `:9187` (Debian package), role `prometheus` over the unix socket, no password; reachable from the monitoring host only (nftables in the CT). Alerts: `app-postgres.yml` |
+| Logs | journal (`log_destination = syslog`, ident `postgres`) → VictoriaLogs: `_stream:{_HOSTNAME="postgres"} SYSLOG_IDENTIFIER:=postgres`. No statement text or parameters, not even for slow or failing statements (below) |
 | Backups | nightly PBS snapshot (02:30) **and** a logical dump at 01:30 WIB to `/var/backups/postgres/<UTC date>/`, last 3 kept there; PBS keeps the history |
 | Built by | `proxmox/opentofu/postgres.tf` → `setup.sh`, `dump.sh` (installed as `pg-dump-all`), `roles.sh` |
 
@@ -54,9 +54,24 @@ declared"). Destructive, so a deliberate step: take a dump first
 On top, the hEX lets nothing reach VLAN 20 except TRUSTED devices and the
 admin gateways (which `pg_hba` then refuses), the monitoring scrape on 9187,
 and the reserved K3s pinhole on 5432 (Kubeletto: add its `pg_hba` line when
-that VM exists). Verified 2026-10-10: TLS 1.3 from VLAN 20; no-TLS,
-other-database, wrong-password and MGMT (via admin-gw2) refused; MGMT
-otherwise dropped by the hEX.
+that VM exists). Inside the CT, nftables (`/etc/nftables.conf`, from
+`setup.sh`) drops 9187 from everyone but the monitoring host: the exporter
+has no auth and its `/probe` endpoint connects wherever it is told (SSRF),
+and VLAN 20 neighbours reach it directly. Verified 2026-10-10: TLS 1.3 from
+VLAN 20; no-TLS, other-database, wrong-password and MGMT (via admin-gw2)
+refused; MGMT otherwise dropped by the hEX; 9187 open to CT 120 only (a
+VLAN 20 neighbour and admin-gw2 time out).
+
+**TLS is encrypted, not verified.** The server certificate is the
+container's self-signed one (ssl-cert), so apps use `sslmode=require`, which
+does not check it: an attacker who already controls a VLAN 20 host could
+impersonate the server. Accepted for now (low risk, single operator); the
+fix is a lab CA and `sslmode=verify-full`.
+
+**What the log can still contain:** an error's own message may quote a value
+(`invalid input syntax for type integer: "…"`, a unique-violation's key). The
+statement and its parameters never are logged; find slow queries with
+`pg_stat_statements` when an app needs it, not with statement logging.
 
 ## Backups and restore
 
@@ -88,9 +103,11 @@ VictoriaLogs). The snapshot still covers the database.
 
 ## Upgrades
 
-- **Minor (18.x):** `pct exec 130 -- apt-get update && apt-get install --only-upgrade postgresql-18`
-  (restarts the server: a few seconds of refused connections). Record it in
-  the commit body: it is not in the repo.
+- **Minor (18.x):** every run of `setup.sh` (any change in this directory,
+  then `tofu apply`) installs the newest 18.x from PGDG and restarts the
+  server: a few seconds of refused connections. Between changes, by hand:
+  `pct exec 130 -- apt-get update && apt-get install --only-upgrade postgresql-18`;
+  record that in a commit body, since the repo pins only the major.
 - **Major (19):** `pg_upgradecluster`, rehearsed first on a CT restored from
   PBS. Its own change, never a re-run of `setup.sh` with a new `PG_MAJOR`.
 

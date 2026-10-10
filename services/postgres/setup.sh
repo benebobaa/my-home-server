@@ -9,8 +9,8 @@
 # SSH to pve2 + `pct exec`, then this runs. App databases and roles are
 # roles.sh (passwords on stdin, never in this directory).
 #
-# Arguments (from inventory/lab.yaml): this host's IP, and the CIDR apps
-# connect from.
+# Arguments (from inventory/lab.yaml): this host's IP, the CIDR apps
+# connect from, and the monitoring host's IP (the only one that may scrape).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -18,8 +18,10 @@ export DEBIAN_FRONTEND=noninteractive
 # en_US.UTF-8, which the container does not have) must not leak in.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-LISTEN_IP=${1:?usage: setup.sh <listen-ip> <app-cidr>}
-APP_CIDR=${2:?usage: setup.sh <listen-ip> <app-cidr>}
+usage="usage: setup.sh <listen-ip> <app-cidr> <monitoring-ip>"
+LISTEN_IP=${1:?$usage}
+APP_CIDR=${2:?$usage}
+MONITORING_IP=${3:?$usage}
 
 # The major version is the pin; minor releases come from the repo (apt
 # upgrade: README). A new major is a pg_upgradecluster, never a re-run.
@@ -86,13 +88,18 @@ password_encryption = scram-sha-256
 ssl = on
 
 # Logs go to the journal (shipped to VictoriaLogs), not to a file of their own
-# (observability standard §2). Statements are never logged in full: they can
-# carry secrets. Slow ones are, by duration.
+# (observability standard §2). No statement text and no bind parameters,
+# not even for slow or failing statements: apps' literals can carry secrets
+# and personal data, and the log store is readable by anyone who can query
+# it. Errors are still logged (the message, without the statement).
 log_destination = 'syslog'
 syslog_ident = 'postgres'
 log_line_prefix = 'user=%u db=%d app=%a client=%h '
 log_statement = 'none'
-log_min_duration_statement = 1s
+log_min_duration_statement = -1
+log_min_error_statement = panic
+log_parameter_max_length = 0
+log_parameter_max_length_on_error = 0
 log_lock_waits = on
 log_temp_files = 64MB
 EOF
@@ -119,10 +126,8 @@ for _ in $(seq 1 30); do
 done
 runuser -u postgres -- pg_isready -q
 
-psql_admin() { runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 "$@"; }
-
 # --- exporter: role `prometheus` over the unix socket, peer auth, no password ------
-psql_admin <<'SQL'
+runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'CREATE ROLE prometheus LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'prometheus') \gexec
 GRANT pg_monitor TO prometheus;
 SQL
@@ -133,6 +138,26 @@ ARGS='--web.listen-address=:9187'
 EOF
 systemctl enable -q prometheus-postgres-exporter
 systemctl restart prometheus-postgres-exporter
+
+# Only the monitoring host may reach the exporter. It has no auth, and its
+# /probe endpoint connects to any target it is given (SSRF): without this,
+# every host on VLAN 20 could use it. Postgres itself is gated by pg_hba.
+cat > /etc/nftables.conf <<EOF
+#!/usr/sbin/nft -f
+# managed by services/postgres/setup.sh
+flush ruleset
+table inet filter {
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iif lo accept
+    tcp dport 9187 ip saddr ${MONITORING_IP} accept
+    tcp dport 9187 drop
+  }
+}
+EOF
+nft -c -f /etc/nftables.conf
+systemctl enable -q nftables
+systemctl restart nftables
 
 # --- nightly logical dump (01:30 WIB, before the 02:30 PBS backup) -------------------
 install -m 0755 "$SRC/dump.sh" /usr/local/sbin/pg-dump-all

@@ -242,8 +242,8 @@ resource "routeros_ip_firewall_filter" "forward_trusted_internal" {
 
 # DMZ -> backend pinholes: one rule per exact source/destination/port. Nothing
 # else in the DMZ reaches another VLAN.
-# K3s VM (Kubeletto) -> its Postgres. Both hosts are reserved in design §2 and
-# not built yet.
+# K3s VM (Kubeletto) -> the shared Postgres (live, CT 130, ADR 0010). The K3s
+# VM is reserved in lab.yaml and not built yet; it also needs a pg_hba line.
 resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
   chain         = "forward"
   action        = "accept"

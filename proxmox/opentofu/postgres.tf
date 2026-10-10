@@ -51,6 +51,7 @@ resource "terraform_data" "postgres_setup" {
     module.postgres.generation,
     local.host.postgres.ip,
     local.postgres_app_cidr,
+    local.host.monitoring.ip,
   ]
 
   provisioner "local-exec" {
@@ -58,7 +59,7 @@ resource "terraform_data" "postgres_setup" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.postgres_dir} -cf - . \
         | ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- sh -c "rm -rf /root/postgres && mkdir -p /root/postgres && tar -xf - -C /root/postgres"'
-      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr}'
+      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr} ${local.host.monitoring.ip}'
     EOT
   }
 }
