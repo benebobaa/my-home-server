@@ -309,6 +309,24 @@
       changed_when: true
       tags: storage
 
+    # `local` (/var/lib/vz) also holds cloud-init snippets: VMs built from
+    # cloud images take their user-data from local:snippets/ (the K3s VM,
+    # proxmox/opentofu/k3s.tf). storage.cfg is cluster-wide: once per run.
+    - name: Read the content types of the local storage
+      ansible.builtin.command: pvesh get /storage/local --output-format json
+      register: local_storage
+      changed_when: false
+      check_mode: false
+      run_once: true
+      tags: storage
+
+    - name: Allow cloud-init snippets on the local storage
+      ansible.builtin.command: pvesm set local --content backup,vztmpl,import,iso,snippets
+      when: "'snippets' not in (local_storage.stdout | from_json).content.split(',')"
+      changed_when: true
+      run_once: true
+      tags: storage
+
     # Proxmox trims VM disks (with discard=on) but never container volumes:
     # files deleted inside an LXC stay allocated in the thin pool forever.
     - name: Install the container-trim script
