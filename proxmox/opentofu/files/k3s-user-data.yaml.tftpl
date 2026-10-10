@@ -4,19 +4,20 @@
 # IP, public resolvers) comes from the Proxmox cloud-init network data, not
 # from here.
 #
-# The guest agent is what OpenTofu talks to (`qm guest exec` through the
-# pinned root SSH to the node — the VM analog of `pct exec`), so it must be
-# installed and running before anything else depends on the VM.
+# The guest agent is the only way in (`qm guest exec` through the pinned root
+# SSH to the node — the VM analog of `pct exec`), so it must be installed and
+# running before anything else depends on the VM. No SSH at all: this VM runs
+# tenant code, every pod can reach its node, and the admin key opens the
+# Proxmox nodes. No users, no keys, sshd disabled; the serial console
+# (`qm terminal 300`) and the agent remain.
 hostname: ${hostname}
 manage_etc_hosts: true
-disable_root: false
-users:
-  - name: root
-    ssh_authorized_keys:
-      - ${ssh_public_key}
+users: []
+disable_root: true
 ssh_pwauth: false
 package_update: true
 packages:
   - qemu-guest-agent
 runcmd:
   - [systemctl, enable, --now, qemu-guest-agent]
+  - [systemctl, disable, --now, ssh.service, ssh.socket]

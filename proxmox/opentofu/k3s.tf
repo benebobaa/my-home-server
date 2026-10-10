@@ -8,8 +8,14 @@
 # later step; this file is the machine only.
 #
 # Everything in the guest goes through the pinned root SSH to the node and
-# `qm guest exec` (the guest agent, installed by cloud-init) — never a direct
-# SSH to the VM, whose host key changes on every rebuild.
+# `qm guest exec` (the guest agent, installed by cloud-init). The VM itself
+# runs no SSH and holds no admin key (tenant code runs there).
+#
+# Accepted for now: the NIC has the Proxmox firewall off, so nothing stops
+# the VM claiming another address inside VLAN 25. It is the only DMZ host,
+# and the hEX enforces strict reverse-path filtering between VLANs. A
+# per-VM ipfilter needs the datacenter firewall on, which touches the
+# management path: its own change, before a second DMZ host exists.
 #
 # DMZ specifics: the hEX drops DNS from the DMZ (tenants must not enumerate
 # home.arpa), so the VM resolves through public resolvers; no log shipping
@@ -19,8 +25,7 @@ locals {
   k3s_ssh = local.node_ssh[local.host.k3s.node]
 
   k3s_user_data = templatefile("${path.module}/files/k3s-user-data.yaml.tftpl", {
-    hostname       = local.host.k3s.name
-    ssh_public_key = local.admin_ssh_public_key
+    hostname = local.host.k3s.name
   })
   k3s_user_data_file = "k3s-user-data.yaml"
 }
