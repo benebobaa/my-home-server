@@ -119,11 +119,13 @@ hosts:
 
   # --- reserved ---------------------------------------------------------------
   pbs:
-    kind: vm
+    kind: lxc
+    vmid: 111
+    node: pve3
     vlan: mgmt
     ip: 10.10.10.14
-    status: planned
-    note: Proxmox Backup Server
+    note: Proxmox Backup Server — nightly backups of every guest; on pve3, apart from the stateful guests (ADR 0009, services/pbs)
+    monitoring: { tier: standard, health: "https://{ip}:8007/", health_module: http_any, logs: true }
   postgres:
     kind: lxc
     node: pve2

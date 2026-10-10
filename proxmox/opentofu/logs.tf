@@ -28,6 +28,7 @@ locals {
     {
       monitoring = module.monitoring.generation
       logs       = module.logs.generation
+      pbs        = module.pbs.generation
       archive    = proxmox_virtual_environment_container.archive.network_interface[0].mac_address
     },
   )

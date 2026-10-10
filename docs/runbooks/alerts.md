@@ -124,6 +124,16 @@ in an emergency, on the survivor: `pvecm expected 1`.
 **Fix:** start it. If it was stopped on purpose, set `start_on_boot = false`
 in its Tofu definition instead of leaving the alert.
 
+### PveGuestNotBackedUp
+**Meaning:** a guest is in no backup job, so it has no backups at all. The
+nightly job (`nightly`, PBS) covers every guest except PBS itself, so a new
+guest is covered automatically. This fires if the job was edited, disabled
+or removed.
+**Check:** `pvesh get /cluster/backup/nightly` on a node; is the guest
+excluded? `pvesm status --storage pbs` — is the storage active?
+**Fix:** re-converge: `tofu apply` in `proxmox/opentofu` (`terraform_data.pbs_link`
+re-creates the job). See `docs/runbooks/backup-restore.md`.
+
 ### PveStorageFilling
 **Meaning:** a directory storage (`local`: ISOs, templates, backups) is over
 90 % full.

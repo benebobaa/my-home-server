@@ -46,5 +46,17 @@ groups:
           summary: "{{ $labels.id }} is {{ $value | humanizePercentage }} full"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvestoragefilling
 
-      # Not yet: pve_not_backed_up_total — no guest is backed up until PBS
-      # exists (README Status), so it would fire permanently. Add with PBS.
+      # A guest no backup job covers (PBS, ADR 0009). The PBS CT itself is
+      # excluded from the nightly job on purpose: its disk *is* the datastore.
+      # This checks coverage, not freshness: a failed nightly run arrives as
+      # a Proxmox notification (warnings/errors → Telegram).
+      - alert: PveGuestNotBackedUp
+        expr: |
+          (pve_not_backed_up_info == 1)
+            * on (id) group_left (name, node) pve_guest_info{template="0"}
+            unless on (id) pve_guest_info{name="pbs"}
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is in no backup job"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestnotbackedup
