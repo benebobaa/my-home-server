@@ -22,9 +22,10 @@ VLAN 10), Proxmox Backup Server 4 on Debian 13. Why here and how:
   A new guest is covered automatically (`--all`, minus PBS).
 - **Not backed up: bind mounts.** vzdump skips them ("not a volume"). That is
   **the family archive itself** (`/mnt/staging/archive` and
-  `/mnt/e4/_captures-30fps` on pve2, mounted into CT 110). Both of its copies
-  are on pve2. Protecting it needs the disk for pve3's empty bay (or an
-  off-site target): see ADR 0009.
+  `/mnt/e4/_captures-30fps` on pve2, mounted into CT 110). Deliberately
+  left out: the operator will delete the archive on 2026-10-12 (decided
+  2026-10-10), so it gets no backup and no disk is bought for it. Only CT
+  110's small root disk is in the nightly job, until the CT is removed.
 - **Not backed up: PBS itself** (its disk *is* the datastore). Rebuild it from
   the repo; the backups on its disk survive a CT rebuild only if the volume
   is kept.
@@ -39,8 +40,7 @@ A full run took ~1.5 min. Verify: 0 errors. Restore of CT 120 (3.7 GiB):
 
 Add it to the CT as a mount point (root-only: a `pct set -mp…` step in
 `pbs.tf`'s pattern), create a second datastore on it (`setup.sh`), point the
-storage entry at it (`pbs-link.sh`), and run one backup. Then move the
-archive copy there too (ADR 0009). The old datastore can be removed after
+storage entry at it (`pbs-link.sh`), and run one backup. The old datastore can be removed after
 the new one has a verified backup of every guest.
 
 ## Changing things

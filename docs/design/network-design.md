@@ -314,7 +314,7 @@ backend home_https
 
 ## 7. Operations
 
-- **Backups:** PBS in CT 111 on pve3, apart from the stateful guests on pve2; nightly, every guest ([ADR 0009](../decisions/0009-backups-pbs-on-pve3.md), [runbook](../runbooks/backup-restore.md)). Not yet: the family archive (bind mounts, both copies on pve2 — needs a disk in pve3's bay) and an off-site copy. Plus config exports for hEX, SG108E and VPS.
+- **Backups:** PBS in CT 111 on pve3, apart from the stateful guests on pve2; nightly, every guest ([ADR 0009](../decisions/0009-backups-pbs-on-pve3.md), [runbook](../runbooks/backup-restore.md)). Not backed up: the family archive's files (bind mounts), on purpose — it is temporary and will be deleted on 2026-10-12. Not yet: an off-site copy. Plus config exports for hEX, SG108E and VPS.
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
 - **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, routed by severity, and a healthchecks.io dead-man's switch fires when home goes dark. Every host declares how it is watched in `inventory/lab.yaml`, and targets and firewall rules are generated from that ([ADR 0008](../decisions/0008-observability-standard.md), [standard](../standards/observability.md)).
 - **Logs:** VictoriaLogs in CT 121 `logs` on VLAN 10 (`services/logs/`). Nodes and containers ship their journal; the hEX sends remote syslog (UDP 5514). Still to add: an external check of the public tunnel once it exists.
@@ -348,7 +348,7 @@ backend home_https
 - Own-device Wi-Fi for the lab later (optional AP on P6); until then use the wired workstation on P7.
 - Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy as code still to do.
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
-- Role of the 8GB laptop (pve3: full member vs quorum-only). PBS now runs there (ADR 0009); a disk in its empty bay would hold the second datastore and the archive copy.
+- Role of the 8GB laptop (pve3: full member vs quorum-only). PBS now runs there (ADR 0009); a disk in its empty bay would give the datastore room to grow.
 - Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
 - VPS provider and region (only if an ADR 0004 trigger fires). If the VPS becomes the DMZ's egress exit, that needs policy routing, and `rp-filter=strict` does not work with routing tables: switch to `loose` and keep the per-interface pins on the accepts.
 - DMZ tenants can resolve `home.arpa` names through the hEX (the names are unreachable from the DMZ, but they leak). Fix when Kubeletto moves in: drop DNS from `vlan25-dmz` on the input chain, before the LAN DNS accept, and point the K3s VM at a public resolver.
