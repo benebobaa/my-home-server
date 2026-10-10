@@ -1,0 +1,22 @@
+#cloud-config
+# K3s VM (a VM, not an LXC: ADR 0004) — first-boot config. Rendered by
+# proxmox/opentofu/k3s.tf into local:snippets/ on its node. Network (static
+# IP, public resolvers) comes from the Proxmox cloud-init network data, not
+# from here.
+#
+# The guest agent is what OpenTofu talks to (`qm guest exec` through the
+# pinned root SSH to the node — the VM analog of `pct exec`), so it must be
+# installed and running before anything else depends on the VM.
+hostname: ${hostname}
+manage_etc_hosts: true
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+ssh_pwauth: false
+package_update: true
+packages:
+  - qemu-guest-agent
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]

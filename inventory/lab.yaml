@@ -133,13 +133,17 @@ hosts:
     note: Proxmox Backup Server — nightly backups of every guest; on pve3, apart from the stateful guests (ADR 0009, services/pbs)
     monitoring: { tier: standard, health: "https://{ip}:8007/", health_module: http_any, logs: true }
 
-  # --- reserved ---------------------------------------------------------------
   k3s:
     kind: vm
+    vmid: 300
+    node: pve2 # interim: moves to pve1 when it is built (offline migration)
     vlan: dmz
     ip: 10.10.25.20
-    status: planned
-    note: Kubeletto tenant cluster (cloudflared + Traefik)
+    dns: false # resolves through public resolvers (no home.arpa from the DMZ)
+    note: Kubeletto tenant cluster — K3s VM (tenants run arbitrary code, so a VM, not an LXC; ADR 0004)
+    monitoring: { tier: standard } # DMZ: no log shipping into MGMT; health/metrics come with K3s
+
+  # --- reserved ---------------------------------------------------------------
   edge:
     kind: lxc
     vlan: dmz

@@ -193,7 +193,7 @@ public IP. So, beyond the table above:
   packets skip queues; every other VLAN keeps fasttrack.
 - **Exact pinholes, not a list.** Each DMZ → backend path is its own rule
   (source, destination, port). First: K3s VM `10.10.25.20` → Postgres
-  `10.10.20.21:5432` (Postgres live since 2026-10-10, ADR 0010; the K3s VM not built yet). The earlier generic
+  `10.10.20.21:5432` (Postgres live since 2026-10-10, ADR 0010; the K3s VM — VM 300 — since 2026-10-11, verified from inside: only this pinhole and public egress). The earlier generic
   `dmz-backends` list rule (443/8080) is gone.
 
 - **Anti-spoofing.** Allow rules trust source addresses, so the hEX runs

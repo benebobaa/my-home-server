@@ -58,8 +58,8 @@ database `kubeletto`. Its pods leave the VM masqueraded to the node IP
 
 On top, the hEX lets nothing reach VLAN 20 except TRUSTED devices and the
 admin gateways (which `pg_hba` then refuses), the monitoring scrape on 9187,
-and the K3s pinhole on 5432 (its `pg_hba` line is in place; the VM is not
-built yet). Inside the CT, nftables (`/etc/nftables.conf`, from
+and the K3s pinhole on 5432 (its `pg_hba` line is in place; the VM exists,
+K3s is not installed yet). Inside the CT, nftables (`/etc/nftables.conf`, from
 `setup.sh`) drops 9187 from everyone but the monitoring host: the exporter
 has no auth and its `/probe` endpoint connects wherever it is told (SSRF),
 and VLAN 20 neighbours reach it directly. Verified 2026-10-10: TLS 1.3 from
