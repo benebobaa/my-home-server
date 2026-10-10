@@ -10,7 +10,9 @@
 # roles.sh (passwords on stdin, never in this directory).
 #
 # Arguments (from inventory/lab.yaml): this host's IP, the CIDR apps
-# connect from, and the monitoring host's IP (the only one that may scrape).
+# connect from, the monitoring host's IP (the only one that may scrape), and
+# optionally clients outside that CIDR as `db=cidr,db=cidr` (each may reach
+# only its own database, e.g. Kubeletto's K3s VM in the DMZ).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -18,10 +20,11 @@ export DEBIAN_FRONTEND=noninteractive
 # en_US.UTF-8, which the container does not have) must not leak in.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-usage="usage: setup.sh <listen-ip> <app-cidr> <monitoring-ip>"
+usage="usage: setup.sh <listen-ip> <app-cidr> <monitoring-ip> [db=cidr,...]"
 LISTEN_IP=${1:?$usage}
 APP_CIDR=${2:?$usage}
 MONITORING_IP=${3:?$usage}
+EXTRA_CLIENTS=${4:-}
 
 # The major version is the pin; minor releases come from the repo (apt
 # upgrade: README). A new major is a pg_upgradecluster, never a re-run.
@@ -115,6 +118,13 @@ host      all       all   127.0.0.1/32   scram-sha-256
 host      all       all   ::1/128        scram-sha-256
 hostssl   sameuser  all   ${APP_CIDR}    scram-sha-256
 EOF
+# Clients outside the apps' VLAN: one exact line each, own database only.
+IFS=',' read -ra extra <<< "$EXTRA_CLIENTS"
+for e in "${extra[@]}"; do
+  db=${e%%=*} cidr=${e#*=}
+  [[ $db =~ ^[a-z][a-z0-9_]{0,62}$ && $cidr =~ ^[0-9./]+$ ]] || { echo "postgres: bad extra client '${e}'" >&2; exit 1; }
+  printf 'hostssl   %s  %s  %s  scram-sha-256\n' "$db" "$db" "$cidr" >> "$CONF/pg_hba.conf"
+done
 chown postgres:postgres "$CONF/conf.d/homelab.conf" "$CONF/pg_hba.conf"
 chmod 0640 "$CONF/pg_hba.conf"
 
@@ -189,7 +199,8 @@ systemctl daemon-reload
 systemctl enable -q --now pg-dump-all.timer
 
 # --- checks ----------------------------------------------------------------------
-for _ in $(seq 1 15); do
+# The exporter reconnects on its own schedule after the server restart above.
+for _ in $(seq 1 30); do
   curl -fsS http://127.0.0.1:9187/metrics 2>/dev/null | grep -q '^pg_up 1' && break
   sleep 1
 done

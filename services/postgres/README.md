@@ -49,12 +49,17 @@ declared"). Destructive, so a deliberate step: take a dump first
 | --- | --- | --- |
 | inside the CT, unix socket | anything | peer (OS user = role) |
 | VLAN 20 (`10.10.20.0/24`) | only the database named after the role | TLS + scram-sha-256 |
+| clients outside VLAN 20 (`postgres_extra_clients` in `postgres.tf`) | only their own database | TLS + scram-sha-256, one exact `/32` each |
 | anywhere else | — | refused |
+
+Today the one outside client is **Kubeletto's K3s VM** (`10.10.25.20`, DMZ) →
+database `kubeletto`. Its pods leave the VM masqueraded to the node IP
+(K3s default flannel), so the `/32` matches.
 
 On top, the hEX lets nothing reach VLAN 20 except TRUSTED devices and the
 admin gateways (which `pg_hba` then refuses), the monitoring scrape on 9187,
-and the reserved K3s pinhole on 5432 (Kubeletto: add its `pg_hba` line when
-that VM exists). Inside the CT, nftables (`/etc/nftables.conf`, from
+and the K3s pinhole on 5432 (its `pg_hba` line is in place; the VM is not
+built yet). Inside the CT, nftables (`/etc/nftables.conf`, from
 `setup.sh`) drops 9187 from everyone but the monitoring host: the exporter
 has no auth and its `/probe` endpoint connects wherever it is told (SSRF),
 and VLAN 20 neighbours reach it directly. Verified 2026-10-10: TLS 1.3 from
@@ -100,6 +105,21 @@ dump from its `/var/backups/postgres/`.
 
 A failed dump shows in the journal only (`journalctl -u pg-dump-all`; also in
 VictoriaLogs). The snapshot still covers the database.
+
+## Kubeletto's database
+
+Database and role `kubeletto` exist (empty) for the move from Aiven
+(2026-10-10: PostgreSQL 18.6, 1.15 GB, extensions `pgcrypto` + `plpgsql`,
+the app holds 7 connections, so no pooler). The restore at cutover:
+
+```bash
+pg_dump --format=custom --no-owner --no-acl "$AIVEN_DIRECT_URL" > kubeletto.dump
+pg_restore --no-owner --role=kubeletto -d kubeletto kubeletto.dump   # inside CT 130, as postgres
+```
+
+`pgcrypto` is a trusted extension: the database owner may create it. When
+Kubeletto depends on this instance, its tier in `lab.yaml` goes to
+`critical`.
 
 ## Upgrades
 

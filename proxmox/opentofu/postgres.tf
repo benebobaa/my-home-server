@@ -26,7 +26,15 @@ locals {
   postgres_app_cidr = module.lab.vlans[local.host.postgres.vlan].cidr
 
   # Apps with a database: name = database = role ([a-z][a-z0-9_]*).
-  postgres_databases = toset([])
+  postgres_databases = toset(["kubeletto"])
+
+  # Clients outside the servers VLAN, each to its own database only (pg_hba
+  # hostssl line). The hEX pinhole for each is in network/routeros.
+  #   kubeletto  its K3s VM in the DMZ (forward_k3s_postgres; ADR 0004, 0010)
+  postgres_extra_clients = {
+    kubeletto = "${local.host.k3s.ip}/32"
+  }
+  postgres_extra_clients_arg = join(",", [for db, cidr in local.postgres_extra_clients : "${db}=${cidr}"])
 }
 
 module "postgres" {
@@ -52,6 +60,7 @@ resource "terraform_data" "postgres_setup" {
     local.host.postgres.ip,
     local.postgres_app_cidr,
     local.host.monitoring.ip,
+    local.postgres_extra_clients_arg,
   ]
 
   provisioner "local-exec" {
@@ -59,7 +68,7 @@ resource "terraform_data" "postgres_setup" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.postgres_dir} -cf - . \
         | ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- sh -c "rm -rf /root/postgres && mkdir -p /root/postgres && tar -xf - -C /root/postgres"'
-      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr} ${local.host.monitoring.ip}'
+      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr} ${local.host.monitoring.ip} ${local.postgres_extra_clients_arg}'
     EOT
   }
 }
