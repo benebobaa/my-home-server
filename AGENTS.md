@@ -21,7 +21,9 @@ Addresses, VMIDs and node placement are changed in `inventory/lab.yaml` only
 (ADR 0007); an IP typed into a `.tf` file is a review finding. New LXC
 guests use `proxmox/opentofu/modules/lxc-guest`. Every live host needs a
 `monitoring:` block (ADR 0008): new services follow
-`docs/standards/observability.md` and start from `services/_template/`.
+`docs/standards/observability.md` and `docs/standards/apps.md` (ADR 0010:
+state, secrets, reachability, the shared Postgres) and start from
+`services/_template/`.
 
 Change the code, then converge. A hand edit on a router, host or guest is
 **drift**; when a one-off manual step is unavoidable (a disk format, a package

@@ -1,8 +1,10 @@
 # _template — starting point for a new service
 
 Copy this directory to `services/<name>/` and follow
+[docs/standards/apps.md](../../docs/standards/apps.md) and
 [docs/standards/observability.md](../../docs/standards/observability.md)
-§6 (the onboarding checklist). Nothing here is applied: it is not referenced
+§6 (the onboarding checklist). A database comes from the shared Postgres
+([services/postgres](../postgres/README.md#giving-an-app-a-database)). Nothing here is applied: it is not referenced
 by any stack.
 
 | File | Becomes |

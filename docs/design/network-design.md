@@ -193,7 +193,7 @@ public IP. So, beyond the table above:
   packets skip queues; every other VLAN keeps fasttrack.
 - **Exact pinholes, not a list.** Each DMZ → backend path is its own rule
   (source, destination, port). First: K3s VM `10.10.25.20` → Postgres
-  `10.10.20.21:5432` (hosts reserved, not built yet). The earlier generic
+  `10.10.20.21:5432` (Postgres live since 2026-10-10, ADR 0010; the K3s VM not built yet). The earlier generic
   `dmz-backends` list rule (443/8080) is gone.
 
 - **Anti-spoofing.** Allow rules trust source addresses, so the hEX runs
@@ -317,6 +317,7 @@ backend home_https
 - **Backups:** PBS in CT 111 on pve3, apart from the stateful guests on pve2; nightly, every guest ([ADR 0009](../decisions/0009-backups-pbs-on-pve3.md), [runbook](../runbooks/backup-restore.md)). Not backed up: the family archive's files (bind mounts), on purpose — it is temporary and will be deleted on 2026-10-12. Not yet: an off-site copy. Plus config exports for hEX, SG108E and VPS.
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
 - **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, routed by severity, and a healthchecks.io dead-man's switch fires when home goes dark. Every host declares how it is watched in `inventory/lab.yaml`, and targets and firewall rules are generated from that ([ADR 0008](../decisions/0008-observability-standard.md), [standard](../standards/observability.md)).
+- **Database:** one shared PostgreSQL 18 in CT 130 `postgres` on VLAN 20, a database + role per app ([ADR 0010](../decisions/0010-shared-postgres-and-app-standard.md), `services/postgres/`). Apps reach it on the same VLAN; nothing else does except through an exact pinhole.
 - **Logs:** VictoriaLogs in CT 121 `logs` on VLAN 10 (`services/logs/`). Nodes and containers ship their journal; the hEX sends remote syslog (UDP 5514). Still to add: an external check of the public tunnel once it exists.
 
 ## 8. Build order and rollback

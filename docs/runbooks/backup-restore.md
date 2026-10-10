@@ -57,6 +57,12 @@ A guest that is easier rebuilt than restored (admin-gw, logs) can also just
 be rebuilt with `tofu apply` (`-replace` on its module); its data is then
 the backup's to restore if needed.
 
+## Restore one app's database
+
+Postgres (CT 130) also keeps a nightly logical dump per database on its disk,
+which restores one app without touching the others:
+[services/postgres → Backups and restore](../../services/postgres/README.md#backups-and-restore).
+
 ## Restore single files
 
 PVE UI → storage `pbs` → pick the backup → **File Restore** → browse and

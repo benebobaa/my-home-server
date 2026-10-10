@@ -263,3 +263,34 @@ before the 30-day retention. Info only.
 `* | stats by (_HOSTNAME) count() hits | sort by (hits desc)`.
 **Fix:** quiet the noisy service, or raise the cap and CT 121's disk together
 (`services/logs/setup.sh`, `proxmox/opentofu/logs.tf`).
+
+## PostgreSQL (CT 130)
+
+### PostgresDown
+**Meaning:** the exporter in CT 130 cannot reach PostgreSQL (`pg_up 0`) for
+2 min. Every app with a database is failing. Severity from the tier
+(`standard` → warning; `critical` once apps depend on it). If the exporter
+itself is down too, it is `TargetDown`; if the CT is gone, `PveGuestDown`.
+**Check:** `pct exec 130 -- systemctl status postgresql@18-main`; its log:
+`journalctl -t postgres -n 50` in the CT, or VictoriaLogs
+`_stream:{_HOSTNAME="postgres"} SYSLOG_IDENTIFIER:=postgres`. A full disk
+stops it too (`PostgresDiskFilling`).
+**Fix:** `systemctl start postgresql@18-main`. If it will not start, read the
+log first: a corrupt data directory means a restore
+([services/postgres](../../services/postgres/README.md#backups-and-restore)).
+
+### PostgresDiskFilling
+**Meaning:** CT 130's root disk (data, WAL, the last 3 dumps) is over 80 %
+full. At 100 % every write fails.
+**Check:** in the CT: `du -sh /var/lib/postgresql /var/backups/postgres`;
+which database: `SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database`.
+**Fix:** grow the disk: `disk_gb` in `proxmox/opentofu/postgres.tf`,
+`tofu apply` (in place, online). Then find out why it grew.
+
+### PostgresConnectionsHigh
+**Meaning:** more than 80 % of `max_connections` (100) are in use for 10 min.
+New connections are refused soon.
+**Check:** who holds them: `SELECT usename, application_name, state, count(*) FROM pg_stat_activity GROUP BY 1, 2, 3 ORDER BY 4 DESC`.
+**Fix:** usually an app leaking connections or a too-large pool: fix the
+app's pool size. Raise `max_connections` (`setup.sh`) only with memory to
+match.

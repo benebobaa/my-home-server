@@ -1,7 +1,9 @@
 # Observability standard
 
 What every host and app in the lab provides, and what it gets in return.
-Why: [ADR 0008](../decisions/0008-observability-standard.md). Template:
+Why: [ADR 0008](../decisions/0008-observability-standard.md) (and
+[ADR 0010](../decisions/0010-shared-postgres-and-app-standard.md) for
+databases). The rest of what an app must do: [apps.md](apps.md). Template:
 [`services/_template/`](../../services/_template/).
 
 The rule: **every live host in `inventory/lab.yaml` declares how it is
@@ -29,8 +31,8 @@ Or `monitoring: none`, with the reason in `note`.
 | Field | Rule |
 | --- | --- |
 | `tier` | **critical**: down = something important is broken now, page any hour. **standard**: should work; a warning, held overnight. **best-effort**: info only (no sound). |
-| `health` | An HTTP endpoint that answers **2xx only when the app works** (its database reachable, etc.), cheaply, without auth. UIs that answer 401 or a redirect: add `health_module: http_any`. |
-| `metrics` | Only if the app already serves Prometheus `/metrics`. Don't add an exporter just for this: CPU, memory, disk and network per guest come from the Proxmox API for free. |
+| `health` | An HTTP endpoint that answers **2xx only when the app works** (its database reachable, etc.), cheaply, without auth. UIs that answer 401 or a redirect: add `health_module: http_any`. No HTTP side (a database): leave it out and alert on the exporter instead. |
+| `metrics` | Only if the app already serves Prometheus `/metrics`. Don't add an exporter just for this: CPU, memory, disk and network per guest come from the Proxmox API for free. **Exception: databases get an exporter** (ADR 0010): they have no HTTP health URL, and their failures are invisible from the Proxmox API. Its up-metric (`pg_up`) is then the health check, in an app alert. |
 | `logs` | `true` for every guest that runs systemd. **Not allowed in the DMZ**: the DMZ never pushes into MGMT. |
 
 ## 2. What the app must do
@@ -78,7 +80,8 @@ a guest falls out of the job.
    `make inventory`.
 2. Build the guest (`modules/lxc-guest`; start from `services/_template/`).
    If `logs: true`, add its recreation marker to `local.guest_generation` in
-   `proxmox/opentofu/logs.tf`.
+   `proxmox/opentofu/logs.tf`, and its setup resource to `log_shipping`'s
+   `depends_on` there. Needs a database: [apps.md §3](apps.md#3-database).
 3. `tofu apply` in `network/routeros` (DNS name, firewall rules), then in
    `proxmox/opentofu` (guest, targets, log shipping). Router changes: snapshot
    before and after (`./scripts/hex-snapshot.sh`).
