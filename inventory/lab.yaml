@@ -142,6 +142,15 @@ hosts:
     dns: false # resolves through public resolvers (no home.arpa from the DMZ)
     note: Kubeletto tenant cluster — K3s VM (tenants run arbitrary code, so a VM, not an LXC; ADR 0004)
     monitoring: { tier: standard } # DMZ: no log shipping into MGMT; health/metrics come with K3s
+  k3s-worker:
+    kind: vm
+    vmid: 301
+    node: pve3 # stateless: tenant pods and builds only (state lives in Postgres and R2)
+    vlan: dmz
+    ip: 10.10.25.21
+    dns: false
+    note: Kubeletto tenant cluster — K3s agent (worker) VM for tenant workloads and builds
+    monitoring: { tier: best-effort } # a worker can go: its pods reschedule onto k3s
 
   # --- reserved ---------------------------------------------------------------
   edge:

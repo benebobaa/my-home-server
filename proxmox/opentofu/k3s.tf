@@ -1,5 +1,6 @@
-# k3s — the VM for Kubeletto's tenant cluster (ADR 0004: tenants run
-# arbitrary code, so a VM, never an LXC). DMZ (VLAN 25), 10.10.25.20.
+# k3s — the VMs of Kubeletto's tenant cluster (ADR 0004: tenants run
+# arbitrary code, so VMs, never LXCs). DMZ (VLAN 25): the server `k3s`
+# (10.10.25.20, pve2) and the worker `k3s-worker` (10.10.25.21, pve3).
 #
 # Interim on pve2 (2026-10-11): Kubeletto's rented server ends 2026-11-05 and
 # pve1 is not built yet. When pve1 joins the cluster the VM moves there
@@ -22,16 +23,20 @@
 # into MGMT (lab.yaml refuses logs: true there).
 
 locals {
-  k3s_ssh = local.node_ssh[local.host.k3s.node]
+  # Both VMs of the cluster: the server (control plane + platform, pve2) and
+  # the worker (tenant pods + builds, pve3 — stateless, which is pve3's rule).
+  k3s_vms = ["k3s", "k3s-worker"]
 
-  k3s_user_data = templatefile("${path.module}/files/k3s-user-data.yaml.tftpl", {
-    hostname = local.host.k3s.name
-  })
-  k3s_user_data_file = "k3s-user-data.yaml"
+  k3s_user_data = {
+    for n in local.k3s_vms : n => templatefile("${path.module}/files/k3s-user-data.yaml.tftpl", {
+      hostname = local.host[n].name
+    })
+  }
 }
 
 # Debian 13 generic cloud image, a dated build pinned by the sha512 Debian
-# publishes (SHA512SUMS next to it). Imported as the VM's disk.
+# publishes (SHA512SUMS next to it). Imported as the VMs' disks, one copy per
+# node.
 resource "proxmox_download_file" "debian_13_cloud_pve2" {
   provider = proxmox.pve2 # direct: see provider.tf
 
@@ -43,18 +48,34 @@ resource "proxmox_download_file" "debian_13_cloud_pve2" {
   checksum_algorithm = "sha512"
 }
 
-# The user-data snippet, written through the pinned root SSH (the provider
-# has no SSH access of its own). Keyed on its content.
+resource "proxmox_download_file" "debian_13_cloud_pve3" {
+  node_name          = "pve3" # the provider's endpoint: no proxying involved
+  datastore_id       = "local"
+  content_type       = "import"
+  url                = "https://cloud.debian.org/images/cloud/trixie/20261001-2618/debian-13-genericcloud-amd64-20261001-2618.qcow2"
+  checksum           = "f46f0671a6e5bdec5291ab8972bae2f10e5408c2f64a74078f11efc2f06a436a9d0313ed50e0472542eeabf780e9f7c792ac0a314c6c20507fcd9fd81b468c3d"
+  checksum_algorithm = "sha512"
+}
+
+# Each VM's user-data snippet on its node, written through the pinned root
+# SSH (the provider has no SSH access of its own). Keyed on its content.
 resource "terraform_data" "k3s_user_data" {
-  triggers_replace = [sha256(local.k3s_user_data)]
+  for_each = local.k3s_user_data
+
+  triggers_replace = [sha256(each.value)]
 
   provisioner "local-exec" {
-    command = "printf '%s' \"$USER_DATA\" | ${local.k3s_ssh} 'install -d /var/lib/vz/snippets && cat > /var/lib/vz/snippets/${local.k3s_user_data_file}'"
+    command = "printf '%s' \"$USER_DATA\" | ${local.node_ssh[local.host[each.key].node]} 'install -d /var/lib/vz/snippets && cat > /var/lib/vz/snippets/${each.key}-user-data.yaml'"
 
     environment = {
-      USER_DATA = local.k3s_user_data
+      USER_DATA = each.value
     }
   }
+}
+
+moved {
+  from = terraform_data.k3s_user_data
+  to   = terraform_data.k3s_user_data["k3s"]
 }
 
 resource "proxmox_virtual_environment_vm" "k3s" {
@@ -127,7 +148,85 @@ resource "proxmox_virtual_environment_vm" "k3s" {
       }
     }
 
-    user_data_file_id = "local:snippets/${local.k3s_user_data_file}"
+    user_data_file_id = "local:snippets/k3s-user-data.yaml"
+  }
+
+  depends_on = [terraform_data.k3s_user_data]
+}
+
+# The worker: same machine shape, smaller, on pve3. Holds nothing worth
+# keeping (images re-pull, pods reschedule), so its disk is left out of the
+# PBS backup: it stays in the nightly job (no PveGuestNotBackedUp) at no
+# datastore cost.
+resource "proxmox_virtual_environment_vm" "k3s_worker" {
+  node_name = local.host["k3s-worker"].node
+  vm_id     = local.host["k3s-worker"].vmid
+  name      = local.host["k3s-worker"].name
+
+  description = "k3s-worker — Kubeletto tenant cluster, K3s agent for tenant pods and builds (10.10.25.21, DMZ). Managed by OpenTofu: proxmox/opentofu."
+  tags        = ["k3s", "kubeletto", "tofu"]
+
+  on_boot         = true
+  started         = true
+  stop_on_destroy = true
+
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-single"
+
+  agent {
+    enabled = true
+  }
+
+  cpu {
+    cores = 4
+    type  = "host"
+  }
+
+  memory {
+    dedicated = 3072
+  }
+
+  disk {
+    datastore_id = "local-lvm"
+    import_from  = proxmox_download_file.debian_13_cloud_pve3.id
+    interface    = "scsi0"
+    size         = 30
+    discard      = "on"
+    iothread     = true
+    ssd          = true
+    backup       = false
+  }
+
+  network_device {
+    bridge  = "vmbr0"
+    vlan_id = local.host["k3s-worker"].vlan_id
+    model   = "virtio"
+  }
+
+  serial_device {}
+  vga {
+    type = "serial0"
+  }
+
+  operating_system {
+    type = "l26"
+  }
+
+  initialization {
+    datastore_id = "local-lvm"
+
+    dns {
+      servers = ["1.1.1.1", "9.9.9.9"]
+    }
+
+    ip_config {
+      ipv4 {
+        address = local.host["k3s-worker"].cidr
+        gateway = local.host["k3s-worker"].gateway
+      }
+    }
+
+    user_data_file_id = "local:snippets/k3s-worker-user-data.yaml"
   }
 
   depends_on = [terraform_data.k3s_user_data]
