@@ -12,11 +12,15 @@
 # `qm guest exec` (the guest agent, installed by cloud-init). The VM itself
 # runs no SSH and holds no admin key (tenant code runs there).
 #
-# Accepted for now: the NIC has the Proxmox firewall off, so nothing stops
-# the VM claiming another address inside VLAN 25. It is the only DMZ host,
-# and the hEX enforces strict reverse-path filtering between VLANs. A
-# per-VM ipfilter needs the datacenter firewall on, which touches the
-# management path: its own change, before a second DMZ host exists.
+# OPEN — must close before tenant workloads run here (the rehearsal): the
+# NICs have the Proxmox firewall off, so nothing stops one VM claiming the
+# other's address inside VLAN 25. The hEX's rp-filter only checks the
+# interface, so the worker (where tenant code runs) could source traffic as
+# 10.10.25.20 and pass the Postgres pinhole; pg_hba still demands the
+# kubeletto password. Fix: per-VM firewall with ipfilter/macfilter (an
+# ipfilter-net0 ipset holding each VM's address), which needs the
+# datacenter firewall switched on with the hosts' own firewalls kept off —
+# it touches the management path, so it is its own change.
 #
 # DMZ specifics: the hEX drops DNS from the DMZ (tenants must not enumerate
 # home.arpa), so the VM resolves through public resolvers; no log shipping
@@ -230,4 +234,55 @@ resource "proxmox_virtual_environment_vm" "k3s_worker" {
   }
 
   depends_on = [terraform_data.k3s_user_data]
+}
+
+# --- K3s on the VMs (services/k3s/install.sh) ---------------------------------
+# The cluster join token: generated here, lives in the (encrypted) state and
+# in /etc/rancher/k3s/token (0600) on both VMs. Rotate with -replace.
+resource "random_password" "k3s_token" {
+  length  = 48
+  special = false
+}
+
+locals {
+  k3s_install_sha = filesha256("${path.module}/../../services/k3s/install.sh")
+
+  # Pipe `K3S_TOKEN=...` + the script into the guest (agent stdin, never argv),
+  # then print the guest's output and fail on its exit code.
+  k3s_guest_exec = {
+    for n in local.k3s_vms : n => join(" ", [
+      "{ printf 'K3S_TOKEN=%s\\n' \"$K3S_TOKEN\"; cat ${path.module}/../../services/k3s/install.sh; }",
+      "| ${local.node_ssh[local.host[n].node]}",
+      "'qm guest exec ${local.host[n].vmid} --pass-stdin 1 --timeout 900 -- bash -s -- ${n == "k3s" ? "server" : "agent ${local.host.k3s.ip}"}",
+      "| python3 -c \"import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get(chr(111)+\\\"ut-data\\\",\\\"\\\")); sys.stderr.write(d.get(chr(101)+\\\"rr-data\\\",\\\"\\\")); sys.exit(d.get(chr(101)+\\\"xitcode\\\",1))\"'",
+    ])
+  }
+}
+
+resource "terraform_data" "k3s_server" {
+  triggers_replace = [
+    local.k3s_install_sha,
+    sha256(random_password.k3s_token.result),
+    proxmox_virtual_environment_vm.k3s.network_device[0].mac_address,
+  ]
+
+  provisioner "local-exec" {
+    command     = local.k3s_guest_exec["k3s"]
+    environment = { K3S_TOKEN = random_password.k3s_token.result }
+  }
+}
+
+resource "terraform_data" "k3s_worker" {
+  triggers_replace = [
+    local.k3s_install_sha,
+    sha256(random_password.k3s_token.result),
+    proxmox_virtual_environment_vm.k3s_worker.network_device[0].mac_address,
+  ]
+
+  provisioner "local-exec" {
+    command     = local.k3s_guest_exec["k3s-worker"]
+    environment = { K3S_TOKEN = random_password.k3s_token.result }
+  }
+
+  depends_on = [terraform_data.k3s_server]
 }
