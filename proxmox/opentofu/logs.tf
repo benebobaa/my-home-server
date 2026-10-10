@@ -22,13 +22,15 @@ locals {
 
   # Containers that ship their journal: `logs: true` in lab.yaml. Each needs
   # its recreation marker here, so shipping is set up again on a rebuild —
-  # a new container that is missing from this map fails the plan.
+  # a new container that is missing from this map fails the plan — and its
+  # setup resource in log_shipping's depends_on.
   guest_generation = merge(
     { for k, m in module.admin_gw : k => m.generation },
     {
       monitoring = module.monitoring.generation
       logs       = module.logs.generation
       pbs        = module.pbs.generation
+      postgres   = module.postgres.generation
       archive    = proxmox_virtual_environment_container.archive.network_interface[0].mac_address
     },
   )
@@ -80,5 +82,15 @@ resource "terraform_data" "log_shipping" {
     command = "${local.node_ssh[each.value.node]} 'pct exec ${each.value.vmid} -- bash -s -- ${local.logs_journald_url}' < ${local.logs_dir}/ship.sh"
   }
 
-  depends_on = [terraform_data.logs_setup]
+  # After each guest's own setup: on a new container both run apt, and the
+  # second one fails on the apt lock (DPkg::Lock::Timeout does not cover
+  # `apt-get update`). A new service adds its setup resource here.
+  depends_on = [
+    terraform_data.logs_setup,
+    terraform_data.admin_gw_setup,
+    terraform_data.monitoring_setup,
+    terraform_data.pbs_setup,
+    terraform_data.postgres_setup,
+    terraform_data.archive_root_config,
+  ]
 }

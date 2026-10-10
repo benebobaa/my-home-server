@@ -39,4 +39,5 @@ resource "terraform_data" "myapp_setup" {
 }
 
 # Also, with `logs: true`: add `myapp = module.myapp.generation` to
-# local.guest_generation in logs.tf (log shipping is then automatic).
+# local.guest_generation in logs.tf, and terraform_data.myapp_setup to
+# log_shipping's depends_on there (log shipping is then automatic).

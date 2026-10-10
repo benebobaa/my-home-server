@@ -116,8 +116,14 @@ hosts:
     ip: 10.10.10.18
     note: VictoriaLogs — journald + hEX syslog for the whole lab (services/logs)
     monitoring: { tier: standard, health: "http://{ip}:9428/health", metrics: [9428], logs: true }
-
-  # --- reserved ---------------------------------------------------------------
+  postgres:
+    kind: lxc
+    vmid: 130
+    node: pve2
+    vlan: servers
+    ip: 10.10.20.21
+    note: the lab's shared PostgreSQL 18, one database + role per app (ADR 0010, services/postgres)
+    monitoring: { tier: standard, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical once an app depends on it
   pbs:
     kind: lxc
     vmid: 111
@@ -126,13 +132,8 @@ hosts:
     ip: 10.10.10.14
     note: Proxmox Backup Server — nightly backups of every guest; on pve3, apart from the stateful guests (ADR 0009, services/pbs)
     monitoring: { tier: standard, health: "https://{ip}:8007/", health_module: http_any, logs: true }
-  postgres:
-    kind: lxc
-    node: pve2
-    vlan: servers
-    ip: 10.10.20.21
-    status: planned
-    note: Kubeletto's Postgres (DMZ pinhole from k3s on 5432)
+
+  # --- reserved ---------------------------------------------------------------
   k3s:
     kind: vm
     vlan: dmz
