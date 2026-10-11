@@ -12,7 +12,7 @@ SSH, stripped of cluster-specific fields, and given the home changes:
   - rehearsal safety switches on platform-core (runbook "Safety switches");
   - no Services pinned except the two ClusterIPs registries.yaml and core
     depend on; fresh PVCs; Traefik as ClusterIP (the tunnel is the only way in);
-  - the internal-API NetworkPolicy widened from node 1's pod /24 to the /16.
+  - the internal API (:9090) admitted from ns kubeletto-builds only, not prod's pod /24.
 
 Prod's rate limits (ipStrategy depth 1) stay: Traefik at home trusts
 X-Forwarded-* only from the server node's pods (traefik-values.yaml), so the
@@ -184,10 +184,15 @@ def home(obj):
         }]
 
     if kind == "NetworkPolicy" and name == "platform-core-internal-api":
+        # Prod admits the internal API (:9090, build-worker token mint) from
+        # its node's whole pod /24, i.e. every pod including tenants. At home
+        # tenants and builds share the worker, so name the build namespace
+        # instead of an address range.
         for rule in obj["spec"].get("ingress", []):
-            for frm in rule.get("from", []):
+            for i, frm in enumerate(rule.get("from", [])):
                 if frm.get("ipBlock", {}).get("cidr") == "10.42.0.0/24":
-                    frm["ipBlock"]["cidr"] = "10.42.0.0/16"
+                    rule["from"][i] = {"namespaceSelector": {"matchLabels": {
+                        "kubernetes.io/metadata.name": "kubeletto-builds"}}}
 
     return obj
 
