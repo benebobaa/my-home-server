@@ -1,9 +1,10 @@
-# cloudflare — public DNS (and, next, the tunnel)
+# cloudflare — public DNS and the tunnel
 
 OpenTofu stack for the Cloudflare side of public ingress
 ([ADR 0004](../../docs/decisions/0004-public-ingress-cloudflare-tunnel.md)):
-the DNS records of `kubeletto.com` and `kubeletto.app`. The Cloudflare Tunnel
-for Kubeletto's move home is added here next.
+the DNS records of `kubeletto.com` and `kubeletto.app`, and the Cloudflare
+Tunnel for Kubeletto's move home (`tunnel.tf`; its connector:
+[`services/cloudflared/`](../../services/cloudflared/)).
 
 ```bash
 cd network/cloudflare
@@ -15,6 +16,7 @@ sops exec-env secrets.sops.env 'tofu apply'
 | --- | --- |
 | Records | `records.tf`: all 23, imported as they were on 2026-10-11 (`imports.tf`), generated from the API once and edited by hand since |
 | Token | `CLOUDFLARE_API_TOKEN` in `secrets.sops.env`: account-owned "Agentic Claude Code" — cloudflared edit (account), DNS edit + zone read (the two zones). Nothing else: no registrar, no account DNS products |
+| Tunnel | `tunnel.tf`: `kubeletto-home`, remote-managed ingress rules, the connector deployed into K3s through root SSH to pve2 + the guest agent (so this stack needs the lab and the admin key, like `proxmox/opentofu`) |
 | State | encrypted (`encryption.tf`, its own `TF_VAR_state_passphrase`), committed |
 
 A record changed in the dashboard is **drift**: change `records.tf` and
