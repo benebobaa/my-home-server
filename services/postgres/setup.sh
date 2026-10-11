@@ -128,6 +128,23 @@ done
 chown postgres:postgres "$CONF/conf.d/homelab.conf" "$CONF/pg_hba.conf"
 chmod 0640 "$CONF/pg_hba.conf"
 
+# Start only once the container holds its LAN address. The packaged unit is
+# ordered after network.target only, which a CT reaches before eth0 has its
+# address: on the 2026-10-11 boot Postgres logged "could not bind IPv4
+# address ... Cannot assign requested address" and served localhost alone,
+# unreachable from every app, with nothing restarting it.
+install -d "/etc/systemd/system/postgresql@${PG_MAJOR}-main.service.d"
+cat > "/etc/systemd/system/postgresql@${PG_MAJOR}-main.service.d/wait-for-address.conf" <<EOF
+# managed by services/postgres/setup.sh
+[Unit]
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 60); do ip -4 -o addr show | grep -q " ${LISTEN_IP}/" && exit 0; sleep 1; done; echo "no ${LISTEN_IP} after 60 s" >&2; exit 1'
+EOF
+systemctl daemon-reload
+
 systemctl enable -q "postgresql@${PG_MAJOR}-main"
 systemctl restart "postgresql@${PG_MAJOR}-main"
 for _ in $(seq 1 30); do
