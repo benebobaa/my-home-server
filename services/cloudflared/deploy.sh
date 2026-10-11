@@ -39,6 +39,21 @@ stringData:
   token: "${TUNNEL_TOKEN}"
 EOF
 
+# No inbound traffic at all: cloudflared only dials out, and its metrics port
+# also serves /debug/pprof, which tenant pods on the worker could otherwise
+# reach over the pod network. K3s's policy controller (kube-router) still
+# admits traffic from the pod's own node, so the kubelet probes keep working.
+kubectl apply -f - <<'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-ingress
+  namespace: cloudflared
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+EOF
+
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
