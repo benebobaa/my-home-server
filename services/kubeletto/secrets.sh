@@ -8,6 +8,9 @@
 #   DATABASE_URL, DATABASE_URL_DIRECT -> the home copy in CT 130 (its password
 #     from proxmox/opentofu, random_password.postgres["kubeletto"])
 #   REDIS_URL -> the in-cluster Redis (manifests/redis.yaml)
+#   NATS_URL -> the home NATS by DNS (prod's value is its own ClusterIP)
+# Still prod's at cutover, to change then: PLATFORM_API_URL and
+# SESSION_COOKIE_DOMAIN carry the rented server's public IP.
 #   dropped: RESEND_API_KEY (mail), SUMOPOD_* (payments), OPENOBSERVE_*, OTEL_*
 # Everything else is prod's value: JWT_SECRET must match (it derives the
 # per-user GitHub token keys), and R2/GitHub/Infisical are the shared services.
@@ -49,6 +52,8 @@ for s in lst["items"]:
             u.quote(os.environ["HOME_PG_PASSWORD"], safe=""), os.environ["HOME_PG_HOST"])
         d["DATABASE_URL"] = d["DATABASE_URL_DIRECT"] = b64(dsn)
         d["REDIS_URL"] = b64("redis://redis.platform.svc.cluster.local:6379")
+        # prod pins NATS by its ClusterIP (10.43.196.254), which is nothing here
+        d["NATS_URL"] = b64("nats://nats.nats.svc.cluster.local:4222")
         dropped = sorted(k for k in d if k == "RESEND_API_KEY" or k.startswith(("SUMOPOD_", "OPENOBSERVE_", "OTEL_")))
         for k in dropped: del d[k]
         print("platform-core-env: %d keys, dropped %s" % (len(d), ",".join(dropped)), file=sys.stderr)

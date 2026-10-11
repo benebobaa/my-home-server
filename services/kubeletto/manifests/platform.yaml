@@ -306,6 +306,28 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
+      initContainers:
+        - name: wait-for-deps
+          image: docker.io/library/busybox:1.37
+          command:
+            - sh
+            - -c
+            - for i in $(seq 1 60); do nc -z -w 2 redis.platform.svc.cluster.local 6379 && nc -z -w 2 nats.nats.svc.cluster.local
+              4222 && exit 0; sleep 1; done; echo 'redis/nats unreachable after 60 s' >&2; exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              memory: 16Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
 ---
 apiVersion: v1
 kind: Service

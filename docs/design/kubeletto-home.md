@@ -99,7 +99,7 @@ the console on Cloudflare Pages.
 | Phase | When | What | Done means |
 | --- | --- | --- | --- |
 | 0 | now | Abusers stopped on prod; this proposal decided | 6 namespaces at 0 pods; §6 answered |
-| 1 Rehearse infra | Oct 12–16 | DB copy → CT 130; **the live prod image** in `KUBELETTO_RUN_MODE=api` (no background loops), Resend/SumoPod unset, in-cluster Redis, no GC/retention/canaries; test hostname `home-api.kubeletto.com` via the tunnel | console logs in against home API; a tenant app answers through the tunnel on a test hostname |
+| 1 Rehearse infra (**done Oct 11**, except a real console login: the console is wired to api.kubeletto.com; a DB-backed login request was tested instead) | Oct 12–16 | DB copy → CT 130; **the live prod image** in `KUBELETTO_RUN_MODE=api` (no background loops), Resend/SumoPod unset, in-cluster Redis, no GC/retention/canaries; test hostname `home-api.kubeletto.com` via the tunnel | console logs in against home API; a tenant app answers through the tunnel on a test hostname |
 | 2 Realign code | Oct 14–25 (Kubeletto repo, its sprint SOP) | §3 cuts, §4 free-tier limits, placement config, CF for SaaS, in-cluster Redis | repo tests pass; image in GHCR |
 | 3 Full rehearsal | Oct 26–29 | realigned image in worker mode on a fresh DB copy; cold reboot of both nodes; PBS + dump restore | deploy from GitHub → live through tunnel; survives reboot |
 | 4 Cutover | Oct 30–Nov 1 | freeze prod writes, final dump/restore (~1 GB, minutes), Infisical/R2/GitHub secrets copied (JWT_SECRET **copied, not rotated**), DNS records → tunnel | prod names served from home; old server kept as rollback until Nov 5 |

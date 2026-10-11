@@ -167,6 +167,21 @@ def home(obj):
                if e["name"] not in CORE_ENV_DROP and e["name"] not in CORE_ENV_OVERRIDES]
         env += [{"name": k, "value": v} for k, v in CORE_ENV_OVERRIDES.items()]
         c["env"] = env
+        # K3s's policy controller programs a new pod's rules a few seconds
+        # after it starts; core dials Redis and NATS once at startup (the
+        # live-logs NATS connection never retries), so wait for both first.
+        pod = obj["spec"]["template"]["spec"]
+        pod["initContainers"] = [{
+            "name": "wait-for-deps",
+            "image": "docker.io/library/busybox:1.37",
+            "command": ["sh", "-c",
+                        "for i in $(seq 1 60); do nc -z -w 2 redis.platform.svc.cluster.local 6379"
+                        " && nc -z -w 2 nats.nats.svc.cluster.local 4222 && exit 0; sleep 1; done;"
+                        " echo 'redis/nats unreachable after 60 s' >&2; exit 1"],
+            "resources": {"requests": {"cpu": "10m", "memory": "8Mi"}, "limits": {"memory": "16Mi"}},
+            "securityContext": {"runAsNonRoot": True, "runAsUser": 65534, "allowPrivilegeEscalation": False,
+                                "readOnlyRootFilesystem": True, "capabilities": {"drop": ["ALL"]}},
+        }]
 
     if kind == "NetworkPolicy" and name == "platform-core-internal-api":
         for rule in obj["spec"].get("ingress", []):

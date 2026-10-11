@@ -6,9 +6,14 @@ server (ADR 0004, deadline 2026-11-05). Plan and cuts:
 safety switches and what must never run:
 [runbooks/kubeletto-migration.md](../../docs/runbooks/kubeletto-migration.md).
 
-Status: **rehearsal phase 1** — prod's live code in `api` mode on a copy of
-the database, reachable only on rehearsal names. Production still serves
-every real name from the rented server.
+Status: **rehearsal phase 1 done (2026-10-11)** — prod's live code in `api`
+mode on a copy of the database, reachable only on rehearsal names
+(`home-api` for the operator's IPv6 /64 only). Production still serves every
+real name from the rented server. Verified: `/readyz` 200 and a DB-backed
+login answer through Cloudflare → tunnel → Traefik → core → CT 130; a
+Knative app on the worker answers from the internet; the registry reaches
+R2 and challenges for tokens; tenant pods cannot reach Traefik, Kourier or
+home-api.
 
 ## What is where
 

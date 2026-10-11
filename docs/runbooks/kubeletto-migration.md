@@ -116,7 +116,14 @@ The admin kill-switch is `UPDATE tenants SET suspended_at/…` + a
 namespace pod quota to 0 on its next pass (a pass over all tenants takes
 ~19 min). A quota does not stop running pods: once `pods=0` shows in the
 namespace's ResourceQuota, delete the pods; Knative cannot recreate them.
-Tenant namespaces are `kl-<id8>-<id8>`. Reversible with unsuspend.
+Tenant namespaces are `kl-<id8>-<id8>`. **Not fully reversible**: with the
+pods gone the services sit in `RevisionMissing`, and after 30 min the
+crash-loop suspender deletes them, so unsuspend restores the account but
+the tenant must redeploy (incident 2026-10-11-kubeletto-prod-ksvc-deletions).
+
+Prod's node runs at its memory-request limit: never start an operational
+pod there with resource requests (`"resources":{}`), or tenant cold starts
+fail and the same suspender deletes their services.
 
 ## Found during rehearsal phase 1 (2026-10-11)
 
@@ -141,3 +148,17 @@ Tenant namespaces are `kl-<id8>-<id8>`. Reversible with unsuspend.
 - **PriorityClass first**: Knative's placement patches reference
   `kubeletto-platform-critical`; `apply.sh base` creates it before Knative.
 - Cold start of a cached image through the tunnel: 2.7 s; warm: 0.3 s.
+- **Prod addresses inside `platform-core-env`**: `NATS_URL` is prod's NATS
+  ClusterIP (`10.43.196.254`; secrets.sh rewrites it to DNS);
+  `PLATFORM_API_URL` and `SESSION_COOKIE_DOMAIN` carry the rented server's
+  public IP — change both at cutover. `REGISTRY_URL` is the pinned
+  `10.43.229.215`, kept.
+- **Not every loop is worker-only**: in `api` mode core still starts the
+  webhook-delivery reconciler (replays `pending` GitHub deliveries; the copy
+  had none) and the installation-drift reconciler (GitHub reads, DB writes).
+  Check for pending deliveries before starting a copy.
+- **Postgres served localhost only after an unclean pve2 boot** (bind race,
+  fixed in `services/postgres/setup.sh`); the exporter uses the socket, so
+  nothing alerted.
+- Measured through the tunnel from the LAN: `/readyz` 0.29 s at home vs
+  0.89 s on prod; a failed login (one user lookup) 2.2 s vs 5.1 s.
