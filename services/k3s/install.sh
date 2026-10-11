@@ -12,6 +12,11 @@
 #   install.sh server
 #   install.sh agent <server-ip>
 #
+# Never add or change a token on a running cluster through this script alone:
+# K3s updates server/cred/passwd on disk but not its datastore copy, and the
+# second restart fails ("newer than datastore"). Rotate (`k3s token rotate`)
+# or re-bootstrap; see docs/incidents/2026-10-11-k3s-passwd-newer-than-datastore.md.
+#
 # Parity with the rented cluster (2026-10-11): same K3s version, bundled
 # Traefik disabled (Kubeletto runs its own), ServiceLB on, pod-max-pids 1024,
 # the registry mirror (Kubeletto's registries.yaml). Deliberately different:
@@ -68,6 +73,10 @@ write-kubeconfig-mode: "0600"
 disable:
   - traefik
 secrets-encryption: true
+# Tenant pods never schedule here: this node holds the server token and is
+# the one address through the Postgres pinhole. Platform pods tolerate it.
+node-taint:
+  - node-role.kubernetes.io/control-plane:NoSchedule
 kubelet-arg:
   - system-reserved=cpu=250m,memory=512Mi
   - kube-reserved=cpu=250m,memory=512Mi
@@ -119,5 +128,8 @@ if [ "$ROLE" = server ]; then
     sleep 3
   done
   k3s kubectl wait --for=condition=Ready "node/$(hostname)" --timeout=180s >/dev/null
+  # node-taint applies only when a node first registers: enforce it on the
+  # existing node too (idempotent).
+  k3s kubectl taint node "$(hostname)" node-role.kubernetes.io/control-plane:NoSchedule --overwrite >/dev/null
 fi
 echo "k3s: ${ROLE} $(hostname) up ($(k3s --version | awk 'NR==1 {print $3}'))"

@@ -44,6 +44,13 @@ agent's stdin, stored 0600:
   token `k3s-worker` (tenant code) holds. `install.sh` refuses a server
   token on an agent.
 
+**Changing either token on the live cluster:** not through config alone.
+K3s rewrites `server/cred/passwd` on disk but not its datastore copy, and the
+second restart fails with "passwd newer than datastore"
+([incident](../../docs/incidents/2026-10-11-k3s-passwd-newer-than-datastore.md)).
+Use `k3s token rotate` on the server (it re-saves the bootstrap files), then
+a test restart.
+
 The registry mirror is plain HTTP to a pinned ClusterIP, as on the rented
 cluster. Accepted: Kubeletto stamps every tenant image as
 `registry.kubeletto.com/...@sha256:<digest>` and containerd verifies pulled
@@ -60,6 +67,13 @@ blocked, on the server it connects). So Kubeletto's platform manifests get
 `nodeSelector: node-role.kubernetes.io/control-plane: "true"` at the
 rehearsal. It is also the trust boundary: tenant code and platform code on
 different VMs.
+
+Enforced since 2026-10-11: `k3s` carries the taint
+`node-role.kubernetes.io/control-plane:NoSchedule`, so a pod without a
+matching toleration (every tenant pod) can only land on `k3s-worker`.
+Platform manifests need both the `nodeSelector` and the toleration
+(`services/cloudflared/deploy.sh` is the example). K3s's own system pods
+already tolerate it.
 
 ## Anti-spoofing (Proxmox firewall)
 
