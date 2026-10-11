@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | Mitigated 2026-10-11 21:00 WIB (14:00 UTC); watched until 14:35 UTC |
+| **Status** | Mitigated 2026-10-11 21:00 WIB (14:00 UTC); watched until 14:36 UTC: no deletion and no `FailedScheduling` after 14:02, memory requests 68–84 % |
 | **Impact** | On the rented production server (not the lab), 17 tenant Knative Services were deleted by Kubeletto's own crash-loop suspender: 6 belonged to the tenants suspended for proxy abuse the same day, 11 to ordinary tenants. A deleted service stays down until its owner redeploys. More tenants had cold starts that never came up while it lasted. |
 | **Duration** | Scheduling failures from about 12:40 UTC; deletions 13:02–14:01 UTC |
 | **Trigger** | The node's memory **requests** reached 99 %, so scale-from-zero tenant pods stayed `Pending` |
@@ -38,6 +38,19 @@ required"), turning a capacity squeeze into lost deployments.
 
 Logs before 10:05 UTC had rotated, so whether deletions also happened on
 earlier days is unknown; in the 10:05–13:00 window there were none.
+
+## What running without OpenObserve costs (checked 14:40 UTC)
+
+- core's OpenObserve event sink and usage samplers fail (circuit breaker
+  open); usage charts, tenant log history and the hourly usage export stop.
+- The egress auto-suspend enforcer has no bandwidth data: it cannot
+  suspend a new over-quota tenant. It also cannot wrongly unsuspend anyone —
+  no tenant is suspended by `system:egress_autosuspend`.
+- Vector retries the absent sink and then drops; its buffers are in memory,
+  so prod's disk (83 %) does not fill.
+- "platform domain mapping ensure failed" doubled (≈60/h normally): the
+  mappings of the deleted services point at nothing.
+- Live log tail keeps working (it rides NATS, not OpenObserve).
 
 ## Action items
 
