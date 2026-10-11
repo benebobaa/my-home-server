@@ -1,7 +1,9 @@
 # NATS runs without auth (prod's live config; wave 2 adds per-user auth).
-# Until then the network is its only lock: only platform-core and build
-# pods may reach it — tenant pods could otherwise read every tenant's live
-# logs and publish platform events.
+# Until then the network is its only lock, so only platform-core may reach
+# it. Not tenant pods (they could read every tenant's live logs and publish
+# platform events), and not build pods either: builds run untrusted
+# Dockerfile steps, and get NATS access only together with wave 2's
+# per-user NATS auth (phase 2).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -14,4 +16,4 @@ spec:
   ingress:
     - from:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: platform}}
-        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kubeletto-builds}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: platform-core}}
