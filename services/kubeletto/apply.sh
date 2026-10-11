@@ -101,6 +101,7 @@ step_platform() {
   echo "== platform: core, NATS, registry, Traefik routes, Redis"
   kapply < manifests/platform.yaml
   kapply < manifests/redis.yaml
+  kapply < manifests/edge-policy.yaml
   vm_bash 600 <<'EOF'
 set -euo pipefail
 for ns in platform nats registry traefik; do
@@ -113,17 +114,16 @@ EOF
 step_rehearsal() {
   echo "== rehearsal: operator allowlist, routes, probe Knative Service"
   # home-api serves a copy of production data with prod's JWT secret, so only
-  # the operator may reach it. The addresses are detected now and never
-  # committed (the repo is public). depth 1 = the right-most X-Forwarded-For
-  # entry, the one Cloudflare appends, which a client cannot forge.
-  local v4 v6 ranges
-  v4=$(ssh -o BatchMode=yes "$NODE" 'curl -s4 --max-time 5 https://api.ipify.org')
+  # the operator may reach it: the operator LAN's IPv6 /64, detected now and
+  # never committed (the repo is public). Not IPv4: tenant pods leave the
+  # house through the same public IPv4 and would pass. The DMZ has no IPv6
+  # and K3s pods are IPv4-only, so nothing in the cluster matches the /64.
+  # depth 1 = the right-most X-Forwarded-For entry, the one Cloudflare
+  # appends; Traefik trusts it only from the server node's pods.
+  local v6 ranges
   v6=$(curl -s6 --max-time 5 https://api64.ipify.org || true)
-  [[ $v4 =~ ^[0-9.]+$ ]] || { echo "no public IPv4 detected" >&2; exit 1; }
-  ranges="\"$v4/32\""
-  if [[ $v6 == *:* ]]; then
-    ranges+=", \"$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_network(sys.argv[1]+"/64", strict=False))' "$v6")\""
-  fi
+  [[ $v6 == *:* ]] || { echo "no public IPv6 on this machine: home-api stays closed" >&2; exit 1; }
+  ranges="\"$(python3 -c 'import ipaddress,sys; print(ipaddress.ip_network(sys.argv[1]+"/64", strict=False))' "$v6")\""
   kapply <<ALLOW_EOF
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

@@ -12,9 +12,11 @@ SSH, stripped of cluster-specific fields, and given the home changes:
   - rehearsal safety switches on platform-core (runbook "Safety switches");
   - no Services pinned except the two ClusterIPs registries.yaml and core
     depend on; fresh PVCs; Traefik as ClusterIP (the tunnel is the only way in);
-  - the internal-API NetworkPolicy widened from node 1's pod /24 to the /16;
-  - rate limits keyed on Cf-Connecting-IP: behind the tunnel every request
-    reaches Traefik from a cloudflared pod, and the tunnel is the only way in.
+  - the internal-API NetworkPolicy widened from node 1's pod /24 to the /16.
+
+Prod's rate limits (ipStrategy depth 1) stay: Traefik at home trusts
+X-Forwarded-* only from the server node's pods (traefik-values.yaml), so the
+right-most entry is the client IP Cloudflare added.
 
 Secrets are NOT exported here: secrets.sh pipes them prod -> home.
 
@@ -165,9 +167,6 @@ def home(obj):
                if e["name"] not in CORE_ENV_DROP and e["name"] not in CORE_ENV_OVERRIDES]
         env += [{"name": k, "value": v} for k, v in CORE_ENV_OVERRIDES.items()]
         c["env"] = env
-
-    if kind == "Middleware" and "rateLimit" in obj["spec"]:
-        obj["spec"]["rateLimit"]["sourceCriterion"] = {"requestHeaderName": "Cf-Connecting-IP"}
 
     if kind == "NetworkPolicy" and name == "platform-core-internal-api":
         for rule in obj["spec"].get("ingress", []):
