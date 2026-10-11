@@ -1,8 +1,9 @@
 # Kubeletto at home — target shape, cuts, and the move
 
-Status: **proposal** (2026-10-11). It becomes an ADR once the operator
-decides §6. Deadline: the rented server is gone on **2026-11-05**
-(ADR 0004).
+Status: **decided 2026-10-11** — [ADR 0011](../decisions/0011-kubeletto-on-the-home-cluster.md)
+for the lab side; Kubeletto's own decisions and phase plan are in its
+private repo (`docs/migration/README.md`, branch `home-migration`). The
+deadline stays **2026-11-05** (ADR 0004).
 
 Kubeletto is not lifted as-is. Prod was built for one 16 GiB cloud node
 with managed services around it; home is two small VMs behind a Cloudflare
@@ -104,16 +105,18 @@ the console on Cloudflare Pages.
 | 3 Full rehearsal | Oct 26–29 | realigned image in worker mode on a fresh DB copy; cold reboot of both nodes; PBS + dump restore | deploy from GitHub → live through tunnel; survives reboot |
 | 4 Cutover | Oct 30–Nov 1 | freeze prod writes, final dump/restore (~1 GB, minutes), Infisical/R2/GitHub secrets copied (JWT_SECRET **copied, not rotated**), DNS records → tunnel | prod names served from home; old server kept as rollback until Nov 5 |
 
-## 6. Decisions for the operator
+## 6. Decisions (taken 2026-10-11 by Kubeletto's owner)
 
 1. **Free tier**: keep it open, gate it, or close new free sign-ups?
-   Recommended: gate it + the §4 limits.
+   **Decided:** gated (GitHub account at least 30 days old) + the §4 limits.
 2. **Custom domains**: CF for SaaS (code change before cutover), or switch
-   the feature off and mail the few tenants using it? Recommended: CF for SaaS; off as
+   the feature off and mail the few tenants using it? **Decided:** CF for SaaS; off as
    the fallback if it is not ready by Oct 28.
 3. **Usage metering and tenant metrics**: drop now, rebuild on Prometheus if
-   paying customers appear? Recommended: drop.
-4. **Code version at cutover**: the realigned build (rehearsed in phase 3).
+   paying customers appear? **Decided:** drop; tenant logs go to an
+   in-cluster VictoriaLogs instead of OpenObserve.
+4. **Code version at cutover**: **decided:** fix-wave 1 + 2 (never deployed
+   to prod) plus the home changes, rehearsed in phase 3; prod stays frozen.
    Phase 1 uses the live image only to prove the infrastructure.
 
 Risks carried: the home registry reads and writes prod's shared R2 bucket
