@@ -51,11 +51,16 @@ for d in docs:
     chunk.append(d); size += len(d)
 flush()
 PY
+  local f out rc=0
   for f in "$dir"/[0-9]*.yaml; do
-    { echo 'k3s kubectl apply --server-side --force-conflicts --field-manager=homeserver -f - <<'"'"'KAPPLY_EOF'"'"''
-      cat "$f"; echo; echo 'KAPPLY_EOF'; } | vm_bash 300 | grep -vE ' serverside-applied$| unchanged$' || true
+    # Fail on any kubectl error (no masking): a half-applied overlay could
+    # leave a policy open.
+    if ! out=$({ echo 'k3s kubectl apply --server-side --force-conflicts --field-manager=homeserver -f - <<'"'"'KAPPLY_EOF'"'"''
+        cat "$f"; echo; echo 'KAPPLY_EOF'; } | vm_bash 300 2>&1); then rc=1; fi
+    printf '%s\n' "$out" | grep -vE ' serverside-applied$| unchanged$|^$' || true
   done
   rm -rf "$dir"
+  return "$rc"
 }
 
 render() {
@@ -106,18 +111,27 @@ step_traefik() {
 
 step_platform() {
   echo "== platform: the overlay ($REV)"
-  render | kapply
   # Build pods must not reach the home public IP either (TENANT_EGRESS_DENY
-  # parity); it is dynamic and kept out of git, so it is added here.
+  # parity). It is dynamic and kept out of git, so it is written into the
+  # rendered policy before the apply: one apply, never a window in which the
+  # policy exists without it.
   local v4
   v4=$(ssh -o BatchMode=yes "$NODE" 'curl -s4 --max-time 5 https://api.ipify.org')
-  [[ $v4 =~ ^[0-9.]+$ ]] || { echo "no public IPv4 detected" >&2; exit 1; }
-  vm_bash <<EOF
-set -euo pipefail
-k3s kubectl -n kubeletto-builds get networkpolicy allow-build-egress -o jsonpath='{.spec.egress[1].to[0].ipBlock.except}' | grep -q '"$v4/32"' ||
-  k3s kubectl -n kubeletto-builds patch networkpolicy allow-build-egress --type json \
-    -p '[{"op":"add","path":"/spec/egress/1/to/0/ipBlock/except/-","value":"$v4/32"}]' >/dev/null
-EOF
+  [[ $v4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no public IPv4 detected" >&2; exit 1; }
+  render | python3 -c '
+import sys, yaml
+ip = sys.argv[1] + "/32"; found = False; out = []
+for o in yaml.safe_load_all(sys.stdin):
+    if not o: continue
+    if o["kind"] == "NetworkPolicy" and o["metadata"]["name"] == "allow-build-egress":
+        for rule in o["spec"]["egress"]:
+            for to in rule.get("to", []):
+                if to.get("ipBlock", {}).get("cidr") == "0.0.0.0/0":
+                    to["ipBlock"]["except"].append(ip); found = True
+    out.append(yaml.safe_dump(o, sort_keys=False))
+if not found: sys.exit("allow-build-egress: no 0.0.0.0/0 rule to extend")
+sys.stdout.write("---\n".join(out))
+' "$v4" | kapply
   vm_bash 600 <<'EOF'
 set -euo pipefail
 for ns in platform nats registry logs traefik; do

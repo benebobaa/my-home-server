@@ -22,7 +22,7 @@
 #
 # Generated at home: nats/nats-auth (platform/vector/build passwords),
 # logs/vector-nats-auth, kubeletto-builds/build-nats-auth.
-# Mirrored into kubeletto-builds: ghcr-pull, platform-core-internal-auth.
+# Mirrored into kubeletto-builds: ghcr-pull only (not core's internal secret).
 #
 # At cutover this becomes a SOPS file in this repo (app standard §4).
 set -euo pipefail
@@ -70,15 +70,23 @@ out = []
 for (ns, name), s in prod.items():
     out.append(secret(ns, name, dict(s.get("data", {})), s.get("type", "Opaque")))
 
+# NATS parses an env-substituted password like a config token: urlsafe
+# characters ("-" first, digits) can be misread, so passwords are a letter
+# plus hex. Older-format values are regenerated.
+import re
 old = json.loads(os.environ["EXISTING_NATS"] or "{}").get("data", {})
-nats = {k: old.get(k) or b64(secrets.token_urlsafe(32))
+def keep(v):
+    return v if v and re.fullmatch(r"k[0-9a-f]{48}", base64.b64decode(v).decode()) else None
+nats = {k: keep(old.get(k)) or b64("k" + secrets.token_hex(24))
         for k in ("platform-password", "vector-password", "build-password")}
 out.append(secret("nats", "nats-auth", nats))
 out.append(secret("logs", "vector-nats-auth", {"password": nats["vector-password"]}))
 out.append(secret("kubeletto-builds", "build-nats-auth", {"password": nats["build-password"]}))
-for name in ("ghcr-pull", "platform-core-internal-auth"):
-    s = prod[("platform", name)]
-    out.append(secret("kubeletto-builds", name, dict(s["data"]), s.get("type", "Opaque")))
+# Build pods run untrusted Dockerfile steps: they get the image-pull secret
+# only. The platform-wide INTERNAL_AUTH_SECRET of core is NOT mirrored; builds
+# authenticate with per-build tokens (BUILD_LEGACY_INTERNAL_AUTH=false, wave 2).
+s = prod[("platform", "ghcr-pull")]
+out.append(secret("kubeletto-builds", "ghcr-pull", dict(s["data"]), s.get("type", "Opaque")))
 
 env = next(s for s in out if s["metadata"]["name"] == "platform-core-env")["data"]
 dsn = "postgresql://kubeletto:%s@%s:5432/kubeletto?sslmode=require" % (
@@ -103,6 +111,7 @@ for s in out:
     print("%s/%s: %s" % (s["metadata"]["namespace"], s["metadata"]["name"], ",".join(sorted(s["data"]))), file=sys.stderr)
 for ns in sorted({s["metadata"]["namespace"] for s in out}):
     print("k3s kubectl create namespace %s --dry-run=client -o yaml | k3s kubectl apply -f - >/dev/null" % ns)
+print("k3s kubectl -n kubeletto-builds delete secret platform-core-internal-auth --ignore-not-found >/dev/null")
 print("k3s kubectl apply -f - <<'"'"'SECRETS_EOF'"'"'")
 print(json.dumps({"apiVersion": "v1", "kind": "List", "items": out}))
 print("SECRETS_EOF")
