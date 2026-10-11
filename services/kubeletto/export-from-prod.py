@@ -190,6 +190,10 @@ def home(obj):
         # instead of an address range.
         for rule in obj["spec"].get("ingress", []):
             for i, frm in enumerate(rule.get("from", [])):
+                # prod: any namespace ({}) + pod label k8s-app=kube-system —
+                # a label any pod could carry. Pin it to ns kube-system.
+                if frm.get("namespaceSelector") == {} and frm.get("podSelector"):
+                    frm["namespaceSelector"] = {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}
                 if frm.get("ipBlock", {}).get("cidr") == "10.42.0.0/24":
                     rule["from"][i] = {"namespaceSelector": {"matchLabels": {
                         "kubernetes.io/metadata.name": "kubeletto-builds"}}}

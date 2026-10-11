@@ -102,6 +102,7 @@ step_platform() {
   kapply < manifests/platform.yaml
   kapply < manifests/redis.yaml
   kapply < manifests/edge-policy.yaml
+  kapply < manifests/platform-policy.yaml
   vm_bash 600 <<'EOF'
 set -euo pipefail
 for ns in platform nats registry traefik; do
