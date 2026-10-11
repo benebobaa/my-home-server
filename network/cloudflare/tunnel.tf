@@ -17,11 +17,14 @@ locals {
 
   # Kubeletto's Traefik (its websecure entrypoint; :80 only redirects to
   # https). match_sn_ito_host sends the request's hostname as SNI, which
-  # Traefik's sniStrict needs. OPEN: Traefik serves Cloudflare Origin CA
-  # certs, which cloudflared does not trust by default — add ca_pool (the
-  # Origin roots mounted into the connector) when Traefik lands at home
-  # (docs/runbooks/kubeletto-migration.md).
+  # Traefik's sniStrict needs; Traefik serves Cloudflare Origin CA certs, so
+  # cloudflared verifies them against the Origin roots the connector mounts
+  # (services/cloudflared/deploy.sh, ConfigMap origin-ca).
   traefik = "https://traefik.traefik.svc.cluster.local:443"
+  to_traefik = {
+    match_sn_ito_host = true
+    ca_pool           = "/etc/cloudflared/origin-ca/origin-ca.pem"
+  }
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "kubeletto" {
@@ -41,16 +44,40 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "kubeletto" {
       {
         hostname       = "api.kubeletto.com"
         service        = local.traefik
-        origin_request = { match_sn_ito_host = true }
+        origin_request = local.to_traefik
+      },
+      # Rehearsal (docs/design/kubeletto-home.md phase 1): the home copy on a
+      # name prod does not use. Remove at cutover with its DNS record below.
+      {
+        hostname       = "home-api.kubeletto.com"
+        service        = local.traefik
+        origin_request = local.to_traefik
       },
       {
         hostname       = "*.kubeletto.app"
         service        = local.traefik
-        origin_request = { match_sn_ito_host = true }
+        origin_request = local.to_traefik
       },
       { service = "http_status:404" },
     ]
   }
+}
+
+# --- Rehearsal names --------------------------------------------------------
+# Only these two names point at the tunnel before cutover; everything else
+# (records.tf) still goes to the rented server. probe-rehearsal is a more
+# specific name than the *.kubeletto.app wildcard, so it wins for itself only.
+resource "cloudflare_dns_record" "rehearsal" {
+  for_each = {
+    "home-api.kubeletto.com"        = local.zone_id.com
+    "probe-rehearsal.kubeletto.app" = local.zone_id.app
+  }
+  zone_id = each.value
+  name    = each.key
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.kubeletto.id}.cfargotunnel.com"
+  ttl     = 1
+  proxied = true
 }
 
 data "cloudflare_zero_trust_tunnel_cloudflared_token" "kubeletto" {
