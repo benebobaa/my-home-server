@@ -162,3 +162,29 @@ fail and the same suspender deletes their services.
   nothing alerted.
 - Measured through the tunnel from the LAN: `/readyz` 0.29 s at home vs
   0.89 s on prod; a failed login (one user lookup) 2.2 s vs 5.1 s.
+
+## Found during phase 2 (2026-10-11)
+
+- **The legacy GHCR packages are not linked to the repo**: the workflow
+  token gets `permission_denied: read_package` on `platform-core` /
+  `build-worker-buildkit`. Home images are new packages created by the
+  workflow: `ghcr.io/podpilott/kubeletto-core`, `kubeletto-build-worker`.
+- **Cross-tenant log injection in Vector (prod too, fixed and applied
+  2026-10-11)**: the normalize transform merged a log line's JSON before
+  reading the tenant from pod labels. Fixed in three rounds after security
+  reviews: restore collector metadata after the merge; drop identity keys in
+  any letter case (core decodes with Go, case-insensitive); compare names as
+  log stores normalize/flatten them. `infra/k8s/home/vector-tests.toml`
+  proves it (fails on the old config).
+- **Build pods lacked the tenant egress denies** (CGNAT, link-local, the
+  home IP): the home overlay adds them.
+- The prod dump in the Kubeletto repo has no Vector ServiceAccount/RBAC, and
+  two build Role/RoleBinding files duplicate each other.
+- **Knative cannot jump 1.16 → 1.23 in place** (one minor per upgrade): the
+  home cluster had only rehearsal objects, so 1.16 was uninstalled and 1.23
+  installed fresh. Prod's cutover does not upgrade Knative in place either:
+  the home cluster is built new.
+- wave 1+2 needs `DOMAINS_EDGE_IPS`/`DOMAINS_PROBE_ADDR` (startup) and
+  migrations 097–099 (schema gate); `services/kubeletto/migrate.sh` runs
+  goose inside CT 130 against the home copy.
+- `PLATFORM_API_URL` and `SESSION_COOKIE_DOMAIN` are not read by any code.

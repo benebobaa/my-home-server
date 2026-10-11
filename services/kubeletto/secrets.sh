@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
-# Kubeletto's Secrets for the home cluster, piped from production: read with
-# `kubectl get secret -o json` on the prod host, rewritten in memory, applied in
-# VM 300 through the guest agent's stdin. Nothing lands on disk or in argv, and
-# only names and key lists are printed.
+# Kubeletto's Secrets on the home cluster, for the home overlay
+# (Kubeletto repo infra/k8s/home). Shared credentials are piped from
+# production (read with `kubectl get secret -o json` on the prod host); home
+# credentials are generated here, or reused when the cluster already has
+# them. Everything is rewritten in memory and applied in VM 300 through the
+# guest agent's stdin: nothing lands on disk or in argv, and only names and
+# key lists are printed.
 #
-# Rehearsal rewrite of platform-core-env (runbook kubeletto-migration.md):
-#   DATABASE_URL, DATABASE_URL_DIRECT -> the home copy in CT 130 (its password
-#     from proxmox/opentofu, random_password.postgres["kubeletto"])
-#   REDIS_URL -> the in-cluster Redis (manifests/redis.yaml)
-#   NATS_URL -> the home NATS by DNS (prod's value is its own ClusterIP)
-# Still prod's at cutover, to change then: PLATFORM_API_URL and
-# SESSION_COOKIE_DOMAIN carry the rented server's public IP.
-#   dropped: RESEND_API_KEY (mail), SUMOPOD_* (payments), OPENOBSERVE_*, OTEL_*
-# Everything else is prod's value: JWT_SECRET must match (it derives the
-# per-user GitHub token keys), and R2/GitHub/Infisical are the shared services.
+# platform-core-env, from prod with:
+#   DATABASE_URL, DATABASE_URL_DIRECT -> the home database in CT 130
+#   REDIS_URL -> in-cluster Valkey; NATS_URL -> home NATS by DNS
+#   NATS_USER/NATS_PASSWORD (platform) + NATS_BUILD_USER (wave 2 NATS auth)
+#   TENANT_EGRESS_DENY_CIDRS -> CGNAT + the home public IPv4 (not in git)
+#   DOMAINS_EDGE_IPS -> Cloudflare's addresses for kubeletto.app (apex
+#     verification until Cloudflare for SaaS, decision D4);
+#   DOMAINS_PROBE_ADDR -> the in-cluster Traefik (the edge at home)
+#   PLATFORM_API_URL, SESSION_COOKIE_DOMAIN -> no longer the rented server's IP
+#   dropped: RESEND_API_KEY, SUMOPOD_* (rehearsal), OPENOBSERVE_*, OTEL_*
+# JWT_SECRET, GITHUB_*, R2_*, INFISICAL_*, REGISTRY_AUTH_PRIVATE_KEY stay
+# prod's: shared services, and JWT_SECRET derives the GitHub token keys.
+#
+# Generated at home: nats/nats-auth (platform/vector/build passwords),
+# logs/vector-nats-auth, kubeletto-builds/build-nats-auth.
+# Mirrored into kubeletto-builds: ghcr-pull, platform-core-internal-auth.
 #
 # At cutover this becomes a SOPS file in this repo (app standard §4).
 set -euo pipefail
@@ -24,44 +33,77 @@ PROD=root@103.59.160.198
 NODE=root@10.10.10.12
 VMID=300
 
-SECRETS="platform/platform-core-env platform/ghcr-pull platform/platform-core-internal-auth
-platform/platform-core-registry-pull registry/registry-auth-public-key registry/registry-http-secret
-registry/registry-r2-credentials traefik/kubeletto-app-tls traefik/kubeletto-com-tls
-traefik/platform-team-basic-auth"
+PROD_SECRETS="platform/platform-core-env platform/ghcr-pull platform/platform-core-internal-auth
+platform/platform-core-registry-pull registry/registry-http-secret registry/registry-r2-credentials
+traefik/kubeletto-app-tls traefik/kubeletto-com-tls traefik/platform-team-basic-auth"
+
+vm() {
+  ssh -o BatchMode=yes "$NODE" "qm guest exec $VMID --pass-stdin 1 --timeout ${1:-120} -- bash -s" |
+    python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",1))'
+}
 
 HOME_PG_PASSWORD=$(cd "$REPO/proxmox/opentofu" &&
   echo 'nonsensitive(random_password.postgres["kubeletto"].result)' |
   sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tr -d '"')
 [ ${#HOME_PG_PASSWORD} -ge 20 ] || { echo "secrets: no kubeletto DB password from tofu" >&2; exit 1; }
 HOME_PG_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["postgres"]["ip"])' "$REPO/inventory/lab.yaml")
-export HOME_PG_PASSWORD HOME_PG_HOST
+HOME_IPV4=$(ssh -o BatchMode=yes "$NODE" 'curl -s4 --max-time 5 https://api.ipify.org')
+[[ $HOME_IPV4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "secrets: no home public IPv4" >&2; exit 1; }
+EDGE_IPS=$(dig +short probe-rehearsal.kubeletto.app A | grep -E '^[0-9.]+$' | sort | paste -sd, -)
+[ -n "$EDGE_IPS" ] || { echo "secrets: no Cloudflare edge IPs" >&2; exit 1; }
+# Existing home NATS passwords, so a re-run never rotates them under running pods.
+EXISTING_NATS=$(echo 'k3s kubectl -n nats get secret nats-auth -o json 2>/dev/null || echo "{}"' | vm)
+export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS
 
-remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
+remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
 
 ssh -o BatchMode=yes "$PROD" "$remote" 2>/dev/null | python3 -c '
-import base64, json, os, sys, urllib.parse as u
-lst = json.load(sys.stdin)
+import base64, json, os, secrets, sys, urllib.parse as u
 b64 = lambda s: base64.b64encode(s.encode()).decode()
-for s in lst["items"]:
-    m = s["metadata"]
-    s["metadata"] = {"name": m["name"], "namespace": m["namespace"],
-                     "labels": {"app.kubernetes.io/managed-by": "homeserver-repo"}}
-    if m["name"] == "platform-core-env":
-        d = s["data"]
-        dsn = "postgresql://kubeletto:%s@%s:5432/kubeletto?sslmode=require" % (
-            u.quote(os.environ["HOME_PG_PASSWORD"], safe=""), os.environ["HOME_PG_HOST"])
-        d["DATABASE_URL"] = d["DATABASE_URL_DIRECT"] = b64(dsn)
-        d["REDIS_URL"] = b64("redis://redis.platform.svc.cluster.local:6379")
-        # prod pins NATS by its ClusterIP (10.43.196.254), which is nothing here
-        d["NATS_URL"] = b64("nats://nats.nats.svc.cluster.local:4222")
-        dropped = sorted(k for k in d if k == "RESEND_API_KEY" or k.startswith(("SUMOPOD_", "OPENOBSERVE_", "OTEL_")))
-        for k in dropped: del d[k]
-        print("platform-core-env: %d keys, dropped %s" % (len(d), ",".join(dropped)), file=sys.stderr)
-    print("%s/%s: %s" % (m["namespace"], m["name"], ",".join(sorted(s.get("data", {})))), file=sys.stderr)
-for ns in sorted({s["metadata"]["namespace"] for s in lst["items"]}):
+prod = {(s["metadata"]["namespace"], s["metadata"]["name"]): s for s in json.load(sys.stdin)["items"]}
+def secret(ns, name, data, typ="Opaque"):
+    return {"apiVersion": "v1", "kind": "Secret", "type": typ,
+            "metadata": {"name": name, "namespace": ns,
+                         "labels": {"app.kubernetes.io/managed-by": "homeserver-repo"}},
+            "data": data}
+out = []
+for (ns, name), s in prod.items():
+    out.append(secret(ns, name, dict(s.get("data", {})), s.get("type", "Opaque")))
+
+old = json.loads(os.environ["EXISTING_NATS"] or "{}").get("data", {})
+nats = {k: old.get(k) or b64(secrets.token_urlsafe(32))
+        for k in ("platform-password", "vector-password", "build-password")}
+out.append(secret("nats", "nats-auth", nats))
+out.append(secret("logs", "vector-nats-auth", {"password": nats["vector-password"]}))
+out.append(secret("kubeletto-builds", "build-nats-auth", {"password": nats["build-password"]}))
+for name in ("ghcr-pull", "platform-core-internal-auth"):
+    s = prod[("platform", name)]
+    out.append(secret("kubeletto-builds", name, dict(s["data"]), s.get("type", "Opaque")))
+
+env = next(s for s in out if s["metadata"]["name"] == "platform-core-env")["data"]
+dsn = "postgresql://kubeletto:%s@%s:5432/kubeletto?sslmode=require" % (
+    u.quote(os.environ["HOME_PG_PASSWORD"], safe=""), os.environ["HOME_PG_HOST"])
+env.update({
+    "DATABASE_URL": b64(dsn), "DATABASE_URL_DIRECT": b64(dsn),
+    "REDIS_URL": b64("redis://valkey.platform.svc.cluster.local:6379"),
+    "NATS_URL": b64("nats://nats.nats.svc.cluster.local:4222"),
+    "NATS_USER": b64("platform"), "NATS_PASSWORD": nats["platform-password"],
+    "NATS_BUILD_USER": b64("build"),
+    "TENANT_EGRESS_DENY_CIDRS": b64("100.64.0.0/10,%s/32" % os.environ["HOME_IPV4"]),
+    "DOMAINS_EDGE_IPS": b64(os.environ["EDGE_IPS"]),
+    "DOMAINS_PROBE_ADDR": b64("traefik.traefik.svc.cluster.local:443"),
+    "PLATFORM_API_URL": b64("https://api.kubeletto.com"),
+    "SESSION_COOKIE_DOMAIN": b64("api.kubeletto.com"),
+})
+dropped = sorted(k for k in env if k == "RESEND_API_KEY" or k.startswith(("SUMOPOD_", "OPENOBSERVE_", "OTEL_")))
+for k in dropped:
+    del env[k]
+print("platform-core-env: %d keys, dropped %s" % (len(env), ",".join(dropped)), file=sys.stderr)
+for s in out:
+    print("%s/%s: %s" % (s["metadata"]["namespace"], s["metadata"]["name"], ",".join(sorted(s["data"]))), file=sys.stderr)
+for ns in sorted({s["metadata"]["namespace"] for s in out}):
     print("k3s kubectl create namespace %s --dry-run=client -o yaml | k3s kubectl apply -f - >/dev/null" % ns)
 print("k3s kubectl apply -f - <<'"'"'SECRETS_EOF'"'"'")
-print(json.dumps(lst))
+print(json.dumps({"apiVersion": "v1", "kind": "List", "items": out}))
 print("SECRETS_EOF")
-' | ssh -o BatchMode=yes "$NODE" "qm guest exec $VMID --pass-stdin 1 --timeout 120 -- bash -s" |
-  python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",1))'
+' | vm 120
