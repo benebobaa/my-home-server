@@ -117,3 +117,27 @@ namespace pod quota to 0 on its next pass (a pass over all tenants takes
 ~19 min). A quota does not stop running pods: once `pods=0` shows in the
 namespace's ResourceQuota, delete the pods; Knative cannot recreate them.
 Tenant namespaces are `kl-<id8>-<id8>`. Reversible with unsuspend.
+
+## Found during rehearsal phase 1 (2026-10-11)
+
+- **Aiven is slow: ~140 KB/s** to the prod host, measured with
+  server-generated rows. Prod's app talks to its database over this link.
+  The full database (1.16 GB, 941 MB of it `usage_samples`) takes over an
+  hour to dump; the rehearsal copy skips `usage_samples` and
+  `openobserve_read_model_exports` rows. pg_dump must run on the prod side
+  (Aiven's allowlist) and be v18 (the host has 16): a throwaway
+  `postgres:18-alpine` pod in ns `platform` with `envFrom` the core secret.
+- **The live image is not in GHCR.** `ghcr.io/podpilott/platform-core:74cd7829`
+  answers "not found"; it exists only in prod's containerd, and the
+  operator's GHCR token cannot push (`denied`). Copied to VM 300 with
+  `ctr images export` → chunks through the guest agent → `ctr images import`.
+- **Kourier's URL in `setup-knative.sh` is dead**: release tags are
+  `knative-v1.16.0`, not `kourier-v1.16.0`.
+- **Traefik chart 40 reads `service.spec.type`.** Prod's `service.type:
+  LoadBalancer` is ignored (LoadBalancer is the default anyway); at home
+  `spec.type: ClusterIP` keeps 80/443 off the DMZ node addresses.
+- **Rate limits behind the tunnel**: every request reaches Traefik from a
+  cloudflared pod, so the home middlewares key on `Cf-Connecting-IP`.
+- **PriorityClass first**: Knative's placement patches reference
+  `kubeletto-platform-critical`; `apply.sh base` creates it before Knative.
+- Cold start of a cached image through the tunnel: 2.7 s; warm: 0.3 s.

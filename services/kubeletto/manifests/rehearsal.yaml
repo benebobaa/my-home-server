@@ -1,0 +1,51 @@
+# Rehearsal only (design/kubeletto-home.md phase 1): reach the home copy on
+# names prod does not use, so prod's DNS and traffic stay untouched.
+#   home-api.kubeletto.com            -> platform-core (api mode, DB copy)
+#   probe-rehearsal.kubeletto.app     -> a hello-world Knative Service on the
+#                                        worker: proves tunnel -> Traefik ->
+#                                        Kourier -> tenant node end to end
+# Delete this file's objects (and the two DNS records) at cutover.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: home-api
+  namespace: traefik
+  labels: {app.kubernetes.io/managed-by: homeserver-repo}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - kind: Rule
+      match: Host(`home-api.kubeletto.com`)
+      # home-api-allowlist is created by apply.sh (not in this public repo):
+      # only the operator's current public IPs reach the prod-data copy.
+      middlewares:
+        - {name: home-api-allowlist, namespace: traefik}
+        - {name: ratelimit-api, namespace: traefik}
+      services: [{name: platform-core, namespace: platform, port: 8080}]
+  tls:
+    secretName: kubeletto-com-tls
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rehearsal
+  labels: {app.kubernetes.io/managed-by: homeserver-repo}
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: probe
+  namespace: rehearsal
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "1"
+    spec:
+      containers:
+        - image: ghcr.io/knative/helloworld-go:latest
+          env: [{name: TARGET, value: "kubeletto at home"}]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
