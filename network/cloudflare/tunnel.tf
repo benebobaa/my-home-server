@@ -16,9 +16,11 @@ locals {
   account_id = "f650e5eb59b56b70048a841520541189" # not secret
 
   # Kubeletto's Traefik (its websecure entrypoint; :80 only redirects to
-  # https). match_sn_ito_host sends the request's hostname as SNI, so Traefik
-  # picks the matching certificate and cloudflared verifies it — a 502 until
-  # cert-manager has issued the wildcard is the correct signal.
+  # https). match_sn_ito_host sends the request's hostname as SNI, which
+  # Traefik's sniStrict needs. OPEN: Traefik serves Cloudflare Origin CA
+  # certs, which cloudflared does not trust by default — add ca_pool (the
+  # Origin roots mounted into the connector) when Traefik lands at home
+  # (docs/runbooks/kubeletto-migration.md).
   traefik = "https://traefik.traefik.svc.cluster.local:443"
 }
 
