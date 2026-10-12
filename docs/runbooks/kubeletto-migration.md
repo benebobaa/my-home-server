@@ -143,14 +143,24 @@ IngressRoute → Kourier → the tenant's DomainMapping. No cert-manager at home
   since the new core started. (kubeletto.com subdomains are rejected by the
   API's validator, so that row was inserted directly in the copy.)
 
-**At cutover** (customer-facing: operator's yes first): flip
-`domains.kubeletto.app` in `records.tf` from the DNS-only A record to a
-proxied CNAME → `saas-origin.kubeletto.app`, remove
-`DOMAINS_RECONCILE_TENANTS` from the core patch, and watch the existing
-domains go ACTIVE (each becomes a custom hostname; HTTP validation needs the
-flipped record). The pre-cutover copy carries `certificate_apply_failed` on
-those rows from the cert-manager attempt before the switch; the final DB
-copy replaces them.
+**At cutover** (customer-facing: operator's yes first; tell the custom-domain
+owners beforehand: each domain has a short HTTPS gap, ~1–3 min measured,
+between the flip and its Cloudflare certificate):
+1. Remove `DOMAINS_RECONCILE_TENANTS` from the core patch and apply. The
+   reconciler creates the existing domains' custom hostnames while prod
+   still serves them; they wait `pending` (free, no traffic change).
+2. Flip `domains.kubeletto.app` in `records.tf` from the DNS-only A record
+   to a proxied CNAME → `saas-origin.kubeletto.app`. HTTP validation then
+   completes and each domain goes ACTIVE; watch the rows and
+   `curl https://<domain>/`.
+
+In this order validation starts the moment traffic reaches Cloudflare; the
+reverse adds the record TTL, a reconcile interval and the create to the gap.
+The first Cloudflare-mode pass emits one `domain.degraded` event per
+already-active domain (certificate back to issuing): it only lands in the
+NATS `DOMAINS` stream, nothing turns it into a notification or mail. The
+pre-cutover copy carries `certificate_apply_failed` on those rows from the
+cert-manager attempt before the switch; the final DB copy replaces them.
 
 ## Tenant isolation
 
