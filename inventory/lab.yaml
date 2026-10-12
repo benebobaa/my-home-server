@@ -141,7 +141,11 @@ hosts:
     ip: 10.10.25.20
     dns: false # resolves through public resolvers (no home.arpa from the DMZ)
     note: Kubeletto tenant cluster — K3s VM (tenants run arbitrary code, so a VM, not an LXC; ADR 0004)
-    monitoring: { tier: standard } # DMZ: no log shipping into MGMT; health/metrics come with K3s
+    # DMZ: no log shipping into MGMT. Kubeletto's monitoring NodePorts
+    # (Kubeletto repo infra/k8s/home/monitoring.yaml): 30080 is a proxy that
+    # serves core's /readyz and nothing else; 30910 is Traefik's metrics.
+    # Both admit only the monitoring host.
+    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910] }
   k3s-worker:
     kind: vm
     vmid: 301
