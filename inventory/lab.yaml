@@ -171,7 +171,9 @@ hosts:
     # best-effort: off by design most days; pve1 being down explains it.
     # No logs: it runs untrusted code (pip, model hubs, GitHub), so like the
     # DMZ it never pushes into MGMT (VictoriaLogs serves queries on 9428).
-    monitoring: { tier: best-effort, logs: false }
+    # 9835: nvidia_gpu_exporter (GPU temperature, power, clocks, VRAM;
+    # ADR 0014), scraped with the untrusted-zone limits.
+    monitoring: { tier: best-effort, logs: false, metrics: [9835] }
 
   # --- reserved ---------------------------------------------------------------
   edge:

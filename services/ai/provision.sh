@@ -17,6 +17,7 @@
 # - Docker CE + NVIDIA container toolkit: vLLM, SGLang and TensorRT-LLM ship
 #   as images that expect `--gpus all`.
 # - uv for Python environments; PyTorch goes into projects, not the system.
+# - nvidia_gpu_exporter for Prometheus (pulled from MGMT; ADR 0014).
 #
 # Deliberately absent: Tailscale and journal shipping. This VM runs
 # untrusted code with passwordless sudo, so it must never sit on the tailnet
@@ -113,6 +114,23 @@ if [ "$(cat /etc/systemd/system/nvidia-persistenced.service.d/homelab.conf 2>/de
 fi
 systemctl enable -q nvidia-persistenced
 
+# GPU metrics for Prometheus (ADR 0014): nvidia_gpu_exporter on :9835, a
+# pinned release checked against the sha256 its release publishes. Default
+# `exec` backend: it runs `nvidia-smi --query-gpu` per scrape (the basic
+# driver readings: temperature, power, clocks, VRAM, throttle reasons), no
+# profiling counters, so `ncu`/`nsys` are unaffected. Its postinst creates
+# the service user and enables the unit.
+GPU_EXPORTER_VERSION=1.15.1
+GPU_EXPORTER_SHA256=0dc8c2756c6853ec7e6a7c404b229d8f764443bef89f33e13b3c4278b309acd4
+if [ "$(dpkg-query -W -f='${Version}' nvidia-gpu-exporter 2>/dev/null)" != "$GPU_EXPORTER_VERSION" ]; then
+  deb=/tmp/nvidia-gpu-exporter_${GPU_EXPORTER_VERSION}_linux_amd64.deb
+  curl -fsSL -o "$deb" "https://github.com/utkuozdemir/nvidia_gpu_exporter/releases/download/v${GPU_EXPORTER_VERSION}/nvidia-gpu-exporter_${GPU_EXPORTER_VERSION}_linux_amd64.deb"
+  echo "${GPU_EXPORTER_SHA256}  ${deb}" | sha256sum -c --quiet
+  dpkg -i "$deb"
+  rm -f "$deb"
+fi
+systemctl enable -q --now nvidia_gpu_exporter
+
 # Docker uses the NVIDIA runtime for --gpus.
 if ! grep -q nvidia /etc/docker/daemon.json 2>/dev/null; then
   nvidia-ctk runtime configure --runtime=docker
@@ -149,4 +167,4 @@ if ! nvidia-smi >/dev/null 2>&1; then
   echo "ai: NVIDIA driver installed; a reboot loads it"
   touch /run/ai-reboot-required
 fi
-echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker)"
+echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker, gpu exporter ${GPU_EXPORTER_VERSION})"

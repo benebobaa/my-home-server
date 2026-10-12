@@ -15,6 +15,7 @@ Python. Why it looks like this:
 | Login | user `bene`, the admin SSH key, passwordless sudo; no passwords |
 | Console | serial (`qm terminal 140` on pve1) — no VGA |
 | Starts | with pve1 (`onboot`): wake pve1 and the VM comes up by itself |
+| Monitoring | ping + PVE API, and GPU metrics from `nvidia_gpu_exporter` `:9835` (pulled by Prometheus; dashboard **Nvidia GPU Metrics**, alerts `GpuHot`, `GpuHardwareSlowdown`; ADR 0014). No logs leave the VM (ADR 0013) |
 
 ## Files
 
@@ -23,7 +24,7 @@ Python. Why it looks like this:
 | `vm.sh` | on pve1 as root (`terraform_data.ai_vm`) | creates the VM from the pinned cloud image, sets GPU passthrough, CPU, memory, network; never restarts a running VM |
 | `user-data.yaml.tftpl` | cloud-init, first boot | hostname, user + key, guest agent |
 | `converge.sh` | on pve1 (`terraform_data.ai_converge`) | waits for the agent, runs `provision.sh` in the guest, one reboot for the driver, `nvidia-smi` check |
-| `provision.sh` | in the guest as root | full upgrade, driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv; GPU profiling for every user (`ncu`/`nsys` without root), persistence mode on; purges Tailscale and the journal uploader |
+| `provision.sh` | in the guest as root | full upgrade, driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv, GPU exporter (pinned, sha256); GPU profiling for every user (`ncu`/`nsys` without root), persistence mode on; purges Tailscale and the journal uploader |
 
 Why scripts and not a bpg VM resource: pve1 is off most days and the PVE
 API cannot read an offline node, so a provider resource would break every
@@ -81,12 +82,13 @@ What healthy looks like, to compare against when something feels off:
 
 | Check | Value |
 | --- | --- |
-| fp16 matmul 8192² (PyTorch 2.14, cu130) | 22.6–23.2 TFLOPS |
+| fp16 matmul 8192², sustained 60 s (PyTorch 2.14, cu130) | 26.9 TFLOPS (short 20-iteration runs: 22.6–23.2, they include the clock ramp from idle) |
+| Same, exporter scraped every second (30× the real rate) | 26.7 TFLOPS: no measurable cost; `ncu` 5/5 runs OK meanwhile |
 | gpu-burn `-tc` (~90 s) | ~22.7 TFLOPS, 0 errors, max 64 °C, fan 33 % |
 | Power under load | 170 W = limit = max limit (throttle reason `0x4`, power cap: normal) |
 | SM clock under load | 1747–1777 MHz |
 | PCIe link | Gen4 x16 |
-| Idle | ~45 W, ~50 °C, persistence mode Enabled |
+| Idle | ~14 W in P8, ~40 °C, persistence mode Enabled (right after a boot ~45 W until it settles) |
 
 Not yet proven: hours of combined GPU + CPU load (power supply and cooling;
 the full stress test was cut short on purpose). If a long run crashes or the

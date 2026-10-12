@@ -32,6 +32,9 @@ locals {
   # node): a node that is down then explains its own and its guests' alerts
   # (Alertmanager inhibition), which keeps an on-demand node quiet (ADR 0012).
   watched = { for n, h in local.host : n => h if h.status == "live" && h.monitoring.enabled }
+  # Zones that run untrusted code (ADR 0013, 0014): the DMZ (Kubeletto
+  # tenants) and the LAB (the `ai` workstation: pip, model hubs, GitHub).
+  untrusted_vlans = ["dmz", "lab"]
   target_labels = {
     for n, h in local.watched : n => merge(
       { instance = n, tier = h.monitoring.tier },
@@ -47,24 +50,25 @@ locals {
       targets = [h.ip]
       labels  = local.target_labels[n]
     }]
-    # The DMZ runs tenant code, so its answers are untrusted: its health URLs
+    # Untrusted zones (DMZ, LAB) give untrusted answers: their health URLs
     # use the http_dmz module (no redirects, capped body — a redirect would
-    # turn the probe into a request into MGMT) and its metrics go to the
-    # service_dmz job (sample, label and body limits).
+    # turn the probe into a request into MGMT) and their metrics go to the
+    # service_dmz job (sample, label and body limits). The names say "dmz"
+    # for history: alert rules match on job="service_dmz".
     http = [for n, h in local.watched : {
       targets = [h.monitoring.health]
       labels = merge(local.target_labels[n], {
-        __param_module = h.vlan == "dmz" ? "http_dmz" : h.monitoring.health_module
+        __param_module = contains(local.untrusted_vlans, h.vlan) ? "http_dmz" : h.monitoring.health_module
       })
     } if h.monitoring.health != null]
     service = [for n, h in local.watched : {
       targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
       labels  = merge(local.target_labels[n], { service = n })
-    } if length(h.monitoring.metrics) > 0 && h.vlan != "dmz"]
+    } if length(h.monitoring.metrics) > 0 && !contains(local.untrusted_vlans, h.vlan)]
     service_dmz = [for n, h in local.watched : {
       targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
       labels  = merge(local.target_labels[n], { service = n })
-    } if length(h.monitoring.metrics) > 0 && h.vlan == "dmz"]
+    } if length(h.monitoring.metrics) > 0 && contains(local.untrusted_vlans, h.vlan)]
     # Proxmox nodes: node_exporter (Ansible `monitoring` tag) + the PVE API.
     node = [for n, h in local.watched : {
       targets = ["${h.ip}:9100"]

@@ -29,6 +29,7 @@ DASHBOARDS=(
   "10347 5 ac7b52531baf0fd6563b8419742d80b738439ad5db6819aa2cbb7b11c6858eff proxmox"
   "13659 1 9e70455850c0a8a52a4ce6313ab9113e55656b88a8419eaba84a9a91dcd48f54 blackbox"
   "14857 5 c85725d43d01a362ca3807bfde141ffe9c6bf1704b915a2451e31c0b6be4ea3d mikrotik"
+  "14574 15 2f5c9778bdcb2e7c8f1e54b4977d34ef980ef964bf584df35c3f1e35e475afcd nvidia-gpu"
 )
 
 # --- packages ---------------------------------------------------------------

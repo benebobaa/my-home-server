@@ -234,6 +234,34 @@ all suffer.
 **Check:** expected (maintenance)? If not, `journalctl -b -1 -n 50` for the
 reason, and `HostOnBattery` for a power cut.
 
+## GPU (pve1's RTX 3060, in the `ai` VM)
+
+Metrics come from nvidia_gpu_exporter in `ai` (`:9835`, ADR 0014); the
+**Nvidia GPU Metrics** dashboard (Grafana → Homelab) shows them. While pve1
+is off there is no data and nothing fires. Live view: `ssh ai nvtop`.
+
+### GpuHot
+**Meaning:** the GPU at 83 °C or more for 5 min. The card slows itself down
+from about 83 °C and shuts down near 93 °C, so long runs get slower.
+**Check:** `ssh ai nvidia-smi` (temperature, fan %, power); what is running;
+the dashboard's temperature and fan history.
+**Fix:** airflow: dust in the GPU cooler or case filters, a stopped fan, a
+hot room, the PC's side against a wall. Physical: operator. Meanwhile a
+lower power limit cools it at a small speed cost:
+`ssh ai sudo nvidia-smi -pl 140` (resets at boot).
+
+### GpuHardwareSlowdown
+**Meaning:** the board forced the GPU clocks down for 5 min: over
+temperature (`hw_thermal_slowdown`) or the power supply asserting the power
+brake (`hw_power_brake_slowdown`). The normal 170 W power cap does not fire
+this.
+**Check:** the dashboard's clock-event reasons panel: thermal or power brake?
+`ssh ai nvidia-smi -q -d PERFORMANCE`.
+**Fix:** thermal → as `GpuHot`. Power brake → the PSU (model not recorded
+yet, `docs/hardware.md`) or its PCIe power cable cannot keep up: check the
+8-pin connector is seated, use a dedicated cable from the PSU, and record
+the PSU model; until then `nvidia-smi -pl 140` lowers the draw.
+
 ## The monitoring stack itself
 
 ### Watchdog
