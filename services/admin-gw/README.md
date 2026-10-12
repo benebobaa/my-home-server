@@ -18,7 +18,7 @@ because both ends sit behind CGNAT — that is by design (zero inbound).
 | HA | Both advertise the same routes. Clients use one (the primary) and Tailscale moves them to the other when it goes offline. Measured 2026-10-09: about a 55–75 s gap, then the other gateway serves at the same latency. The primary is sticky: it stays where it failed over to. Since 2026-10-09 ([RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md)) |
 | Device | `/dev/net/tun` passed through (Tailscale needs it) |
 | Boot | `onboot` — comes back automatically with the node |
-| Routes | advertises `10.10.10.0/24` (nodes + hEX), `192.168.99.0/29` (switch + recovery) |
+| Routes | advertises `10.10.10.0/24` (nodes + hEX), `192.168.99.0/29` (switch + recovery), `10.10.30.10/32` (`ai`, the AI workstation VM: off the tailnet by design, ADR 0012). Set by `provision.sh` (`tailscale set --advertise-routes`); a new route needs approving once in the admin console |
 
 The hEX firewall trusts both IPs (address-list `admin-gw`) for management
 access to the router, the switch UI and all lab VLANs.
@@ -50,7 +50,7 @@ port (hEX + switch only).
    - Inside the CT (`--hostname` = the CT's name, `admin-gw` or `admin-gw2`):
      ```
      tailscale up --hostname=admin-gw2 --accept-dns=false \
-       --advertise-routes=10.10.10.0/24,192.168.99.0/29
+       --advertise-routes=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32
      ```
      → open the printed URL, sign in with the Tailscale account.
    - Tailscale admin console → Machines → the gateway:

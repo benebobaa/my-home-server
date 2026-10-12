@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # ai — converge the inside of the AI workstation VM from its node (pve1),
 # through the guest agent. Run by proxmox/opentofu/ai.tf, which ships this
-# directory plus services/logs/ship.sh to /root/ai on pve1 first.
+# directory to /root/ai on pve1 first.
 #
-# Usage: converge.sh <vmid> <login user> <journald insert URL>
+# Usage: converge.sh <vmid> <login user>
 #
 # Steps: wait for the agent (cloud-init installs it on first boot) → in-guest
-# setup (provision.sh) → journal shipping (ship.sh) → one reboot if the
-# NVIDIA driver was just installed → prove the GPU with nvidia-smi.
+# setup (provision.sh) → one reboot if the NVIDIA driver was just installed
+# → prove the GPU with nvidia-smi.
 set -euo pipefail
 
-VMID=${1:?usage: converge.sh <vmid> <user> <journald url>}
+VMID=${1:?usage: converge.sh <vmid> <user>}
 USER_NAME=${2:?}
-JOURNALD_URL=${3:?}
 DIR=$(cd "$(dirname "$0")" && pwd)
 
 wait_agent() {
@@ -44,7 +43,6 @@ sys.exit(d.get("exitcode", 1) if d.get("exited") else 124)'
 
 wait_agent
 gexec 3600 "$DIR/provision.sh" bash -s -- "$USER_NAME"
-gexec 600 "$DIR/ship.sh" bash -s -- "$JOURNALD_URL"
 
 if gexec 30 - test -f /run/ai-reboot-required; then
   echo "ai: rebooting VM ${VMID} to load the NVIDIA driver"

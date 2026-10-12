@@ -16,11 +16,15 @@
 #   supports (`nvidia-smi` header).
 # - Docker CE + NVIDIA container toolkit: vLLM, SGLang and TensorRT-LLM ship
 #   as images that expect `--gpus all`.
-# - Tailscale: the operator's path in (VLAN 30 is internet-only). Login is
-#   the operator's step: `sudo tailscale up --ssh` prints a URL.
 # - uv for Python environments; PyTorch goes into projects, not the system.
-# - Journal shipping to the lab log store (services/logs/ship.sh is piped
-#   in after this script by ai.tf).
+#
+# Deliberately absent: Tailscale and journal shipping. This VM runs
+# untrusted code with passwordless sudo, so it must never sit on the tailnet
+# (root could accept the admin gateways' subnet routes into MGMT) or reach
+# the log store (VictoriaLogs answers queries on its insert port). The
+# operator comes in through the admin gateways' route to it instead
+# (services/ai/README.md). Both are purged if an earlier version installed
+# them.
 set -euo pipefail
 
 USER_NAME=${1:?usage: provision.sh <user>}
@@ -51,13 +55,13 @@ repo nvidia-container-toolkit https://nvidia.github.io/libnvidia-container/gpgke
   "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$(ARCH) /"
 repo cuda https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/3bf863cc.pub \
   "deb [signed-by=/etc/apt/keyrings/cuda.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /"
-repo tailscale "https://pkgs.tailscale.com/stable/ubuntu/${VERSION_CODENAME}.noarmor.gpg" \
-  "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu ${VERSION_CODENAME} main"
 
 # NVIDIA's CUDA repo also carries drivers: never let it supply them.
 cat > /etc/apt/preferences.d/cuda-repo-no-drivers <<'EOF'
 # managed by services/ai/provision.sh — the driver comes from Ubuntu.
-Package: *nvidia* *cuda-drivers* *cuda-compat*
+# Driver packages only: the container toolkit is in this repo too (same
+# versions as its own repo), and a wider glob makes apt "downgrade" it.
+Package: nvidia-driver-* nvidia-kernel-* nvidia-dkms-* nvidia-headless-* nvidia-utils-* nvidia-compute-utils-* nvidia-firmware-* nvidia-open* nvidia-fabricmanager* libnvidia-compute-* libnvidia-gl-* libnvidia-cfg1-* libnvidia-decode-* libnvidia-encode-* libnvidia-extra-* libnvidia-fbc1-* xserver-xorg-video-nvidia-* cuda-drivers* cuda-compat*
 Pin: origin developer.download.nvidia.com
 Pin-Priority: -1
 EOF
@@ -70,7 +74,6 @@ ubuntu-drivers install --gpgpu "nvidia:${NVIDIA_BRANCH}"
   "$CUDA_TOOLKIT" \
   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
   nvidia-container-toolkit \
-  tailscale \
   build-essential git curl htop nvtop tmux python3-venv pipx
 
 # Docker uses the NVIDIA runtime for --gpus.
@@ -89,11 +92,22 @@ EOF
 sudo -u "$USER_NAME" -H pipx install --quiet uv >/dev/null 2>&1 || sudo -u "$USER_NAME" -H pipx upgrade --quiet uv >/dev/null 2>&1 || true
 sudo -u "$USER_NAME" -H pipx ensurepath >/dev/null 2>&1 || true
 
-systemctl enable --now tailscaled
+# Never on the tailnet, never shipping into MGMT (see the header).
+if dpkg -s tailscale >/dev/null 2>&1; then
+  tailscale logout 2>/dev/null || true
+  "${APT[@]}" purge tailscale
+  rm -rf /var/lib/tailscale
+fi
+rm -f /etc/apt/sources.list.d/tailscale.list /etc/apt/keyrings/tailscale.gpg
+systemctl disable --now systemd-journal-upload.service 2>/dev/null || true
+if dpkg -s systemd-journal-remote >/dev/null 2>&1; then
+  "${APT[@]}" purge systemd-journal-remote
+  rm -rf /etc/systemd/journal-upload.conf.d /var/lib/systemd/journal-upload
+fi
 
 # The driver loads at the next boot after its first install.
 if ! nvidia-smi >/dev/null 2>&1; then
   echo "ai: NVIDIA driver installed; a reboot loads it"
   touch /run/ai-reboot-required
 fi
-echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker, tailscale)"
+echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker)"

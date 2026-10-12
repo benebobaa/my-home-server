@@ -4,7 +4,7 @@ VM 140 on **pve1**, Ubuntu 24.04 LTS, the RTX 3060 by VFIO passthrough, on
 the LAB VLAN (`10.10.30.10`, internet only). The operator's machine for the
 AI/LLM/AI-infra study plan: NVIDIA driver + CUDA toolkit, Docker with the
 NVIDIA container toolkit (vLLM, SGLang, TensorRT-LLM images), uv for
-Python, Tailscale for access. Why it looks like this:
+Python. Why it looks like this:
 [ADR 0012](../../docs/decisions/0012-pve1-on-demand-ai-workstation.md).
 
 | | |
@@ -22,8 +22,8 @@ Python, Tailscale for access. Why it looks like this:
 | --- | --- | --- |
 | `vm.sh` | on pve1 as root (`terraform_data.ai_vm`) | creates the VM from the pinned cloud image, sets GPU passthrough, CPU, memory, network; never restarts a running VM |
 | `user-data.yaml.tftpl` | cloud-init, first boot | hostname, user + key, guest agent |
-| `converge.sh` | on pve1 (`terraform_data.ai_converge`) | waits for the agent, runs `provision.sh` and `../logs/ship.sh` in the guest, one reboot for the driver, `nvidia-smi` check |
-| `provision.sh` | in the guest as root | driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, Tailscale, uv |
+| `converge.sh` | on pve1 (`terraform_data.ai_converge`) | waits for the agent, runs `provision.sh` in the guest, one reboot for the driver, `nvidia-smi` check |
+| `provision.sh` | in the guest as root | driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv; purges Tailscale and the journal uploader |
 
 Why scripts and not a bpg VM resource: pve1 is off most days and the PVE
 API cannot read an offline node, so a provider resource would break every
@@ -37,16 +37,26 @@ sops exec-env secrets.sops.env 'tofu apply -replace=terraform_data.ai_vm -replac
 
 ## Access (operator)
 
-The VM is on VLAN 30, which the admin gateways do not route. Join it to the
-tailnet once (account step), from pve1:
+`ai` is **not** on the tailnet and ships no logs
+([ADR 0013](../../docs/decisions/0013-ai-vm-off-the-tailnet.md)): it runs
+untrusted code with passwordless sudo. The admin gateways advertise a route
+to it (`10.10.30.10/32`, `services/admin-gw/provision.sh`); approve that
+route once in the Tailscale admin console (Machines → `admin-gw` and
+`admin-gw2` → Edit route settings). Then from the Mac:
 
 ```bash
-ssh root@10.10.10.11 qm guest exec 140 -- tailscale up --ssh --hostname ai
+ssh bene@10.10.30.10
 ```
 
-…open the printed URL, then from the Mac: `ssh bene@ai` (VS Code →
-Remote-SSH → `bene@ai`). Disable key expiry for `ai` in the Tailscale
-admin console, as for the gateways.
+Add to `~/.ssh/config` so VS Code (Remote-SSH) and port forwards are short:
+
+```text
+Host ai
+  HostName 10.10.30.10
+  User bene
+  LocalForward 8888 localhost:8888   # Jupyter
+  LocalForward 8000 localhost:8000   # vLLM / SGLang OpenAI API
+```
 
 ## Daily use
 

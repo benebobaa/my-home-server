@@ -1,5 +1,7 @@
 # ai — the on-demand AI workstation VM on pve1 (ADR 0012): Ubuntu 24.04 with
-# the RTX 3060 by passthrough, on the LAB VLAN (internet only).
+# the RTX 3060 by passthrough, on the LAB VLAN (internet only). It runs
+# untrusted code: no tailnet, no log shipping into MGMT; the operator
+# reaches it through the admin gateways' route (services/admin-gw).
 #
 # No provider resource on pve1, on purpose: pve1 is off most days and the
 # PVE API cannot read an offline node, so a bpg resource there would break
@@ -56,8 +58,6 @@ resource "terraform_data" "ai_converge" {
   triggers_replace = [
     filesha256("${local.ai_dir}/converge.sh"),
     filesha256("${local.ai_dir}/provision.sh"),
-    filesha256("${local.logs_dir}/ship.sh"),
-    local.logs_journald_url,
     terraform_data.ai_vm.id,
   ]
 
@@ -66,9 +66,8 @@ resource "terraform_data" "ai_converge" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
           -C ${local.ai_dir} -cf - converge.sh provision.sh \
-          -C ${abspath(local.logs_dir)} ship.sh \
         | ${local.ai_ssh} 'rm -rf /root/ai && mkdir -p /root/ai && tar -xf - -C /root/ai'
-      ${local.ai_ssh} 'bash /root/ai/converge.sh ${local.host.ai.vmid} ${local.ai_user} ${local.logs_journald_url}'
+      ${local.ai_ssh} 'bash /root/ai/converge.sh ${local.host.ai.vmid} ${local.ai_user}'
     EOT
   }
 }

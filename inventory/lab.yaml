@@ -167,9 +167,11 @@ hosts:
     node: pve1 # the GPU node, on demand: off whenever pve1 is (ADR 0012)
     vlan: lab # internet only: runs code from pip, model hubs and GitHub
     ip: 10.10.30.10
-    note: AI workstation — Ubuntu 24.04, RTX 3060 by passthrough; operator access over Tailscale in the VM (services/ai/)
+    note: AI workstation — Ubuntu 24.04, RTX 3060 by passthrough; reached via the admin gateways' route (services/ai/)
     # best-effort: off by design most days; pve1 being down explains it.
-    monitoring: { tier: best-effort, logs: true }
+    # No logs: it runs untrusted code (pip, model hubs, GitHub), so like the
+    # DMZ it never pushes into MGMT (VictoriaLogs serves queries on 9428).
+    monitoring: { tier: best-effort, logs: false }
 
   # --- reserved ---------------------------------------------------------------
   edge:
