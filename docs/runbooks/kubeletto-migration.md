@@ -250,3 +250,19 @@ fail and the same suspender deletes their services.
   migrations 097–099 (schema gate); `services/kubeletto/migrate.sh` runs
   goose inside CT 130 against the home copy.
 - `PLATFORM_API_URL` and `SESSION_COOKIE_DOMAIN` are not read by any code.
+- **A fresh build pod is refused for its first seconds** (2026-10-12): the
+  first GitHub-built deploy failed at clone with "connection refused" from
+  the build pod to core :9090. K3s's network policy controller (kube-router)
+  adds a new pod's IP to the allow sets ~2–4 s after start and REJECTs
+  until then (a probe pod with the build labels: refused at +0/+2 s, through
+  from +4 s). Fixed in the worker (Kubeletto `8737ce6d`: the token fetch
+  retries transient errors for ~23 s). Any new in-cluster client that
+  talks first thing after start needs the same tolerance.
+- **GitHub-built deploy proven** (2026-10-12, core `7927a4bf`, worker
+  `8737ce6d`): repo linked through the operator tenant's GitHub App
+  installation (`/v1/projects/:id/source`), `/source/deploy` → token
+  minted on the 3rd attempt → clone → buildpacks build → push to the home
+  registry (R2) → Knative service active in ~4 min, 200 from the app
+  through Traefik. Test project deleted through the API afterwards (service
+  gone). GitHub webhooks still go to prod until cutover, so push-triggered
+  deploys are a cutover check, not a rehearsal one.
