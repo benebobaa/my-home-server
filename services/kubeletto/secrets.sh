@@ -12,9 +12,11 @@
 #   REDIS_URL -> in-cluster Valkey; NATS_URL -> home NATS by DNS
 #   NATS_USER/NATS_PASSWORD (platform) + NATS_BUILD_USER (wave 2 NATS auth)
 #   TENANT_EGRESS_DENY_CIDRS -> CGNAT + the home public IPv4 (not in git)
-#   DOMAINS_EDGE_IPS -> Cloudflare's addresses for kubeletto.app (apex
-#     verification until Cloudflare for SaaS, decision D4);
-#   DOMAINS_PROBE_ADDR -> the in-cluster Traefik (the edge at home)
+#   DOMAINS_EDGE_IPS -> Cloudflare's addresses for kubeletto.app;
+#   DOMAINS_PROBE_ADDR -> the in-cluster Traefik (platform-subdomain probes)
+#   + CLOUDFLARE_SAAS_TOKEN from secrets.sops.env (this directory): core's
+#     own token for custom domains as Cloudflare for SaaS custom hostnames
+#     (decision D4; SSL and Certificates on kubeletto.app only)
 #   PLATFORM_API_URL, SESSION_COOKIE_DOMAIN -> no longer the rented server's IP
 #   dropped: RESEND_API_KEY, SUMOPOD_* (rehearsal), OPENOBSERVE_*, OTEL_*
 # JWT_SECRET, GITHUB_*, R2_*, INFISICAL_*, REGISTRY_AUTH_PRIVATE_KEY stay
@@ -51,9 +53,12 @@ HOME_IPV4=$(ssh -o BatchMode=yes "$NODE" 'curl -s4 --max-time 5 https://api.ipif
 [[ $HOME_IPV4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "secrets: no home public IPv4" >&2; exit 1; }
 EDGE_IPS=$(dig +short probe-rehearsal.kubeletto.app A | grep -E '^[0-9.]+$' | sort | paste -sd, -)
 [ -n "$EDGE_IPS" ] || { echo "secrets: no Cloudflare edge IPs" >&2; exit 1; }
+# shellcheck disable=SC2016 # expanded by the shell sops starts, not here
+CLOUDFLARE_SAAS_TOKEN=$(sops exec-env secrets.sops.env 'printf %s "$CLOUDFLARE_SAAS_TOKEN"')
+[ ${#CLOUDFLARE_SAAS_TOKEN} -ge 40 ] || { echo "secrets: no CLOUDFLARE_SAAS_TOKEN in secrets.sops.env" >&2; exit 1; }
 # Existing home NATS passwords, so a re-run never rotates them under running pods.
 EXISTING_NATS=$(echo 'k3s kubectl -n nats get secret nats-auth -o json 2>/dev/null || echo "{}"' | vm)
-export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS
+export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS CLOUDFLARE_SAAS_TOKEN
 
 remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
 
@@ -102,6 +107,7 @@ env.update({
     "DOMAINS_PROBE_ADDR": b64("traefik.traefik.svc.cluster.local:443"),
     "PLATFORM_API_URL": b64("https://api.kubeletto.com"),
     "SESSION_COOKIE_DOMAIN": b64("api.kubeletto.com"),
+    "CLOUDFLARE_SAAS_TOKEN": b64(os.environ["CLOUDFLARE_SAAS_TOKEN"]),
 })
 dropped = sorted(k for k in env if k == "RESEND_API_KEY" or k.startswith(("SUMOPOD_", "OPENOBSERVE_", "OTEL_")))
 for k in dropped:

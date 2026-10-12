@@ -124,14 +124,33 @@ IngressRoute → Kourier → the tenant's DomainMapping. No cert-manager at home
 - Customer instructions stay "CNAME to `domains.kubeletto.app`". Apex
   domains work only where the customer's DNS flattens a CNAME/ALIAS: A
   records to Cloudflare IPs need Apex Proxying (Enterprise).
-- Cost: 100 custom hostnames free, then $0.10/month each; Kubeletto caps
-  the platform total below 100.
+- Cost: 100 custom hostnames free, then $0.10/month each. Kubeletto counts
+  verified domains only: free-plan tenants may fill the zone to 90
+  (`DOMAINS_PLATFORM_CAP`), paid tenants to 300
+  (`DOMAINS_PLATFORM_PAID_CAP`), checked at the API and, against the zone's
+  real count, before every create.
+- Core config (Kubeletto repo `infra/k8s/home/platform-core-patch.yaml`):
+  `DOMAINS_EDGE_PROVIDER=cloudflare`, the two caps, and
+  `DOMAINS_RECONCILE_TENANTS` = the internal canary tenant only, so the DB
+  copy's real customer domains are never registered or torn down. The
+  token reaches core through `secrets.sh` (`platform-core-env`).
+- Proven through Kubeletto 2026-10-12 (core `7927a4bf`): a verified
+  `saas-test.kubeletto.com` row for the canary went ACTIVE by itself in ~3
+  min (custom hostname created, certificate issued, probe through the
+  edge), served the alias 301, then 200 from the app after "set primary"
+  via the API; API delete → `removed`, 0 custom hostnames at Cloudflare and
+  no route, middleware, mapping or claim left. Real customer rows untouched
+  since the new core started. (kubeletto.com subdomains are rejected by the
+  API's validator, so that row was inserted directly in the copy.)
 
 **At cutover** (customer-facing: operator's yes first): flip
 `domains.kubeletto.app` in `records.tf` from the DNS-only A record to a
-proxied CNAME → `saas-origin.kubeletto.app`, then let the home reconciler
-register the existing domains as custom hostnames. Until then the home copy
-must not register prod's real customer domains.
+proxied CNAME → `saas-origin.kubeletto.app`, remove
+`DOMAINS_RECONCILE_TENANTS` from the core patch, and watch the existing
+domains go ACTIVE (each becomes a custom hostname; HTTP validation needs the
+flipped record). The pre-cutover copy carries `certificate_apply_failed` on
+those rows from the cert-manager attempt before the switch; the final DB
+copy replaces them.
 
 ## Tenant isolation
 
