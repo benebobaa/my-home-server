@@ -266,3 +266,17 @@ fail and the same suspender deletes their services.
   through Traefik. Test project deleted through the API afterwards (service
   gone). GitHub webhooks still go to prod until cutover, so push-triggered
   deploys are a cutover check, not a rehearsal one.
+- **Tenant capacity** (2026-10-12): prod's 25 warm tenant apps (47
+  services, none pinned warm) requested 7.4 GiB at the default 50% memory
+  share but used 1.3 GiB (p50 35 MiB, p90 81 MiB, max 379 MiB of 512 MiB
+  limits); the worker allocated 2.4 GiB. Fixed for today's load: worker VM
+  301 3 → 4 GB (allocatable 3.33 GiB; pve3 keeps ~1.5 GB with PBS
+  resident) and Kubeletto's home request shares (`e8f37aee`: memory 15%,
+  CPU 10%, builds 250m/512Mi, queue-proxy 10m/32Mi; limits and billing
+  unchanged). Proven: a warm app requested 76+32 Mi / 50+10m and a build
+  (250m/512Mi) scheduled beside it. Today's mix plus one build is ~3.2 of
+  3.33 GiB: it fits, with no growth headroom. The worker's memory is not in
+  Prometheus yet (best-effort, ICMP only) — needed before calling capacity
+  done, to see MemoryPressure before tenants are evicted. Growth path is a
+  pending decision (Kubeletto docs/migration D9): pve1, or a second worker
+  on pve2 once CT 110 is gone.

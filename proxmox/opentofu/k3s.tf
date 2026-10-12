@@ -181,8 +181,11 @@ resource "proxmox_virtual_environment_vm" "k3s_worker" {
     type  = "host"
   }
 
+  # 4 GB (2026-10-12; was 3): ~25 warm tenant apps plus one build fit by
+  # request with Kubeletto's home request shares (Kubeletto e8f37aee). Not
+  # more: pve3 has 8 GB and PBS (1.5 GB) stays resident beside it.
   memory {
-    dedicated = 3072
+    dedicated = 4096
   }
 
   disk {
