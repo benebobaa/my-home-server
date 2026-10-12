@@ -46,7 +46,7 @@ in `api` mode. Creating a tenant writes a key into the prod Infisical project
 | --- | --- | --- |
 | 0 | K3s `registries.yaml` on **both** nodes: `registry.kubeletto.com` → ClusterIP `10.43.229.215:5000` | `cluster-bootstrap/` |
 | 1 | PriorityClass | `platform/manifests/priorityclass.yaml` |
-| 2 | (cert-manager v1.17.1 — only while custom domains use HTTP-01) | `setup-cert-manager.sh` |
+| 2 | (cert-manager v1.17.1 — prod only: home custom domains use Cloudflare for SaaS) | `setup-cert-manager.sh` |
 | 3 | Knative Serving + Kourier 1.16.0 + ~15 patches | `setup-knative.sh` |
 | 4 | Traefik chart 40.2.0 / v3.7.1 (pin it; prod's script doesn't) + CF Origin certs `traefik/kubeletto-{app,com}-tls`, `sniStrict: true` | `setup-traefik.sh`, `edge/`, `setup-tls-certs.sh` |
 | 5 | NATS (strip `volumeName`/bind annotations from `nats-pvc.yaml`) + auth | `nats/manifests/`, `provision-nats-auth.sh` |
@@ -99,6 +99,39 @@ Traefik serves Cloudflare **Origin CA** certs with `sniStrict`.
 but cloudflared must also trust the Origin CA (`ca_pool` with the CF Origin
 roots mounted into the connector) — fix when Traefik lands at home, and
 verify in the same step.
+
+## Custom domains (Cloudflare for SaaS, decision D4)
+
+At home there is no public IP for customers' domains to point at, so
+Cloudflare terminates them: each domain is a *custom hostname* on the
+`kubeletto.app` zone, Cloudflare issues its certificate, and sends the
+request to the zone's fallback origin `saas-origin.kubeletto.app` → the
+tunnel. The tunnel's catch-all rule hands any other Host to Traefik with the
+fixed SNI `saas-origin.kubeletto.app` (covered by the `*.kubeletto.app`
+Origin cert); Traefik routes on the Host header to the per-domain
+IngressRoute → Kourier → the tenant's DomainMapping. No cert-manager at home.
+
+- Zone side: `network/cloudflare/saas.tf` (+ the catch-all in `tunnel.tf`).
+- Per-domain custom hostnames: Kubeletto core, with its own token
+  `CLOUDFLARE_SAAS_TOKEN` (`services/kubeletto/secrets.sops.env`: SSL and
+  Certificates edit on `kubeletto.app`, nothing else). Prod core's
+  `CLOUDFLARE_API_TOKEN` has no access to `kubeletto.app`.
+- Proven by hand 2026-10-12 with `saas-test.kubeletto.com` (CNAME, DNS-only,
+  → `saas-origin.kubeletto.app`): custom hostname and certificate active
+  within a minute, 200 from the canary through Cloudflare → tunnel → Traefik
+  (Host ≠ SNI is accepted) → Kourier, certificate issued by Cloudflare for
+  the exact name.
+- Customer instructions stay "CNAME to `domains.kubeletto.app`". Apex
+  domains work only where the customer's DNS flattens a CNAME/ALIAS: A
+  records to Cloudflare IPs need Apex Proxying (Enterprise).
+- Cost: 100 custom hostnames free, then $0.10/month each; Kubeletto caps
+  the platform total below 100.
+
+**At cutover** (customer-facing: operator's yes first): flip
+`domains.kubeletto.app` in `records.tf` from the DNS-only A record to a
+proxied CNAME → `saas-origin.kubeletto.app`, then let the home reconciler
+register the existing domains as custom hostnames. Until then the home copy
+must not register prod's real customer domains.
 
 ## Tenant isolation
 

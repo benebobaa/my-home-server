@@ -25,6 +25,16 @@ locals {
     match_sn_ito_host = true
     ca_pool           = "/etc/cloudflared/origin-ca/origin-ca.pem"
   }
+  # Tenants' custom domains (Cloudflare for SaaS, Kubeletto decision D4) reach
+  # the tunnel through the zone's fallback origin with their own Host header.
+  # Traefik has no certificate for them, so the hop sends a fixed SNI that its
+  # *.kubeletto.app Origin cert covers; Traefik still routes on the Host header
+  # (the IngressRoute Kubeletto creates per domain).
+  saas_origin = "saas-origin.kubeletto.app"
+  to_traefik_saas = {
+    origin_server_name = local.saas_origin
+    ca_pool            = "/etc/cloudflared/origin-ca/origin-ca.pem"
+  }
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "kubeletto" {
@@ -38,8 +48,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "kubeletto" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.kubeletto.id
 
   config = {
-    # domains.kubeletto.app (tenants' custom domains) is deliberately absent:
-    # open decision, README "Records that matter for the move".
+    # Named hosts first; anything else is a tenant's custom domain arriving
+    # through the SaaS fallback origin (saas.tf).
     ingress = [
       {
         hostname       = "api.kubeletto.com"
@@ -58,7 +68,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "kubeletto" {
         service        = local.traefik
         origin_request = local.to_traefik
       },
-      { service = "http_status:404" },
+      { service = local.traefik, origin_request = local.to_traefik_saas },
     ]
   }
 }
