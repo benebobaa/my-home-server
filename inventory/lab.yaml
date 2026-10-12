@@ -57,8 +57,9 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.11
     cluster_ip: 10.10.60.11
-    status: planned
-    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060 (on demand)
+    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060; on demand, off by design (ADR 0012)
+    # best-effort: powered off most of the time, so being down is info only.
+    monitoring: { tier: best-effort, health: "https://{ip}:8006/", health_module: http_any, logs: true }
   pve2:
     kind: node
     vlan: mgmt
@@ -136,7 +137,7 @@ hosts:
   k3s:
     kind: vm
     vmid: 300
-    node: pve2 # interim: moves to pve1 when it is built (offline migration)
+    node: pve2 # stays: pve1 is on demand, no always-on services (ADR 0012)
     vlan: dmz
     ip: 10.10.25.20
     dns: false # resolves through public resolvers (no home.arpa from the DMZ)

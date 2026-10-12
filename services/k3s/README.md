@@ -10,7 +10,8 @@ the move itself (deadline 2026-11-05): README Status.
 | `k3s` | 300 | pve2, 10.10.25.20 | server: control plane, Kubeletto's platform, everything stateful | 4 vCPU, 5 GB (allocatable 3.5 CPU / 3.8 GiB), 40 GB |
 | `k3s-worker` | 301 | pve3, 10.10.25.21 | agent: tenant pods and builds (stateless; disk not backed up) | 4 vCPU, 3 GB (allocatable 3.5 CPU / 2.3 GiB), 30 GB |
 
-`k3s` moves to pve1 when pve1 is built (offline migration: `cpu.type = host`).
+Both VMs stay on the laptops: pve1 runs on demand and takes no always-on
+service ([ADR 0012](../../docs/decisions/0012-pve1-on-demand-ai-workstation.md)).
 
 ## Access
 

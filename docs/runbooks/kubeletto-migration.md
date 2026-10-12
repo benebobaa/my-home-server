@@ -278,5 +278,6 @@ fail and the same suspender deletes their services.
   3.33 GiB: it fits, with no growth headroom. Both nodes' memory is in
   Prometheus (node_exporter, Kubeletto `infra/k8s/home/node-exporter.yaml`;
   job `service_dmz`) and `HostMemoryLow` covers them. Growth path is a
-  pending decision (Kubeletto docs/migration D9): pve1, or a second worker
-  on pve2 once CT 110 is gone.
+  pending decision (Kubeletto docs/migration D9), but not pve1 (on demand,
+  ADR 0012): a 16 GB SODIMM for pve3, or a second worker on pve2 once
+  CT 110 is gone.

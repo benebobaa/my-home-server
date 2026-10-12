@@ -25,10 +25,11 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
   `nic0`, boots from its NVMe. BIOS settings in the install runbook. The
   RTX 3060 is bound to `vfio-pci` (Ansible `vfio` tag): it goes whole to
   one VM, and the host has no screen.
-- `pve1` runs **on-demand** (~4 days/week — electricity ≈ AI workstation):
-  always-on services (edge, admin-gw, monitoring) belong on the laptops; AI
-  training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
-  start it remotely is planned.
+- `pve1` runs **on demand** ([ADR 0012](../docs/decisions/0012-pve1-on-demand-ai-workstation.md)):
+  always-on services (edge, admin-gw, monitoring, K3s) belong on the
+  laptops; the AI workstation VM (`services/ai/`) runs on `pve1` while it is
+  up. Wake it from another node:
+  [`node-ops.md`](../docs/runbooks/node-ops.md#wake-pve1).
 - GPUs: both laptops carry an NVIDIA MX130 (Maxwell, `sm_50`) — tested working
   2026-10-08 (NVIDIA 580.178.04, Secure Boot off on both). Guests get them via
   shared LXC passthrough — runbook

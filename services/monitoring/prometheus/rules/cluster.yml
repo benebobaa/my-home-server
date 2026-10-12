@@ -13,10 +13,20 @@ groups:
           summary: "Cluster {{ $labels.id }} is NOT quorate: management actions are locked"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveclusternotquorate
 
+      # Severity from the node's tier, read off its node_exporter target:
+      # `up` exists while the node is off (value 0), unlike any node_* series.
+      # An on-demand node (pve1, best-effort: ADR 0012) is off by design, so
+      # it gets one silent message; a node without a target stays critical.
       - alert: PveNodeDown
-        expr: label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0
+        expr: |
+          (label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0)
+            + on (node) group_left (tier) (0 * max by (node, tier) (up{job="node"}))
+          or
+          (label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0)
+            unless on (node) up{job="node"}
         for: 2m
-        labels: { severity: critical }
+        labels:
+          severity: '{{ if eq $labels.tier "best-effort" }}info{{ else if eq $labels.tier "standard" }}warning{{ else }}critical{{ end }}'
         annotations:
           summary: "Proxmox node {{ $labels.node }} is offline in the cluster"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvenodedown

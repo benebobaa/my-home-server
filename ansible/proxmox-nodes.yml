@@ -128,6 +128,13 @@
         mode: "0644"
       tags: network
 
+    # Any node can wake an on-demand one (docs/runbooks/node-ops.md).
+    - name: Install wakeonlan
+      ansible.builtin.apt:
+        name: wakeonlan
+        state: present
+      tags: network
+
     - name: Install the canonical interfaces file
       ansible.builtin.copy:
         src: "{{ playbook_dir | dirname }}/proxmox/nodes/{{ inventory_hostname }}/interfaces"

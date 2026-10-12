@@ -16,3 +16,4 @@ never edited — supersede them with a new one.
 | [0009](0009-backups-pbs-on-pve3.md) | Backups: Proxmox Backup Server in a container on pve3, nightly, every guest; the archive's bind mounts not yet covered |
 | [0010](0010-shared-postgres-and-app-standard.md) | One shared PostgreSQL 18 (CT 130) for the lab's apps, a database + role per app; databases get an exporter; the app standard |
 | [0011](0011-kubeletto-on-the-home-cluster.md) | Kubeletto runs on the home K3s cluster: tunnel-only edge, free tier boxed for a household IP, one observability stack, prod-data copies operator-only |
+| [0012](0012-pve1-on-demand-ai-workstation.md) | pve1 is an on-demand AI workstation: the RTX 3060 goes whole to one Ubuntu VM by VFIO; no always-on services; its guests are scripts (the API cannot read an offline node) |

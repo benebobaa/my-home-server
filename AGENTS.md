@@ -110,8 +110,11 @@ matters.
   them one at a time.
 - **Placement**: stateful guests (databases, monitoring data, PBS primary) go
   on pve2. pve3 has a no-name SSD and gets only stateless or rebuildable
-  guests. pve1 (desktop, RTX 3060) is not built yet and will run on demand,
-  never always-on services.
+  guests. pve1 (desktop, RTX 3060) runs on demand (off most days, woken by
+  Wake-on-LAN, `docs/runbooks/node-ops.md`) and never hosts always-on
+  services; its GPU goes whole to the `ai` VM (ADR 0012). The PVE API
+  cannot read pve1 while it is off, so guests there are root scripts
+  (`services/ai/`), not provider resources.
 - Unattended apt on hosts: pass `-o Dpkg::Options::=--force-confold`. Some
   conffiles carry local config (`/etc/dkms/framework.conf`), and a conffile
   prompt aborts non-interactive runs.

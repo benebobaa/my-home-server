@@ -114,8 +114,14 @@ stopping and configuring guests, and backups, are locked.
 in an emergency, on the survivor: `pvecm expected 1`.
 
 ### PveNodeDown
-**Meaning:** a node is offline in the cluster.
+**Meaning:** a node is offline in the cluster. Severity follows the node's
+tier: pve2/pve3 are critical; pve1 is best-effort and is off by design
+(ADR 0012), so for it this is a silent note, not a fault. While it fires,
+the node's own and its guests' `HostUnreachable`, `TargetDown`,
+`HttpProbeFailed` and `PveGuestDown` are suppressed.
 **Fix:** as `HostUnreachable` for that node; then wait for `Quorate: Yes`.
+For pve1: nothing, unless you meant it to be up — wake it
+([node-ops](node-ops.md#wake-pve1)).
 
 ### PveGuestDown
 **Meaning:** a guest with `onboot=1` is not running.

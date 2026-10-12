@@ -1,6 +1,7 @@
-# Runbook: node power operations (pve2)
+# Runbook: node power operations
 
-**Applies to:** the lab nodes (first written for `pve2`).
+**Applies to:** the lab nodes (first written for `pve2`; pve1, the
+on-demand desktop, in [Wake pve1](#wake-pve1)).
 
 ## Clean shutdown
 
@@ -25,8 +26,29 @@ timeouts — a busy guest can add up to a couple of minutes).
   unclean shutdown. (To confirm: a *supervised* unplug test with a console open.)
 - For a full power-off: shut down first, wait for the screen to go dark, then
   unplug.
-- **Power on:** press the power button. (Wake-on-LAN for the laptops is not
-  planned; it is planned for `pve1`.)
+- **Power on:** press the power button. (No Wake-on-LAN for the laptops:
+  they are always on.)
+
+## Wake pve1
+
+pve1 is off by design when not in use (ADR 0012) and wakes on a magic
+packet: BIOS ErP off + Power On By PCI-E on, NIC armed at every boot
+(Ansible `wake_on_lan`, `Wake-on: g`). Send it from another node, which sits
+on VLAN 10 with it (`wakeonlan` is installed on every node by Ansible):
+
+```bash
+ssh root@10.10.10.13 wakeonlan -i 10.10.10.255 58:11:22:db:ea:e8   # or 10.10.10.12
+```
+
+It answers SSH ~1 min later; the cluster goes from 2 to 3 votes. Shut it
+down from the UI or `ssh root@10.10.10.11 poweroff` when done: it stops its
+guests cleanly first. Monitoring sends at most one silent note while it is
+off (`PveNodeDown`, info).
+
+After a power cut it stays off unless it was running (BIOS: Restore AC Power
+Loss = Last State). If a wake does nothing: it must have been shut down
+cleanly at least once since the power came back (the NIC is armed by the OS),
+and the switch port P2 must be up.
 
 ## Guests after a reboot
 

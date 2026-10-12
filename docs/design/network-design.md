@@ -350,7 +350,7 @@ backend home_https
 - Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy as code still to do.
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - Role of the 8GB laptop (pve3: full member vs quorum-only). PBS now runs there (ADR 0009); a disk in its empty bay would give the datastore room to grow.
-- Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
+- ~~Wake-on-LAN for `pve1`.~~ Done 2026-10-13: magic packet from any node on VLAN 10 (`docs/runbooks/node-ops.md`, ADR 0012).
 - VPS provider and region (only if an ADR 0004 trigger fires). If the VPS becomes the DMZ's egress exit, that needs policy routing, and `rp-filter=strict` does not work with routing tables: switch to `loose` and keep the per-interface pins on the accepts.
 - ~~DMZ tenants can resolve `home.arpa` names through the hEX.~~ Done 2026-10-10: the input chain drops DNS from `vlan25-dmz` ahead of the LAN accepts; DMZ guests use public resolvers. The DMZ is also out of `NOT-WAN` (no MAC-WinBox/MAC-Telnet/neighbor discovery from tenants).
 - The `dmz-smtp` / `dmz-private` log rules would flood the hEX's 1000-line memory log under a tenant scan, and cost CPU on the MIPS. Remote syslog is live (ADR 0008), so the lines are kept off-box; rate-limiting the log rules is still open.

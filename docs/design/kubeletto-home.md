@@ -87,8 +87,8 @@ the console on Cloudflare Pages.
   per-pod egress cap (~2 Mbit), the existing egress deny for RFC1918 plus
   `100.64.0.0/10` and the home public IP, and a sign-up gate (GitHub
   account age, or approval).
-- **Builds.** One at a time on the worker (3 GB). pve1 can take builds
-  later when it is on.
+- **Builds.** One at a time on the worker (3 GB). (pve1 does not take
+  builds: it is an on-demand AI workstation, ADR 0012.)
 - **Capacity.** Worker: ~1.1 GiB tenants (without the abusers) + 1 GiB for
   one build fits 3 GB. Server: K3s ~1.3 GB + platform ~1.6 GiB requests
   fits 5 GB without OpenObserve.
