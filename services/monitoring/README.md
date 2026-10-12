@@ -35,8 +35,9 @@ targets and the two internet probes.
 | `pve` | cluster `homelab` via pve2 (guests, storage, quorum); pve3's node config | prometheus-pve-exporter 3.10.1 (venv), token `prometheus@pve!monitoring` (PVEAuditor) |
 | `snmp_hex` | hEX `10.10.10.1` | snmp_exporter, SNMPv3 authPriv (SHA/AES), modules `system if_mib hrDevice hrStorage mikrotik`. A walk takes ~2.5 s every 60 s, about 1 % CPU on the hEX |
 | `blackbox_icmp` | every live host with a monitoring block, 1.1.1.1, 8.8.8.8 | ping |
-| `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`) | HTTP |
+| `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`; DMZ hosts: `http_dmz`, which never follows a redirect into MGMT) | HTTP |
 | `service` | every `metrics:` port (today: the log store, CT 121) | `/metrics` |
+| `service_dmz` | `metrics:` ports of DMZ hosts (the Kubeletto cluster): untrusted, so no redirects and sample/label/body limits; a breach fails the scrape (`TargetDown`) | `/metrics` |
 | `blackbox_dns` | hEX resolver | resolves `cloudflare.com` |
 
 ## Alerts

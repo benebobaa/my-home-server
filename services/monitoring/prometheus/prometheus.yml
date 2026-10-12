@@ -63,6 +63,21 @@ scrape_configs:
     file_sd_configs:
       - files: [/etc/prometheus/targets/service.json]
 
+  # App metrics from the DMZ (hosts on vlan dmz: the Kubeletto cluster). The
+  # zone runs tenant code, so the endpoint is untrusted: no redirects, and
+  # hard limits so a hostile /metrics cannot exhaust Prometheus. Over a limit
+  # the scrape fails, which shows as the target down (TargetDown alert).
+  # Sized 2026-10-12: k3s served 125 samples, 21 KB, at most 5 labels.
+  - job_name: service_dmz
+    follow_redirects: false
+    body_size_limit: 4MB
+    sample_limit: 20000
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 256
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/service_dmz.json]
+
   # hEX router: SNMPv3 (read-only, monitoring IP only).
   # 60 s: the hEX is a small MIPS box; SNMP walks cost it CPU.
   - job_name: snmp_hex

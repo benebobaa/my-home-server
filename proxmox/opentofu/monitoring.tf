@@ -38,14 +38,26 @@ locals {
       targets = [h.ip]
       labels  = { instance = n, tier = h.monitoring.tier }
     }]
+    # The DMZ runs tenant code, so its answers are untrusted: its health URLs
+    # use the http_dmz module (no redirects, capped body — a redirect would
+    # turn the probe into a request into MGMT) and its metrics go to the
+    # service_dmz job (sample, label and body limits).
     http = [for n, h in local.watched : {
       targets = [h.monitoring.health]
-      labels  = { instance = n, tier = h.monitoring.tier, __param_module = h.monitoring.health_module }
+      labels = {
+        instance       = n
+        tier           = h.monitoring.tier
+        __param_module = h.vlan == "dmz" ? "http_dmz" : h.monitoring.health_module
+      }
     } if h.monitoring.health != null]
     service = [for n, h in local.watched : {
       targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
       labels  = { instance = n, service = n, tier = h.monitoring.tier }
-    } if length(h.monitoring.metrics) > 0]
+    } if length(h.monitoring.metrics) > 0 && h.vlan != "dmz"]
+    service_dmz = [for n, h in local.watched : {
+      targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
+      labels  = { instance = n, service = n, tier = h.monitoring.tier }
+    } if length(h.monitoring.metrics) > 0 && h.vlan == "dmz"]
     # Proxmox nodes: node_exporter (Ansible `monitoring` tag) + the PVE API.
     node = [for n, h in local.watched : {
       targets = ["${h.ip}:9100"]

@@ -16,6 +16,18 @@ modules:
       tls_config:
         insecure_skip_verify: true
 
+  # DMZ health endpoints (hosts on vlan dmz, chosen in monitoring.tf): the
+  # zone runs tenant code, so the answer is untrusted. Never follow a
+  # redirect (it would aim the probe at MGMT), cap the body, 2xx only.
+  http_dmz:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      follow_redirects: false
+      body_size_limit: 64KB
+
   # Any HTTP answer counts as up (the switch login page, the PVE UI's 200/
   # redirect): this proves the management UIs respond, not that a login works.
   # The lab UIs use self-signed certificates.
