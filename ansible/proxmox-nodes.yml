@@ -21,7 +21,7 @@
     admin_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
     # The lab's addresses (ADR 0007): read, never retyped here.
     lab: "{{ lookup('file', playbook_dir + '/../inventory/lab.yaml') | from_yaml }}"
-    pve_nic: nic0            # USB NIC name (pinned by the installer)
+    pve_nic: nic0            # trunk NIC name (pinned by the installer)
     cluster_name: homelab
     cluster_seed: 10.10.10.13
 
@@ -82,8 +82,10 @@
       loop:
         - { regexp: '^#?HandleLidSwitch=', line: 'HandleLidSwitch=ignore' }
         - { regexp: '^#?HandleLidSwitchExternalPower=', line: 'HandleLidSwitchExternalPower=ignore' }
+      when: laptop | default(false)
       tags: logind
 
+    # Every node: a server never sleeps (pve1 is powered off, not suspended).
     - name: Mask sleep/suspend targets
       ansible.builtin.systemd_service:
         name: "{{ item }}"
@@ -100,10 +102,15 @@
         path: /etc/default/grub
         regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?!.*usbcore\.autosuspend=-1).*)"$'
         replace: '\1 usbcore.autosuspend=-1"'
+      when: laptop | default(false)
       notify: Update grub
       tags: grub
 
     # ---------------------------------------------------------------- network
+    # wake_on_lan: udev arms the NIC for magic packets at every boot (the
+    # r8169 default is off), so an on-demand node can be woken after a
+    # clean shutdown. The BIOS side (ErP off, power on by PCI-E) is in
+    # docs/hardware.md.
     - name: Ensure NIC pinning matches the declared MAC (pve_nic_mac)
       ansible.builtin.copy:
         dest: /usr/local/lib/systemd/network/50-pmx-nic0.link
@@ -115,6 +122,9 @@
 
           [Link]
           Name=nic0
+          {% if wake_on_lan | default(false) %}
+          WakeOnLan=magic
+          {% endif %}
         mode: "0644"
       tags: network
 
@@ -277,6 +287,45 @@
         daemon_reload: true
       when: has_nvidia_gpu | default(false)
       tags: gpu
+
+    # ------------------------------------------------------------------ vfio
+    # The other GPU model (ADR 0012): the whole card goes to ONE VM, which runs
+    # its own NVIDIA driver and CUDA. The host never loads a GPU driver:
+    # vfio-pci claims the card (both functions: VGA + HDMI audio) at boot and
+    # the in-kernel drivers that would race it are blacklisted. The card must
+    # sit alone in its IOMMU group (pve1: group 16, checked 2026-10-13).
+    # Side effect: the host has no screen once vfio-pci binds (the 5600 has
+    # no iGPU). Console rescue: at the GRUB menu press `e` and append
+    # `module_blacklist=vfio_pci` to the linux line.
+    - name: Load the vfio modules at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/vfio.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (vfio tag).
+          vfio
+          vfio_iommu_type1
+          vfio_pci
+        mode: "0644"
+      when: vfio_pci_ids is defined
+      notify: Update initramfs
+      tags: vfio
+
+    - name: Bind the passthrough GPU to vfio-pci, keep host GPU drivers off it
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/vfio.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (vfio tag).
+          options vfio-pci ids={{ vfio_pci_ids }} disable_vga=1
+          softdep nouveau pre: vfio-pci
+          softdep nova_core pre: vfio-pci
+          softdep snd_hda_intel pre: vfio-pci
+          blacklist nouveau
+          blacklist nova_core
+          blacklist nvidiafb
+        mode: "0644"
+      when: vfio_pci_ids is defined
+      notify: Update initramfs
+      tags: vfio
 
     # --------------------------------------------------------------- storage
     # Guest disks live on LVM-thin (local-lvm = pve/data). Thin pools can be
@@ -601,6 +650,7 @@
       ansible.builtin.assert:
         that: "'usbcore.autosuspend=-1' in cmdline.stdout"
         fail_msg: "GRUB has the fix but the kernel didn't get it — reboot pending?"
+      when: laptop | default(false)
       tags: verify
 
     # Read-only probes below use systemctl directly: the systemd module would
@@ -616,7 +666,7 @@
     - name: Assert sleep is masked
       ansible.builtin.assert:
         that: sleep_state.stdout == 'masked'
-        fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — laptops must not sleep"
+        fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — nodes must not sleep"
       tags: verify
 
     - name: Read nic0 MAC
@@ -675,6 +725,42 @@
         that: persistenced_state.stdout == 'active'
         fail_msg: "nvidia-persistenced is '{{ persistenced_state.stdout }}', expected 'active'"
       when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Read the passthrough GPU's drivers
+      ansible.builtin.shell: |
+        set -o pipefail
+        for id in $(echo '{{ vfio_pci_ids }}' | tr ',' ' '); do
+          lspci -nnk -d "$id" | awk -v id="$id" '/Kernel driver in use/ { print id "=" $NF }'
+        done
+      args:
+        executable: /bin/bash
+      register: vfio_state
+      changed_when: false
+      check_mode: false
+      when: vfio_pci_ids is defined
+      tags: verify
+
+    - name: Assert vfio-pci owns every passthrough function
+      ansible.builtin.assert:
+        that: vfio_state.stdout_lines | sort == vfio_pci_ids.split(',') | map('regex_replace', '$', '=vfio-pci') | sort
+        fail_msg: "GPU drivers: {{ vfio_state.stdout_lines }} — reboot pending after the vfio tag?"
+      when: vfio_pci_ids is defined
+      tags: verify
+
+    - name: Read Wake-on-LAN state
+      ansible.builtin.command: "ethtool {{ pve_nic }}"
+      register: wol_state
+      changed_when: false
+      check_mode: false
+      when: wake_on_lan | default(false)
+      tags: verify
+
+    - name: Assert the NIC is armed for magic packets
+      ansible.builtin.assert:
+        that: wol_state.stdout is search('\n\s*Wake-on:\s*g')
+        fail_msg: "{{ pve_nic }} Wake-on is not 'g' — reboot pending after the network tag?"
+      when: wake_on_lan | default(false)
       tags: verify
 
     - name: Read storage safety state
@@ -764,6 +850,10 @@
 
     - name: Update grub
       ansible.builtin.command: update-grub
+      changed_when: true
+
+    - name: Update initramfs
+      ansible.builtin.command: update-initramfs -u -k all
       changed_when: true
 
     - name: Warn reboot for network

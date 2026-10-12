@@ -1,7 +1,8 @@
-# Runbook: install Proxmox VE on a lab node (laptop)
+# Runbook: install Proxmox VE on a lab node
 
-**When:** bringing up a laptop node — first done for `pve2` (2026-10-06),
-then `pve3` (2026-10-07).
+**When:** bringing up a node — first done for `pve2` (2026-10-06), then
+`pve3` (2026-10-07), both laptops; the desktop `pve1` (2026-10-12) differs
+in a few places, listed in [Desktop node](#desktop-node-pve1).
 **Time:** ~20 minutes + one cable move.
 
 ## Materials
@@ -18,14 +19,14 @@ then `pve3` (2026-10-07).
 
 ## 0. Values
 
-| Setting | pve2 | pve3 |
-| --- | --- | --- |
-| Hostname (FQDN) | `pve2.home.arpa` | `pve3.home.arpa` |
-| Management IP (VLAN 10) | `10.10.10.12/24` | `10.10.10.13/24` |
-| Gateway / DNS | `10.10.10.1` (the hEX) | same |
-| Cluster IP (VLAN 60) | `10.10.60.12/24` | `10.10.60.13/24` |
-| Switch port (final) | P3 — trunk: tagged 10/20/25/30/60, PVID 999 | P4 — same |
-| Switch port (install) | P5 (untagged VLAN 10) — temporary | same |
+| Setting | pve1 | pve2 | pve3 |
+| --- | --- | --- | --- |
+| Hostname (FQDN) | `pve1.home.arpa` | `pve2.home.arpa` | `pve3.home.arpa` |
+| Management IP (VLAN 10) | `10.10.10.11/24` | `10.10.10.12/24` | `10.10.10.13/24` |
+| Gateway / DNS | `10.10.10.1` (the hEX) | same | same |
+| Cluster IP (VLAN 60) | `10.10.60.11/24` | `10.10.60.12/24` | `10.10.60.13/24` |
+| Switch port (final) | P2 — trunk: tagged 10/20/25/30/60, PVID 999 | P3 — same | P4 — same |
+| Switch port (install) | P5 (untagged VLAN 10) — temporary | same | same |
 
 ## 1. BIOS
 
@@ -113,3 +114,42 @@ iface vmbr0.60 inet static
 Replace `<usb-nic>` with the adapter's real name (`ip -br link`) — with
 installer pinning enabled that is `nic0`. Final per-node files live under
 `proxmox/nodes/<node>/interfaces`.
+
+## Desktop node (pve1)
+
+Done 2026-10-12/13 for `pve1` (ASUS PRIME B550M-A, Ryzen 5 5600, RTX 3060;
+[hardware](../hardware.md#pve1--desktop-on-demand-ai-workstation),
+[ADR 0012](../decisions/0012-pve1-on-demand-ai-workstation.md)). What
+differs from the laptops:
+
+- **BIOS** (Del, then F7 for Advanced Mode; F9 searches):
+  Advanced → CPU Configuration → **SVM Mode** on;
+  Advanced → AMD CBS → NBIO Common Options → **IOMMU** on;
+  Advanced → PCI Subsystem Settings → **Above 4G Decoding** on,
+  **Re-Size BAR** off; Advanced → APM Configuration → **ErP Ready** off,
+  **Power On By PCI-E** on, **Restore AC Power Loss** Last State;
+  Boot → CSM → **Launch CSM** off, *then* Boot → Secure Boot → **OS Type**
+  "Other OS" (Secure Boot off); Tool → Armoury Crate download off. Boot
+  menu: **F8**.
+- **Console:** the 5600 has no iGPU, so the monitor goes on the RTX 3060.
+  Use the installer's **Terminal UI** (the graphical one is often garbled
+  without an NVIDIA driver).
+- **NIC:** the onboard Realtek; pinning makes it `nic0` as on the laptops.
+  No USB autosuspend or lid settings (Ansible `laptop` flag off).
+- **Post-install is Ansible, not §3 by hand:** add the node to
+  `ansible/inventory.ini` (MAC from `ip -br link`), write
+  `proxmox/nodes/<node>/interfaces`, install the admin key once
+  (`ssh-copy-id`), then:
+  1. `--tags repos` and a full upgrade (`--force-confold`) to match the
+     other nodes' version;
+  2. the whole playbook with `--skip-tags vfio`, reboot, move the cable
+     **P5 → P2** (the node answers only on the trunk after this reboot;
+     the order of reboot and cable move doesn't matter);
+  3. join the cluster ([proxmox-cluster](proxmox-cluster.md)) and switch
+     the node's host firewall off at once;
+  4. `--tags vfio`, reboot: the GPU binds to `vfio-pci` and **the screen
+     stays black from then on**. Prove the network first (step 2): after
+     this, a broken network config can only be fixed with the rescue below.
+- **Console rescue** (GPU taken by `vfio-pci`): at the GRUB menu press `e`,
+  append `module_blacklist=vfio_pci` to the `linux` line, boot with
+  Ctrl+X. The screen works for that boot only.
