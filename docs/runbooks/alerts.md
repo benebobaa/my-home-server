@@ -153,6 +153,13 @@ before the battery runs out (`docs/runbooks/node-ops.md`).
 **Check:** `pvesh get /nodes/<node>/lxc` (per-guest memory), `top -o %MEM`.
 **Fix:** lower a guest's memory or move a stateless guest to the other node,
 as code (`proxmox/opentofu`).
+**On `k3s` / `k3s-worker`** (job `service_dmz`): Kubeletto's tenant requests
+are overcommitted (Kubeletto docs/migration D9), so this is the warning
+before the kubelet evicts tenant apps (it evicts at ~100 Mi available).
+Check `kubectl top pods -A --sort-by=memory` and
+`kubectl describe node k3s-worker` (Allocated, Conditions). Short term:
+nothing to restart — find the app that grew. Lasting fix: the D9 growth
+path (a bigger or second worker), not raising requests.
 
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.

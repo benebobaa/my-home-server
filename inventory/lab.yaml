@@ -143,9 +143,10 @@ hosts:
     note: Kubeletto tenant cluster — K3s VM (tenants run arbitrary code, so a VM, not an LXC; ADR 0004)
     # DMZ: no log shipping into MGMT. Kubeletto's monitoring NodePorts
     # (Kubeletto repo infra/k8s/home/monitoring.yaml): 30080 is a proxy that
-    # serves core's /readyz and nothing else; 30910 is Traefik's metrics.
-    # Both admit only the monitoring host.
-    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910] }
+    # serves core's /readyz and nothing else; 30910 is Traefik's metrics;
+    # 9100 node_exporter (node-exporter.yaml, hostNetwork; tenant egress
+    # denies node IPs). All admit only the monitoring host.
+    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 9100] }
   k3s-worker:
     kind: vm
     vmid: 301
@@ -154,7 +155,10 @@ hosts:
     ip: 10.10.25.21
     dns: false
     note: Kubeletto tenant cluster — K3s agent (worker) VM for tenant workloads and builds
-    monitoring: { tier: best-effort } # a worker can go: its pods reschedule onto k3s
+    # best-effort: a worker can go (its pods reschedule onto k3s). 9100 is
+    # node_exporter, for its memory: tenant requests are overcommitted
+    # (Kubeletto docs/migration D9).
+    monitoring: { tier: best-effort, metrics: [9100] }
 
   # --- reserved ---------------------------------------------------------------
   edge:

@@ -275,8 +275,8 @@ fail and the same suspender deletes their services.
   CPU 10%, builds 250m/512Mi, queue-proxy 10m/32Mi; limits and billing
   unchanged). Proven: a warm app requested 76+32 Mi / 50+10m and a build
   (250m/512Mi) scheduled beside it. Today's mix plus one build is ~3.2 of
-  3.33 GiB: it fits, with no growth headroom. The worker's memory is not in
-  Prometheus yet (best-effort, ICMP only) — needed before calling capacity
-  done, to see MemoryPressure before tenants are evicted. Growth path is a
+  3.33 GiB: it fits, with no growth headroom. Both nodes' memory is in
+  Prometheus (node_exporter, Kubeletto `infra/k8s/home/node-exporter.yaml`;
+  job `service_dmz`) and `HostMemoryLow` covers them. Growth path is a
   pending decision (Kubeletto docs/migration D9): pve1, or a second worker
   on pve2 once CT 110 is gone.
