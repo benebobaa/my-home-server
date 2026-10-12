@@ -45,10 +45,14 @@ wait_agent
 gexec 3600 "$DIR/provision.sh" bash -s -- "$USER_NAME"
 
 if gexec 30 - test -f /run/ai-reboot-required; then
-  echo "ai: rebooting VM ${VMID} to load the NVIDIA driver"
+  echo "ai: rebooting VM ${VMID} (new driver, kernel or driver option)"
   qm reboot "$VMID" --timeout 300
   sleep 15
   wait_agent
 fi
 
-gexec 60 - nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+# nvidia-persistenced may still be starting right after a boot. (Single
+# quotes on purpose: the loop runs in the guest.)
+# shellcheck disable=SC2016
+gexec 60 - sh -c 'for i in $(seq 30); do nvidia-smi --query-gpu=persistence_mode --format=csv,noheader | grep -q Enabled && break; sleep 2; done; nvidia-smi --query-gpu=name,driver_version,memory.total,persistence_mode --format=csv,noheader'
+gexec 30 - grep RmProfilingAdminOnly /proc/driver/nvidia/params

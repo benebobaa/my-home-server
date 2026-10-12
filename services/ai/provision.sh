@@ -76,6 +76,43 @@ ubuntu-drivers install --gpgpu "nvidia:${NVIDIA_BRANCH}"
   nvidia-container-toolkit \
   build-essential git curl htop nvtop tmux python3-venv pipx
 
+# Keep the whole system current (unattended-upgrades only takes -security);
+# a new kernel brings its NVIDIA modules with it (the -generic module meta).
+"${APT[@]}" dist-upgrade
+"${APT[@]}" autoremove --purge
+
+# GPU performance counters for every user, not just root: Nsight Compute
+# (`ncu`) as the login user fails with ERR_NVGPUCTRPERM otherwise. A
+# single-user workstation; the restriction guards shared machines.
+want='# managed by services/ai/provision.sh — ncu/nsys without root.
+options nvidia NVreg_RestrictProfilingToAdminUsers=0'
+if [ "$(cat /etc/modprobe.d/nvidia-profiling.conf 2>/dev/null)" != "$want" ]; then
+  printf '%s\n' "$want" > /etc/modprobe.d/nvidia-profiling.conf
+  update-initramfs -u
+  touch /run/ai-reboot-required
+fi
+
+# Persistence mode: keep the driver initialised while no CUDA program runs
+# (no 1-2 s CUDA start-up per script, GPU state kept between runs). Ubuntu's
+# unit starts the daemon with --no-persistence-mode and only on demand.
+install -d /etc/systemd/system/nvidia-persistenced.service.d
+want='# managed by services/ai/provision.sh — persistence mode on, always running.
+[Unit]
+StopWhenUnneeded=false
+
+[Service]
+ExecStart=
+ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --persistence-mode --verbose
+
+[Install]
+WantedBy=multi-user.target'
+if [ "$(cat /etc/systemd/system/nvidia-persistenced.service.d/homelab.conf 2>/dev/null)" != "$want" ]; then
+  printf '%s\n' "$want" > /etc/systemd/system/nvidia-persistenced.service.d/homelab.conf
+  systemctl daemon-reload
+  systemctl restart nvidia-persistenced 2>/dev/null || true
+fi
+systemctl enable -q nvidia-persistenced
+
 # Docker uses the NVIDIA runtime for --gpus.
 if ! grep -q nvidia /etc/docker/daemon.json 2>/dev/null; then
   nvidia-ctk runtime configure --runtime=docker
@@ -105,6 +142,8 @@ if dpkg -s systemd-journal-remote >/dev/null 2>&1; then
   rm -rf /etc/systemd/journal-upload.conf.d /var/lib/systemd/journal-upload
 fi
 
+# A new kernel (dist-upgrade above) or driver needs a reboot to load.
+[ -f /var/run/reboot-required ] && touch /run/ai-reboot-required
 # The driver loads at the next boot after its first install.
 if ! nvidia-smi >/dev/null 2>&1; then
   echo "ai: NVIDIA driver installed; a reboot loads it"

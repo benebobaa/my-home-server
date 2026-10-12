@@ -23,7 +23,7 @@ Python. Why it looks like this:
 | `vm.sh` | on pve1 as root (`terraform_data.ai_vm`) | creates the VM from the pinned cloud image, sets GPU passthrough, CPU, memory, network; never restarts a running VM |
 | `user-data.yaml.tftpl` | cloud-init, first boot | hostname, user + key, guest agent |
 | `converge.sh` | on pve1 (`terraform_data.ai_converge`) | waits for the agent, runs `provision.sh` in the guest, one reboot for the driver, `nvidia-smi` check |
-| `provision.sh` | in the guest as root | driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv; purges Tailscale and the journal uploader |
+| `provision.sh` | in the guest as root | full upgrade, driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv; GPU profiling for every user (`ncu`/`nsys` without root), persistence mode on; purges Tailscale and the journal uploader |
 
 Why scripts and not a bpg VM resource: pve1 is off most days and the PVE
 API cannot read an offline node, so a provider resource would break every
@@ -62,7 +62,8 @@ Host ai
 
 1. Wake pve1 ([node-ops](../../docs/runbooks/node-ops.md#wake-pve1)); `ai`
    starts with it (~1–2 min).
-2. Work: `nvidia-smi`, `uv venv && uv pip install torch`, `docker run --gpus all …`.
+2. Work: `nvidia-smi`, `uv venv && uv pip install torch`, `docker run --gpus all …`,
+   profile with `ncu` / `nsys` (CUDA bin is on `PATH` at login).
 3. Shut down pve1 when done (UI or `ssh root@10.10.10.11 poweroff`): it
    stops the VM cleanly first.
 
@@ -73,3 +74,22 @@ trigger re-runs it). Snapshot first if the VM holds work in progress:
 `qm snapshot 140 pre-driver` on pve1 (`qm rollback 140 pre-driver` to undo).
 The toolkit's CUDA version must not exceed what the driver supports (the
 `CUDA Version` in `nvidia-smi`'s header).
+
+## Baseline (2026-10-13)
+
+What healthy looks like, to compare against when something feels off:
+
+| Check | Value |
+| --- | --- |
+| fp16 matmul 8192² (PyTorch 2.14, cu130) | 22.6–23.2 TFLOPS |
+| gpu-burn `-tc` (~90 s) | ~22.7 TFLOPS, 0 errors, max 64 °C, fan 33 % |
+| Power under load | 170 W = limit = max limit (throttle reason `0x4`, power cap: normal) |
+| SM clock under load | 1747–1777 MHz |
+| PCIe link | Gen4 x16 |
+| Idle | ~45 W, ~50 °C, persistence mode Enabled |
+
+Not yet proven: hours of combined GPU + CPU load (power supply and cooling;
+the full stress test was cut short on purpose). If a long run crashes or the
+node reboots by itself, run `~/gpu-burn/gpu_burn -tc 1200` with
+`stress-ng --cpu 10` alongside and watch `nvidia-smi` and the host's
+`journalctl -k`.
