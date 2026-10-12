@@ -422,10 +422,14 @@
             [Unit]
             Description=Weekly container fstrim
 
+            # No catch-up run at boot (Persistent=false): right after a
+            # boot /etc/pve is read-only until the cluster is quorate, so
+            # pct fails (pve3, after the 2026-10-11 power cut). A missed
+            # weekly trim is harmless.
             [Timer]
             OnCalendar=Sun 03:30
             RandomizedDelaySec=30min
-            Persistent=true
+            Persistent=false
 
             [Install]
             WantedBy=timers.target
