@@ -177,10 +177,14 @@ database until the last step, and the copy is built beside it.
 | 5 | `dbcopy.sh check kubeletto_next` | instant | refuses (exit 1) if a worker-mode core would replay anything: pending or leased outbox events, builds not terminal, pending webhook deliveries. Proven by planting a pending row |
 | 6 | scale the home core to 0, `dbcopy.sh swap kubeletto_next --yes` | instant | renames `kubeletto` → `kubeletto_prev`, `kubeletto_next` → `kubeletto`; refuses while anything is connected. Proven on scratch databases |
 | 7 | start the core, `/readyz`, one login, one deploy | | rollback of this step alone: stop the core, rename back |
+| 8 | `dbcopy.sh clean` | instant | deletes the Mac's copy of the production dump (hashes, tokens, encrypted env vars; kept 0700 under `~/.cache/kubeletto-dump`). The staging in CT 130 (`/opt/kdump`, `/opt/kmig`) and on pve2 removes itself |
 
 Total with prod frozen: about 3 min when the link is fast, 15 min when slow.
 
-Order around it (the operator's yes for 1 and 7, both customer-facing):
+Order around it (the operator's yes for 1 and 7, both customer-facing). Staging never uses
+a predictable path in a world-writable directory (root-owned `/opt/...` in the
+CT, `mktemp` on pve2): what lands there runs as root or `postgres`. The dump
+pod runs as uid 70, non-root, no capabilities:
 1. Let in-flight builds on prod finish, then scale prod's core to 0 (the
    downtime starts). Prod's outbox is normally empty within seconds; if
    `check` still finds pending rows, they are events prod never published:

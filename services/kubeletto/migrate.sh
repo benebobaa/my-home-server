@@ -47,12 +47,18 @@ PW=$(cd "$REPO/proxmox/opentofu" &&
 fi
 PG_IP=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["postgres"]["ip"])' "$REPO/inventory/lab.yaml")
 
-ssh -o BatchMode=yes "$NODE" "install -d -m 700 /var/tmp/kmig-$$"
-scp -q -o BatchMode=yes "$bin" "$work/migrations.tar" "$NODE:/var/tmp/kmig-$$/"
-ssh -o BatchMode=yes "$NODE" "pct exec $CT -- install -d -m 755 /var/tmp/kmig &&
-  pct push $CT /var/tmp/kmig-$$/goose /var/tmp/kmig/goose --perms 0700 &&
-  pct push $CT /var/tmp/kmig-$$/migrations.tar /var/tmp/kmig/migrations.tar &&
-  rm -rf /var/tmp/kmig-$$"
+# Staging is never a predictable path in a world-writable directory: what lands
+# here runs as root (live) or as postgres (scratch), so another local user must
+# not be able to pre-create or swap it. On pve2: mktemp (0700, random name). In
+# CT 130: /opt/kmig, root-owned in a directory only root can write to, recreated
+# fresh each run.
+STAGE=$(ssh -o BatchMode=yes "$NODE" "mktemp -d /var/tmp/kmig.XXXXXXXX")
+[[ $STAGE =~ ^/var/tmp/kmig\.[A-Za-z0-9]+$ ]] || { echo "bad staging dir on $NODE" >&2; exit 1; }
+scp -q -o BatchMode=yes "$bin" "$work/migrations.tar" "$NODE:$STAGE/"
+ssh -o BatchMode=yes "$NODE" "pct exec $CT -- bash -c 'rm -rf /opt/kmig && install -d -m 755 -o root -g root /opt/kmig' &&
+  pct push $CT $STAGE/goose /opt/kmig/goose --perms 0755 &&
+  pct push $CT $STAGE/migrations.tar /opt/kmig/migrations.tar &&
+  rm -rf $STAGE"
 
 {
   printf 'export GOOSE_DRIVER=postgres\n'
@@ -66,14 +72,12 @@ ssh -o BatchMode=yes "$NODE" "pct exec $CT -- install -d -m 755 /var/tmp/kmig &&
   fi
   cat <<EOF
 set -euo pipefail
-cd /var/tmp/kmig && rm -rf m && mkdir m && tar -C m -xf migrations.tar && chmod -R a+rX /var/tmp/kmig
+trap 'cd / && rm -rf /opt/kmig' EXIT
+cd /opt/kmig && rm -rf m && mkdir m && tar -C m -xf migrations.tar && chmod -R go-w,a+rX /opt/kmig
 if [ -n "$RUNAS" ]; then
-  su postgres -s /bin/bash -c "GOOSE_DRIVER=\$GOOSE_DRIVER GOOSE_DBSTRING='\$GOOSE_DBSTRING' /var/tmp/kmig/goose -dir /var/tmp/kmig/m $CMD"
+  su postgres -s /bin/bash -c "GOOSE_DRIVER=\$GOOSE_DRIVER GOOSE_DBSTRING='\$GOOSE_DBSTRING' /opt/kmig/goose -dir /opt/kmig/m $CMD"
 else
   ./goose -dir m $CMD
 fi
-rc=\$?
-cd / && rm -rf /var/tmp/kmig
-exit \$rc
 EOF
 } | ssh -o BatchMode=yes "$NODE" "pct exec $CT -- bash -s"

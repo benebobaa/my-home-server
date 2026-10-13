@@ -9,6 +9,7 @@
 #   ./dbcopy.sh check [db]        preflight: nothing pending a worker would replay
 #   ./dbcopy.sh swap [db] --yes   rename live kubeletto -> kubeletto_prev, db -> kubeletto
 #   ./dbcopy.sh drop <db>         drop a scratch database
+#   ./dbcopy.sh clean             delete the local copy of the production dump
 #
 # Nothing here writes to the live `kubeletto` database except `swap`, and
 # swap refuses while anything is connected: scale the home core to 0 first.
@@ -21,12 +22,13 @@
 # copied. Run `dump` only after the operator has frozen prod's writes
 # (cutover) or accepts a point-in-time copy (rehearsal).
 set -euo pipefail
+umask 077   # the dump holds the whole production database (hashes, tokens, env vars)
 cd "$(dirname "$0")"
 
 PROD=${KUBELETTO_PROD_SSH:-kubeletto-prod}   # ssh alias, ~/.ssh/config
 NODE=root@10.10.10.12                        # pve2, hosts CT 130
 CT=130
-OUT=${KUBELETTO_DUMP_DIR:-${TMPDIR:-/tmp}/kubeletto-dump}
+OUT=${KUBELETTO_DUMP_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/kubeletto-dump}   # 0700, never a shared /tmp path
 POD=kubeletto-dbcopy-pgdump
 LIVE=${KUBELETTO_LIVE_DB:-kubeletto}   # only ever overridden to rehearse `swap` on scratch databases
 ROLE=kubeletto
@@ -34,7 +36,9 @@ ROLE=kubeletto
 step() { printf '== %s\n' "$*" >&2; }
 timed() { local t=$SECONDS; "$@"; printf '   %ss\n' "$((SECONDS - t))" >&2; }
 ct() { ssh -o BatchMode=yes -o ConnectTimeout=15 "$NODE" "pct exec $CT -- bash -s"; }
+[[ $OUT != *[\'\"\$\`\ ]* ]] || { echo "KUBELETTO_DUMP_DIR must not contain quotes, spaces or shell characters" >&2; exit 2; }
 valid_db() { [[ $1 =~ ^[a-z_][a-z0-9_]{0,40}$ ]] || { echo "bad database name: $1" >&2; exit 2; }; }
+valid_db "$LIVE"
 psql_ct() { # psql_ct <db> <sql>: as postgres inside CT 130, SQL on stdin of the guest
   printf 'su postgres -c "psql -v ON_ERROR_STOP=1 -X -d %s -At" <<"SQL"\n%s\nSQL\n' "$1" "$2" | ct
 }
@@ -49,8 +53,17 @@ metadata: {name: @POD@, namespace: platform, labels: {purpose: migration-dbcopy}
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+    seccompProfile: {type: RuntimeDefault}
   containers:
   - name: pg
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
     image: docker.io/library/postgres:18-alpine
     command:
     - sh
@@ -84,9 +97,11 @@ EOF
   timed ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 "$PROD" "for i in \$(seq 1 200); do timeout 20 kubectl -n platform exec $POD -- test -f /dump/rc 2>/dev/null && break; sleep 15; done; timeout 20 kubectl -n platform exec $POD -- cat /dump/rc" >"$OUT.rc" 2>/dev/null || true
   [ "$(tr -d '[:space:]' <"$OUT.rc" 2>/dev/null)" = 0 ] || { echo "pg_dump did not finish cleanly (rc file: $(cat "$OUT.rc" 2>/dev/null))" >&2; exit 1; }
   step "pull to $OUT"
-  rm -rf "$OUT" && mkdir -p "$OUT"
+  rm -rf "$OUT" && mkdir -p "$OUT"   # umask 077: 0700
   timed bash -c "ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=6 '$PROD' 'kubectl -n platform exec $POD -- tar -C /dump -cf - db 2>/dev/null' | tar -C '$OUT' -xf -"
   [ -f "$OUT/db/toc.dat" ] || { echo "pulled dump has no toc.dat" >&2; exit 1; }
+  # It is unpacked as root in CT 130 later: only plain files, no links or devices.
+  [ -z "$(find "$OUT/db" -mindepth 1 ! -type f)" ] || { echo "pulled dump holds something other than plain files: refusing" >&2; exit 1; }
   du -sh "$OUT/db" >&2
 }
 
@@ -94,17 +109,24 @@ cmd_restore() {
   local db=${1:-kubeletto_next}; valid_db "$db"
   [ "$db" != "$LIVE" ] || { echo "restore never targets the live database" >&2; exit 2; }
   [ -f "$OUT/db/toc.dat" ] || { echo "no dump at $OUT (run: $0 dump)" >&2; exit 2; }
+  [ -z "$(find "$OUT/db" -mindepth 1 ! -type f)" ] || { echo "dump holds something other than plain files: refusing" >&2; exit 1; }
   step "push to CT $CT"
-  timed bash -c "COPYFILE_DISABLE=1 tar --no-xattrs -C '$OUT' -cf - db | ssh -o BatchMode=yes -o ConnectTimeout=15 '$NODE' 'cat >/var/tmp/kdump.tar && pct push $CT /var/tmp/kdump.tar /tmp/kdump.tar && rm /var/tmp/kdump.tar'"
+  # Root-only staging, never a predictable path in a world-writable directory
+  # (see migrate.sh): mktemp on pve2, /opt/kdump (root-owned, fresh) in CT 130.
+  local stage
+  stage=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$NODE" "mktemp -d /var/tmp/kdump.XXXXXXXX")
+  [[ $stage =~ ^/var/tmp/kdump\.[A-Za-z0-9]+$ ]] || { echo "bad staging dir on $NODE" >&2; exit 1; }
+  ssh -o BatchMode=yes -o ConnectTimeout=15 "$NODE" "pct exec $CT -- bash -c 'rm -rf /opt/kdump && install -d -m 755 -o root -g root /opt/kdump'"
+  timed bash -c "COPYFILE_DISABLE=1 tar --no-xattrs -C '$OUT' -cf - db | ssh -o BatchMode=yes -o ConnectTimeout=15 '$NODE' 'cat >$stage/dump.tar && pct push $CT $stage/dump.tar /opt/kdump/dump.tar && rm -rf $stage'"
   step "restore into $db (owner $ROLE, so goose and the app need no grants)"
   timed ct <<EOF
 set -euo pipefail
-rm -rf /tmp/kd && mkdir /tmp/kd && tar --no-same-owner -C /tmp/kd -xf /tmp/kdump.tar 2>/dev/null
-find /tmp/kd -name '._*' -delete
-chown -R postgres:postgres /tmp/kd
+trap 'rm -rf /opt/kdump' EXIT
+cd /opt/kdump && tar --no-same-owner --no-same-permissions -xf dump.tar 2>/dev/null
+find /opt/kdump/db -name '._*' -delete
+chown -R postgres:postgres /opt/kdump/db
 su postgres -c "dropdb --if-exists $db && createdb -O $ROLE $db"
-su postgres -c "pg_restore -d $db -j2 --no-owner --no-acl --role=$ROLE /tmp/kd/db"
-rm -rf /tmp/kd /tmp/kdump.tar
+su postgres -c "pg_restore -d $db -j2 --no-owner --no-acl --role=$ROLE /opt/kdump/db"
 EOF
   psql_ct "$db" "select 'size', pg_size_pretty(pg_database_size('$db')); select 'goose', max(version_id) from goose_db_version; select 'tenants', count(*) from tenants;" >&2
 }
@@ -140,6 +162,10 @@ cmd_swap() {
   psql_ct postgres "alter database $LIVE rename to ${LIVE}_prev; alter database $db rename to $LIVE;" >&2
 }
 
+# The local copy of the production database: delete it as soon as the restore
+# is done (the CT side removes its own staging on exit).
+cmd_clean() { rm -rf "$OUT" "$OUT.rc"; echo "removed $OUT" >&2; }
+
 cmd_drop() { local db=${1:?database}; valid_db "$db"; [ "$db" != "$LIVE" ] || { echo "not the live database" >&2; exit 2; }
   psql_ct postgres "drop database if exists $db;" >&2; }
 
@@ -149,5 +175,6 @@ case "${1:-}" in
   check) shift; cmd_check "$@" ;;
   swap) shift; cmd_swap "$@" ;;
   drop) shift; cmd_drop "$@" ;;
+  clean) cmd_clean ;;
   *) sed -n 2,12p "$0" >&2; exit 2 ;;
 esac
