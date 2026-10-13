@@ -256,9 +256,13 @@ replacement.
 **Fix:** airflow (laptop lid, dust). Physical: operator.
 
 ### HostCpuHot
-**Meaning:** CPU package above 90 °C for 10 min.
-**Check:** what is using the CPU (`top`); a transcode or build?
-**Fix:** airflow, or limit the guest's cores.
+**Meaning:** CPU package above 90 °C for 10 min, on any Proxmox node: Intel's
+`coretemp` (pve2, pve3) or AMD's `k10temp` (pve1), chosen by hwmon chip name
+(NVMe and ACPI sensors do not count).
+**Check:** what is using the CPU (`top`); a transcode, a build, or on pve1 the
+GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
+(`services/ai/README.md`), so a sustained 90 means more than that test did.
+**Fix:** airflow, or limit the guest's cores. The Ryzen throttles at 95 °C.
 
 ### HostTextfileCollectorStale
 **Meaning:** the SMART or thin-pool collector has not written for over 1 h:
