@@ -12,6 +12,8 @@
 #   ./restore.sh run [flags]          DRY RUN against the home database
 #   ./restore.sh run --apply [flags]  write the deployments
 #
+# The list lives in ~/.cache/kubeletto-restore (0700), apart from dbcopy.sh's dump.
+#
 # flags (passed through): --apply, -pace 5s, -max 100,
 #   -only-tenants a1b2c3d4,...   a rehearsal sample (8-character tenant prefixes)
 #   -skip-tenants a1b2c3d4,...
@@ -31,7 +33,10 @@ CT=130
 DB=${KUBELETTO_DB:-kubeletto}
 [[ $DB =~ ^[a-z_][a-z0-9_]{0,40}$ ]] || { echo "bad KUBELETTO_DB" >&2; exit 2; }
 KUBELETTO_REPO=${KUBELETTO_REPO:-$HOME/Documents/benelabs/kubeletto-home}
-CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/kubeletto-dump
+# Its own directory, NOT dbcopy.sh'"'"'s: `dbcopy.sh dump` wipes its cache directory, and the
+# list is captured first (cutover step 0), before the dump (step 2). The first
+# dress rehearsal (2026-10-14) lost the list exactly that way.
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/kubeletto-restore
 LIST=$CACHE/ksvc.txt
 work=''
 trap '[ -z "$work" ] || rm -rf "$work"' EXIT

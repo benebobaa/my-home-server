@@ -11,8 +11,11 @@ and Knative, not by its core: scaling prod's core to 0 takes the API, console
 and deploys down, but customers' apps keep answering until the DNS flip
 (step 9). Their outage is the flip itself, seconds on proxied records.
 
-Run everything from `services/kubeletto/` on the operator Mac. Exports used
-below: `KUBELETTO_DUMP_DIR` is left default (`~/.cache/kubeletto-dump`, 0700).
+Run everything from `services/kubeletto/` on the operator Mac. The dump lives
+in `~/.cache/kubeletto-dump` (0700, wiped by every `dump`; `./dbcopy.sh clean`
+after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
+`kubeletto-prod` alias points at a Tailscale address that timed out on
+2026-10-14).
 
 ## Before the day (no customer impact)
 
@@ -40,11 +43,11 @@ below: `KUBELETTO_DUMP_DIR` is left default (`~/.cache/kubeletto-dump`, 0700).
 
 | # | Step | Verify | Needs the operator's yes |
 | --- | --- | --- | --- |
-| 0 | `./restore.sh list` (prod's tenant Knative services, read-only) | "listed N tenant services" | |
+| 0 | `./restore.sh list` (prod's tenant Knative services, read-only; saved in `~/.cache/kubeletto-restore/`, apart from the dump's directory, which step 2 wipes) | "listed N tenant services" | |
 | 1 | Prod: let in-flight builds finish, then `ssh kubeletto-prod kubectl -n platform scale deploy platform-core --replicas=0` | prod `/readyz` fails; tenant apps still answer | **yes** (API and deploys down) |
 | 2 | `./dbcopy.sh dump && ./dbcopy.sh restore kubeletto_next && KUBELETTO_DB=kubeletto_next ./migrate.sh up && ./dbcopy.sh check kubeletto_next` | `goose version 100`, `clean` | |
 | 3 | Home: scale `platform-core` to 0; delete all `dom-*` IngressRoutes and Middlewares in ns `traefik` | `kubectl -n traefik get ingressroute` lists none starting `dom-` | |
-| 4 | `./dbcopy.sh swap kubeletto_next --yes` | exit 0; `kubeletto_prev` exists | |
+| 4 | `./dbcopy.sh swap kubeletto_next --yes`, then `./dbcopy.sh clean` | exit 0; `kubeletto_prev` exists (the rollback copy of the empty-cluster state, drop it after the +24 h check) | |
 | 5 | `./secrets.sh --live` (prod is still up: freshest values), then `./secrets.sh verify` | `0 differ` for the shared keys | |
 | 6 | Apply the patch of step 7 above: `./apply.sh platform` | core Ready; `/readyz` 200 through the monitoring path | |
 | 7 | Core in worker mode loops over the new database; check logs for errors, no events replayed (`check` was clean) | no `ERROR` for 5 min | |
