@@ -89,9 +89,12 @@ What healthy looks like, to compare against when something feels off:
 | SM clock under load | 1747–1777 MHz |
 | PCIe link | Gen4 x16 |
 | Idle | ~14 W in P8, ~40 °C, persistence mode Enabled (right after a boot ~45 W until it settles) |
+| 20-min soak: gpu-burn `-tc 1200` + `stress-ng --cpu 10 --cpu-method matrixprod` | gpu-burn OK (0 errors), avg 22.2 TFLOPS (22.7 cold → 22.1 hot); GPU max 75 °C, 170 W, SM 1627–1800 MHz, only throttle reason `0x4`, Gen4 x16 throughout; stress-ng passed |
+| Host (pve1) during the soak | Tctl/Tccd1 85–87 °C, peak 89 °C (the 5600 throttles at 90; never reached); kernel log empty, no MCE/AER; ≥4.8 GB RAM still available |
 
-Not yet proven: hours of combined GPU + CPU load (power supply and cooling;
-the full stress test was cut short on purpose). If a long run crashes or the
-node reboots by itself, run `~/gpu-burn/gpu_burn -tc 1200` with
-`stress-ng --cpu 10` alongside and watch `nvidia-smi` and the host's
-`journalctl -k`.
+The CPU cooler is the tightest margin: all-core load sits 1–3 °C under the
+throttle point. Real training rarely loads all 10 vCPUs; if it does, expect
+the CPU to clock down before anything fails. To re-run the soak:
+`~/gpu-burn/gpu_burn -tc 1200` with
+`stress-ng --cpu 10` alongside, and watch `nvidia-smi`, the host's
+`journalctl -k` and `/sys/class/hwmon/*` (k10temp `temp1_input` = Tctl).
