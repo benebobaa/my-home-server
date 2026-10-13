@@ -252,6 +252,26 @@ pod runs as uid 70, non-root, no capabilities:
   `domains.kubeletto.app` flip, dropping `DOMAINS_RECONCILE_TENANTS`, the
   webhook URL if needed, deleting Aiven and Upstash after the 7 days.
 
+## Phase 3 rehearsal results (2026-10-14)
+
+Proofs run ahead of the 10-25 window, on the home cluster with the
+rehearsal data. Each is repeatable with the commands in the section it names.
+
+| Proof | Result |
+| --- | --- |
+| Cold reboot, **pve3** (worker VM, PBS, `admin-gw`) | back in ~80 s; all 3 guests started by themselves; quorate throughout (3 votes); worker rejoined; every pod Running, all restored apps Ready |
+| Cold reboot, **pve2** (K3s server VM, Postgres, monitoring, logs, `admin-gw2`) | SSH in ~2.5 min; all 5 always-on guests up in 3 min; **Postgres serves on its LAN address** (the 10-11 bind race stays fixed); both K3s nodes Ready in 3 min and all pods Running 20 s later; cloudflared 4 tunnel connections; Prometheus 43 targets up, every rule healthy |
+| PBS restore of **CT 130** (the Kubeletto database) | tonight's snapshot restored into a throwaway CT in 29 s (network stripped before first start: the restored config would reuse the real Postgres IP); Postgres ran crash recovery on the live-taken snapshot and served the data (migration 100, tenants, services, encrypted env vars all present); throwaway destroyed, the real CT untouched. VM 300 (K3s server, holds etcd) and CT 130 are in the nightly job; VM 301 is a stub by design (`backup=false`) |
+| Worker capacity (D9) | 40 warm tenant-shaped services (76 Mi + 32 Mi queue-proxy requests, 50 m + 10 m CPU, minScale 1) requested on a 3.33 GiB worker: **28 pods fit, 12 stay Pending at 98 % of allocatable memory requests**. 25 warm apps plus the platform and the restored apps sit at 89 %, i.e. room for about 2 more |
+| Scheduler alerts | `K8sPodUnschedulable` fired 5 min after the first Pending pod ("12 pod(s) unschedulable"), `K8sNodeMemoryRequestsHigh` fired at 98.5 % after its 15 min, both reached Alertmanager; all resolved ~2 min after the load was deleted. `K8sNodeMemoryPressure` is not provoked (it needs real memory exhaustion) and rests on the unit test |
+| Tenant restore (`restore.sh`) | see "Cutover: database and state", step 7b: 4 services restored and answering |
+
+What the capacity number means: prod's 25 warm apps fit, with about two pods
+of headroom: one more busy day of sign-ups and the 29th warm app is
+unschedulable. The growth path (16 GB SODIMM for pve3, or a second worker on
+pve2 once CT 110 is gone) is still the operator's call; the alerts above are
+what will say so in time.
+
 ## Tenant isolation
 
 `kubeletto-base-policy` is generated per tenant namespace by core
