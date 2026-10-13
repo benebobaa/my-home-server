@@ -1,0 +1,85 @@
+# promtool unit tests for rules/k8s.yml (make check). Series carry the labels
+# the real scrape produces: `node` is the Proxmox host (target label), the
+# Kubernetes node is `exported_node`. The join in
+# K8sNodeMemoryRequestsHigh is the part that fails silently if a label drifts:
+# kube-state-metrics keeps request series of Succeeded and Failed pods, and
+# only the phase join keeps them out of the reservation.
+rule_files:
+  - ../rules/k8s.yml
+
+evaluation_interval: 1m
+
+tests:
+  # worker: 3 GB allocatable, 2 GB requested by a running pod (two containers)
+  # and 1.5 GB by a finished build pod. Counting the finished pod would read
+  # 117 %; the right answer is 67 %: no alert.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_allocatable{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",resource="memory",unit="byte"}'
+        values: '3e9x40'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",namespace="kl-a",pod="app",uid="u1",container="app",resource="memory",unit="byte"}'
+        values: '1.5e9x40'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",namespace="kl-a",pod="app",uid="u1",container="queue-proxy",resource="memory",unit="byte"}'
+        values: '0.5e9x40'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="kl-a",pod="app",uid="u1",phase="Running"}'
+        values: '1x40'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",namespace="builds",pod="done",uid="u2",container="build",resource="memory",unit="byte"}'
+        values: '1.5e9x40'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="builds",pod="done",uid="u2",phase="Succeeded"}'
+        values: '1x40'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="builds",pod="done",uid="u2",phase="Running"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: K8sNodeMemoryRequestsHigh
+        exp_alerts: []
+
+  # the same node with 2.9 GB reserved by running pods: 97 % for 15 min.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_allocatable{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",resource="memory",unit="byte"}'
+        values: '3e9x40'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",namespace="kl-a",pod="app",uid="u1",container="app",resource="memory",unit="byte"}'
+        values: '2.9e9x40'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="kl-a",pod="app",uid="u1",phase="Running"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: K8sNodeMemoryRequestsHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: K8sNodeMemoryRequestsHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, exported_node: k3s-worker }
+            exp_annotations:
+              summary: "k3s-worker: pods request 96.67% of allocatable memory"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememoryrequestshigh
+
+  # a pod the scheduler refuses for 10 min, and a node under MemoryPressure.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_status_unschedulable{job="service_dmz",instance="k3s",namespace="kl-a",pod="app",uid="u1"}'
+        values: '0x2 1x20'
+      - series: 'kube_node_status_condition{job="service_dmz",instance="k3s",node="pve3",exported_node="k3s-worker",condition="MemoryPressure",status="true"}'
+        values: '0x2 1x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: K8sPodUnschedulable
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: K8sPodUnschedulable
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: k3s }
+            exp_annotations:
+              summary: "k3s: 1 pod(s) unschedulable for 5 min (a tenant cannot start)"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8spodunschedulable
+      - eval_time: 3m
+        alertname: K8sNodeMemoryPressure
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: K8sNodeMemoryPressure
+        exp_alerts:
+          - exp_labels: { severity: critical, node: pve3, exported_node: k3s-worker, instance: k3s, job: service_dmz, condition: MemoryPressure, status: "true" }
+            exp_annotations:
+              summary: "k3s-worker: MemoryPressure, the kubelet is evicting pods"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure

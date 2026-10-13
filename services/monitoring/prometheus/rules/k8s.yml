@@ -1,0 +1,58 @@
+# Kubeletto's K3s cluster (hosts k3s, k3s-worker): kube-state-metrics on the
+# server node, scraped by job service_dmz (docs/runbooks/kubeletto-migration.md).
+#
+# Why these exist: free RAM does not show the failure that took production
+# down on 2026-10-11. The node sat at 99 % of memory REQUESTS with plenty of
+# free memory, tenant pods went Pending ("Insufficient memory") and cold
+# starts failed. Tenant requests are overcommitted at home too (Kubeletto
+# docs/migration D9), so the scheduler's view needs its own alerts next to
+# HostMemoryLow (node_exporter, hosts.yml). At home the crash-loop suspender
+# is log-only (D5), so a Pending pod no longer cascades into deleted
+# services, but an unschedulable pod is still a tenant that cannot start.
+#
+# Label gotcha: every generated target carries `node` (the Proxmox node that
+# holds the VM, e.g. pve2) and the DMZ scrape does not honor labels, so
+# kube-state-metrics' own `node` (k3s, k3s-worker) arrives as `exported_node`.
+groups:
+  - name: k8s
+    rules:
+      # The scheduler refused a pod. Scale-from-zero makes brief Pending
+      # normal (image pull, a few seconds), but only an unschedulable pod
+      # sits here: "Pending for a while" is not enough to alert on.
+      - alert: K8sPodUnschedulable
+        expr: sum by (instance) (kube_pod_status_unschedulable{job="service_dmz"}) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} pod(s) unschedulable for 5 min (a tenant cannot start)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8spodunschedulable
+
+      # Memory reserved by pods (requests) against what a node can hand out
+      # (allocatable). Only pods that hold a reservation count: Running and
+      # scheduled Pending ones; Succeeded and Failed pods keep their request
+      # series in kube-state-metrics, so the join on the phase drops them.
+      # Above ~90 % the next build or cold start has no room.
+      - alert: K8sNodeMemoryRequestsHigh
+        expr: |
+          sum by (exported_node) (
+            kube_pod_container_resource_requests{job="service_dmz", resource="memory"}
+            * on (namespace, pod, uid) group_left ()
+            (kube_pod_status_phase{job="service_dmz", phase=~"Pending|Running"} == 1)
+          )
+          / on (exported_node)
+          kube_node_status_allocatable{job="service_dmz", resource="memory"}
+          > 0.90
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.exported_node }}: pods request {{ $value | humanizePercentage }} of allocatable memory"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememoryrequestshigh
+
+      # The kubelet itself says it is short of memory and starts evicting.
+      - alert: K8sNodeMemoryPressure
+        expr: kube_node_status_condition{job="service_dmz", condition="MemoryPressure", status="true"} == 1
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.exported_node }}: MemoryPressure, the kubelet is evicting pods"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure

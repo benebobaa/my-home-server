@@ -167,6 +167,54 @@ Check `kubectl top pods -A --sort-by=memory` and
 nothing to restart — find the app that grew. Lasting fix: the D9 growth
 path (a bigger or second worker), not raising requests.
 
+### K8sPodUnschedulable
+**Meaning:** the scheduler of the Kubeletto cluster (`k3s`, `k3s-worker`)
+refused a pod for 5 min: no node has room. A tenant app or a build cannot
+start. Scale-from-zero Pending (image pull, seconds) does not count: only a
+pod the scheduler marked unschedulable does.
+**Check:** `kubectl get pods -A --field-selector status.phase=Pending`, then
+`kubectl describe pod -n <ns> <pod>` (Events: `Insufficient memory` or a
+taint/selector mismatch). Through VM 300's guest agent, as in
+`services/kubeletto/apply.sh` (the API is not reachable from the LAN).
+**Fix:** `Insufficient memory` is D9 (Kubeletto `docs/migration`): requests
+are overcommitted on the 4 GB worker. See also K8sNodeMemoryRequestsHigh.
+Find what holds the reservation (`kubectl describe node k3s-worker`,
+Allocated resources); the lasting fix is the growth path (a bigger or second
+worker), not raising limits. A selector/taint cause means a platform pod
+lost its `control-plane` nodeSelector or toleration: platform pods must
+carry both (they only reach Postgres from `k3s`).
+**Background:** on 2026-10-11 the rented server sat at 99 % memory requests,
+tenant pods went Pending and 17 services were deleted by the crash-loop
+suspender (`docs/incidents/2026-10-11-kubeletto-prod-ksvc-deletions.md`). At
+home that suspender is log-only (D5); the tenant outage remains.
+
+### K8sNodeMemoryRequestsHigh
+**Meaning:** pods on a node reserve over 90 % of its allocatable memory
+(sum of memory requests of Running and scheduled Pending pods) for 15 min.
+Free RAM can look fine: the scheduler counts requests, not use. The next
+cold start or build may not fit; it is the warning before
+K8sPodUnschedulable.
+**Check:** `kubectl describe node k3s-worker` (Allocated resources),
+`kubectl top pods -A --sort-by=memory` for real use against requests.
+**Fix:** Kubeletto's home request shares are already low (memory 15 %,
+builds 250m/512Mi, queue-proxy 32Mi: Kubeletto `e8f37aee`). Nothing to
+restart. If tenants really grew, the growth path is D9: 16 GB SODIMM for
+pve3, or a second worker on pve2 once CT 110 is gone. pve1 is not an option
+(on demand, ADR 0012).
+
+### K8sNodeMemoryPressure
+**Meaning:** the kubelet reports `MemoryPressure=true` on a node for 2 min:
+it is short of memory and evicts pods (BestEffort first, then those over
+their request). Tenant apps are being killed.
+**Check:** `kubectl describe node <node>` (Conditions, Events: `Evicted`,
+`EvictionThresholdMet`), `kubectl get pods -A | grep Evicted`, and
+`free -m` in the VM through the guest agent.
+**Fix:** find what grew (`kubectl top pods -A --sort-by=memory`); a runaway
+tenant is stopped by suspending the tenant
+(`docs/runbooks/kubeletto-migration.md`, "Suspending a tenant"), not by
+restarting the node. The evicted pods are recreated by Knative on demand.
+Lasting fix: D9.
+
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.
