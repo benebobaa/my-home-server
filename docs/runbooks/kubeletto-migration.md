@@ -1,5 +1,7 @@
 # Kubeletto migration — inventory and safety switches
 
+> The day-of checklist, in order, is [kubeletto-cutover.md](kubeletto-cutover.md).
+
 What it takes to run Kubeletto (`~/Documents/benelabs/kubeletto`) on the home
 K3s cluster without touching production. Plan and cuts:
 [design/kubeletto-home.md](../design/kubeletto-home.md). Surveyed read-only
@@ -223,14 +225,16 @@ pod runs as uid 70, non-root, no capabilities:
   nothing can come in through it, and the hard control is the hEX's DMZ
   drops. To refresh: re-run `secrets.sh` and restart `platform-core`.
 - **Home test state** (cleared by hand before the new core starts; the
-  swap replaces rows, not the cluster): the canary's rehearsal Knative
-  services, and the `dom-*` IngressRoutes and Middlewares in namespace
-  `traefik` that the rehearsal's custom-domain rows created (the canary tenant
-  has 5 such rows; a gated reconciler only ever touched it). Tenant namespaces
-  `kl-<id8>-<id8>` are NOT to be deleted: one per tenant id, and the final copy
-  keeps the ids; their `DomainMapping`s sit in `ResolveFailed` until a service
-  exists, harmless. Check Cloudflare for custom hostnames the rehearsal left
-  (the rehearsal's test domain was deleted through the API; expected 0).
+  swap replaces rows, not the cluster): the `dom-*` IngressRoutes and
+  Middlewares in namespace `traefik` that the rehearsal's custom-domain rows
+  created (the canary tenant has 5 such rows; a gated reconciler only ever
+  touched it): delete them all, the reconciler recreates the ones the final
+  database has. Tenant namespaces `kl-<id8>-<id8>` stay: one per tenant id,
+  and the final copy keeps the ids; their `DomainMapping`s sit in
+  `ResolveFailed` until a service exists, harmless. The canary's two Knative
+  services are real prod services (internal tenant): they stay and are simply
+  redeployed by the restore. Check Cloudflare for custom hostnames the
+  rehearsal left (its test domain was deleted through the API; expected 0).
 - **Infisical** (read from the code 2026-10-14): not a server dependency,
   so nothing retires it. It is a hard runtime dependency: each tenant's
   env-var encryption key lives only there (the database holds a key reference
