@@ -162,6 +162,57 @@ NATS `DOMAINS` stream, nothing turns it into a notification or mail. The
 pre-cutover copy carries `certificate_apply_failed` on those rows from the
 cert-manager attempt before the switch; the final DB copy replaces them.
 
+## Cutover: database and state
+
+Rehearsed end to end on 2026-10-14 with `services/kubeletto/dbcopy.sh`
+(and `migrate.sh` with `KUBELETTO_DB`). Nothing in it touches the live home
+database until the last step, and the copy is built beside it.
+
+| # | Step | Measured | Notes |
+| --- | --- | --- | --- |
+| 1 | `dbcopy.sh dump` | **1 min to 12 min** | One requests-free pod on prod runs `pg_dump -Fd -j4`, `usage_samples` rows left out. The Aiven link is uneven (~140 KB/s to 1 MB/s) and `github_webhook_deliveries` (JSON payloads, the largest table) is one `COPY` no `-j` can split: budget 15 min. The pod is deleted when the dump is off the node |
+| 2 | pull + push to CT 130 | 10 s + 20 s | the dump is tens of MB; relayed through the Mac |
+| 3 | `dbcopy.sh restore kubeletto_next` | 11 s | into a NEW database owned by the app role; refuses to target `kubeletto` |
+| 4 | `KUBELETTO_DB=kubeletto_next ./migrate.sh up` | ms (goose 097→100) | scratch copies are migrated over the local socket as `postgres` with `role=kubeletto`, because pg_hba admits the app role to its own database only. Schema diffed against the live copy: identical |
+| 5 | `dbcopy.sh check kubeletto_next` | instant | refuses (exit 1) if a worker-mode core would replay anything: pending or leased outbox events, builds not terminal, pending webhook deliveries. Proven by planting a pending row |
+| 6 | scale the home core to 0, `dbcopy.sh swap kubeletto_next --yes` | instant | renames `kubeletto` → `kubeletto_prev`, `kubeletto_next` → `kubeletto`; refuses while anything is connected. Proven on scratch databases |
+| 7 | start the core, `/readyz`, one login, one deploy | | rollback of this step alone: stop the core, rename back |
+
+Total with prod frozen: about 3 min when the link is fast, 15 min when slow.
+
+Order around it (the operator's yes for 1 and 7, both customer-facing):
+1. Let in-flight builds on prod finish, then scale prod's core to 0 (the
+   downtime starts). Prod's outbox is normally empty within seconds; if
+   `check` still finds pending rows, they are events prod never published:
+   decide, do not delete.
+2. Steps 1 to 6 above. 3. DNS to the tunnel, then the custom-domain steps
+   under "At cutover" above.
+
+**Open before cutover** (none blocks the rehearsal; each blocks the day):
+- **Secrets**: `secrets.sh` still reads prod. Prod disappears on 2026-11-05,
+  so every shared value must be in `secrets.sops.env` first, `JWT_SECRET`
+  copied and never rotated. Verify by key names and lengths only.
+- **Home test state**: the current home database holds rehearsal data
+  (canary deploys, the `saas-test` domain, migration 100's `created_at`).
+  The swap replaces the rows but not the cluster: delete the `kl-*` tenant
+  namespaces at home and any custom hostname the rehearsal created at
+  Cloudflare before the new core starts, or its reconcilers will find
+  objects the new database does not know.
+- **Infisical**: creating a tenant writes a key into prod's Infisical
+  project (`secrets/tenant.go`). It is not in D6's retire list. Decide what
+  replaces it before prod goes away.
+- **GitHub webhook**: core serves `/v1/webhooks/github` on the API host. If
+  the GitHub App's webhook URL uses that hostname the DNS flip carries it;
+  if it uses the rented server's address it is an operator step in the
+  App's settings. Not verified yet.
+- **Rollback and its data window**: DNS back to the rented server resumes
+  prod on Aiven (kept 7 days after cutover, D6). Anything written at home
+  after the cutover (sign-ups, deploys, usage) is lost. Accepted: cost over
+  production-readiness.
+- **Operator's yes, listed**: freezing prod, DNS to the tunnel, the
+  `domains.kubeletto.app` flip, dropping `DOMAINS_RECONCILE_TENANTS`, the
+  webhook URL if needed, deleting Aiven and Upstash after the 7 days.
+
 ## Tenant isolation
 
 `kubeletto-base-policy` is generated per tenant namespace by core

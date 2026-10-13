@@ -20,6 +20,9 @@ must never run: [runbooks/kubeletto-migration.md](../../docs/runbooks/kubeletto-
 ```bash
 cd services/kubeletto
 ./migrate.sh status|up   # goose against the HOME database copy (never prod)
+./dbcopy.sh dump|restore|check|swap|drop   # prod -> CT 130 copy for the cutover:
+                         # restores into a NEW database, never over the live one
+                         # (runbook kubeletto-migration.md, "Cutover: database")
 ./secrets.sh             # Secrets: shared ones from prod, home ones generated
 ./apply.sh               # base, knative, traefik, platform (overlay), rehearsal
 ```
