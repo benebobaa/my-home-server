@@ -177,14 +177,19 @@ database until the last step, and the copy is built beside it.
 | 5 | `dbcopy.sh check kubeletto_next` | instant | refuses (exit 1) if a worker-mode core would replay anything: pending or leased outbox events, builds not terminal, pending webhook deliveries. Proven by planting a pending row |
 | 6 | scale the home core to 0, `dbcopy.sh swap kubeletto_next --yes` | instant | renames `kubeletto` → `kubeletto_prev`, `kubeletto_next` → `kubeletto`; refuses while anything is connected. Proven on scratch databases |
 | 7 | start the core, `/readyz`, one login, one deploy | | rollback of this step alone: stop the core, rename back |
+| 7b | `restore.sh run`, then `restore.sh run --apply` | ~5 s per service (paced) | **no tenant app exists on a fresh cluster and nothing recreates one from the database**: this redeploys each service that ran on prod (stored image, no rebuild). The list is captured at step 0 (`restore.sh list`, while prod is frozen, before anything is deleted there). Suspended tenants are skipped; the first run is a dry run. Proven 2026-10-14 on the operator's and the canary's tenants (4 services, Ready in under a minute, answering through Kourier) |
 | 8 | `dbcopy.sh clean` | instant | deletes the Mac's copy of the production dump (hashes, tokens, encrypted env vars; kept 0700 under `~/.cache/kubeletto-dump`). The staging in CT 130 (`/opt/kdump`, `/opt/kmig`) and on pve2 removes itself |
 
 Total with prod frozen: about 3 min when the link is fast, 15 min when slow.
 
-Order around it (the operator's yes for 1 and 7, both customer-facing). Staging never uses
+Order around it (the operator's yes for 1 and 7, both customer-facing; also for
+the first full `restore.sh run --apply`, which starts every active tenant's
+code at home, with no traffic yet). Staging never uses
 a predictable path in a world-writable directory (root-owned `/opt/...` in the
 CT, `mktemp` on pve2): what lands there runs as root or `postgres`. The dump
 pod runs as uid 70, non-root, no capabilities:
+0. `restore.sh list` first: it reads prod's Knative services (read-only) into
+   a private file; scaling prod's core to 0 does not delete them.
 1. Let in-flight builds on prod finish, then scale prod's core to 0 (the
    downtime starts). Prod's outbox is normally empty within seconds; if
    `check` still finds pending rows, they are events prod never published:
@@ -217,19 +222,28 @@ pod runs as uid 70, non-root, no capabilities:
   running core had a stale one after two days). It is defense in depth only:
   nothing can come in through it, and the hard control is the hEX's DMZ
   drops. To refresh: re-run `secrets.sh` and restart `platform-core`.
-- **Home test state**: the current home database holds rehearsal data
-  (canary deploys, the `saas-test` domain, migration 100's `created_at`).
-  The swap replaces the rows but not the cluster: delete the `kl-*` tenant
-  namespaces at home and any custom hostname the rehearsal created at
-  Cloudflare before the new core starts, or its reconcilers will find
-  objects the new database does not know.
-- **Infisical**: creating a tenant writes a key into prod's Infisical
-  project (`secrets/tenant.go`). It is not in D6's retire list. Decide what
-  replaces it before prod goes away.
-- **GitHub webhook**: core serves `/v1/webhooks/github` on the API host. If
-  the GitHub App's webhook URL uses that hostname the DNS flip carries it;
-  if it uses the rented server's address it is an operator step in the
-  App's settings. Not verified yet.
+- **Home test state** (cleared by hand before the new core starts; the
+  swap replaces rows, not the cluster): the canary's rehearsal Knative
+  services, and the `dom-*` IngressRoutes and Middlewares in namespace
+  `traefik` that the rehearsal's custom-domain rows created (the canary tenant
+  has 5 such rows; a gated reconciler only ever touched it). Tenant namespaces
+  `kl-<id8>-<id8>` are NOT to be deleted: one per tenant id, and the final copy
+  keeps the ids; their `DomainMapping`s sit in `ResolveFailed` until a service
+  exists, harmless. Check Cloudflare for custom hostnames the rehearsal left
+  (the rehearsal's test domain was deleted through the API; expected 0).
+- **Infisical** (read from the code 2026-10-14): not a server dependency,
+  so nothing retires it. It is a hard runtime dependency: each tenant's
+  env-var encryption key lives only there (the database holds a key reference
+  and ciphertext), so the platform needs the same `INFISICAL_*` credentials at
+  home (the snapshot keeps them) and the project must outlive the cutover. If
+  the key were lost, every stored env var of that tenant is unreadable. Keep
+  the project, and consider an export of its tenant keys into the operator's
+  own backup (not done: it would copy every tenant's key). During the
+  rehearsal the home core writes keys for tenants it creates into the same
+  project: harmless junk.
+- **GitHub webhook** (verified 2026-10-14): prod's access log shows every
+  recent delivery (144, all 202) arriving at host `api.kubeletto.com`, so the
+  DNS flip carries GitHub's webhooks with no change in GitHub.
 - **Rollback and its data window**: DNS back to the rented server resumes
   prod on Aiven (kept 7 days after cutover, D6). Anything written at home
   after the cutover (sign-ups, deploys, usage) is lost. Accepted: cost over

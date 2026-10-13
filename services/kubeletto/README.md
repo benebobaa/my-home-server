@@ -23,6 +23,9 @@ cd services/kubeletto
 ./dbcopy.sh dump|restore|check|swap|drop   # prod -> CT 130 copy for the cutover:
                          # restores into a NEW database, never over the live one
                          # (runbook kubeletto-migration.md, "Cutover: database")
+./restore.sh list|run    # no tenant app exists on a fresh cluster: redeploy each
+                         # service that ran on prod from its stored image
+./secrets.sh snapshot|verify|--from-snapshot|--live   # prod secrets survive prod
 ./secrets.sh             # Secrets: shared ones from prod, home ones generated
 ./apply.sh               # base, knative, traefik, platform (overlay), rehearsal
 ```
