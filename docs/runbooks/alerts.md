@@ -269,6 +269,13 @@ GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
 the disk and pool alerts above are blind.
 **Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
 **Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
+**Known cause (pve1, found 2026-10-14):** Debian's SMART timer runs only when
+`/dev/sd*` or `/dev/hd*` exists, and pve1 has NVMe only: the timer never fired
+by itself, and the alert came from the one file the installer's USB disk left.
+A drop-in (`prometheus-node-exporter-smartmon.timer.d/nvme.conf`, Ansible
+`monitoring` tag) adds `/dev/nvme*`. Verify on a node: `systemctl cat
+prometheus-node-exporter-smartmon.timer | grep nvme` and the age of
+`/var/lib/prometheus/node-exporter/smartmon.prom` is under 15 min.
 
 ### HostSystemdUnitFailed
 **Meaning:** a systemd unit is in `failed` state for 10 min.

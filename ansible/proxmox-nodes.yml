@@ -556,6 +556,34 @@
         label: "{{ item.name }}"
       tags: monitoring
 
+    # Debian's smartmon timer starts only when /dev/sd* or /dev/hd* exists
+    # (ConditionPathExistsGlob, OR-ed with the leading "|"). pve1 has NVMe only,
+    # so its SMART collector never ran by itself and HostTextfileCollectorStale
+    # fired on the one file the installer's USB disk had left behind
+    # (2026-10-14). A drop-in adds NVMe to the same OR-group; smartmon.sh
+    # already queries NVMe (`smartctl -d nvme`). Harmless where sd* exists.
+    - name: Drop-in directory of the SMART collector timer
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-node-exporter-smartmon.timer.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: monitoring
+
+    - name: Let the SMART collector timer also run on NVMe-only nodes
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/prometheus-node-exporter-smartmon.timer.d/nvme.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+          [Unit]
+          ConditionPathExistsGlob=|/dev/nvme*
+        owner: root
+        group: root
+        mode: "0644"
+      tags: monitoring
+      # the "Enable ... timers" task below runs daemon_reload before starting
+
     - name: Enable node_exporter and the collector timers
       ansible.builtin.systemd_service:
         name: "{{ item }}"
