@@ -193,9 +193,30 @@ pod runs as uid 70, non-root, no capabilities:
    under "At cutover" above.
 
 **Open before cutover** (none blocks the rehearsal; each blocks the day):
-- **Secrets**: `secrets.sh` still reads prod. Prod disappears on 2026-11-05,
-  so every shared value must be in `secrets.sops.env` first, `JWT_SECRET`
-  copied and never rotated. Verify by key names and lengths only.
+- **Secrets** (done 2026-10-14, one decision left for the operator): prod
+  disappears on 2026-11-05 and the home cluster's etcd would hold the only
+  copy of `JWT_SECRET`, the GitHub App, R2 and registry keys, the origin TLS
+  certs. `./secrets.sh snapshot` reads prod once (read-only) and writes the
+  keys home keeps to `secrets.prod-snapshot.sops.json` (SOPS, age), then
+  re-reads prod and compares value by value (64 values, 0 differ). Aiven,
+  Upstash, prod's NATS and OpenObserve values are not stored: home replaces
+  or drops them. `./secrets.sh verify` compares the cluster to the snapshot
+  (60 values, 0 differ); `./secrets.sh --from-snapshot` applies without
+  prod, proven to give byte-identical Secrets to a prod-sourced apply.
+  **`--live` is the cutover switch**: the rehearsal drops `RESEND_API_KEY`
+  and `SUMOPOD_*` (mail, checkout); the cutover must run
+  `./secrets.sh --from-snapshot --live` or the home platform sends no mail
+  and takes no payments. The snapshot is **gitignored on purpose**: it is the
+  ciphertext of every shared prod secret and this repo is public, and
+  `JWT_SECRET` can never be rotated. Keeping it local (and in the home
+  cluster) is the default; committing it is the operator's call, with that
+  trade-off (a copy off the Mac versus ciphertext of the crown jewels in a
+  public history, protected by one age key).
+  Not a secret but found on the way: `TENANT_EGRESS_DENY_CIDRS` carries the
+  home's public IPv4, which sits behind Biznet's CGNAT and changes (the
+  running core had a stale one after two days). It is defense in depth only:
+  nothing can come in through it, and the hard control is the hEX's DMZ
+  drops. To refresh: re-run `secrets.sh` and restart `platform-core`.
 - **Home test state**: the current home database holds rehearsal data
   (canary deploys, the `saas-test` domain, migration 100's `created_at`).
   The swap replaces the rows but not the cluster: delete the `kl-*` tenant

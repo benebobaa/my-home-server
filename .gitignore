@@ -19,3 +19,6 @@ tfplan
 
 # ansible-lint cache
 .ansible/
+
+# Kubeletto: ciphertext of every shared prod secret; committing it is the operator's call (services/kubeletto/secrets.sh)
+services/kubeletto/secrets.prod-snapshot.sops.json

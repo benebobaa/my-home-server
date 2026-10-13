@@ -26,14 +26,41 @@
 # logs/vector-nats-auth, kubeletto-builds/build-nats-auth.
 # Mirrored into kubeletto-builds: ghcr-pull only (not core's internal secret).
 #
-# At cutover this becomes a SOPS file in this repo (app standard §4).
+# Where the prod-origin values come from (prod disappears on 2026-11-05):
+#   ./secrets.sh snapshot          read prod once (read-only), write the keys
+#                                  home keeps to secrets.prod-snapshot.sops.json
+#                                  (SOPS, age; verified against prod, key names
+#                                  and counts only). Aiven, Upstash and
+#                                  OpenObserve values are NOT stored: home
+#                                  replaces or drops them.
+#   ./secrets.sh                   apply, prod-origin values read from prod
+#   ./secrets.sh --from-snapshot   apply, read from the snapshot (after prod)
+#   ./secrets.sh verify            compare the cluster's Secrets to the snapshot
+#                                  by per-key hash (nothing printed but names)
+#   --live                         cutover: keep RESEND_API_KEY and SUMOPOD_*
+#                                  (mail, checkout); the rehearsal drops them
+# The snapshot file is gitignored on purpose: it is the ciphertext of every
+# shared prod secret, and this repo is public. Committing it is the
+# operator's call (docs/runbooks/kubeletto-migration.md, "Secrets").
 set -euo pipefail
 cd "$(dirname "$0")"
 REPO=$(git rev-parse --show-toplevel)
 
-PROD=root@103.59.160.198
+PROD=${KUBELETTO_PROD_SSH:-root@103.59.160.198}
 NODE=root@10.10.10.12
 VMID=300
+SNAPSHOT=secrets.prod-snapshot.sops.json
+
+MODE=apply SOURCE=prod LIVE=0
+for a in "$@"; do
+  case "$a" in
+    snapshot|verify) MODE=$a ;;
+    --from-snapshot) SOURCE=snapshot ;;
+    --live) LIVE=1 ;;
+    *) echo "usage: $0 [snapshot|verify] [--from-snapshot] [--live]" >&2; exit 2 ;;
+  esac
+done
+export LIVE
 
 PROD_SECRETS="platform/platform-core-env platform/ghcr-pull platform/platform-core-internal-auth
 platform/platform-core-registry-pull registry/registry-http-secret registry/registry-r2-credentials
@@ -43,6 +70,80 @@ vm() {
   ssh -o BatchMode=yes "$NODE" "qm guest exec $VMID --pass-stdin 1 --timeout ${1:-120} -- bash -s" |
     python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",1))'
 }
+
+# Keys of platform-core-env that home sets itself: never read from prod's
+# values, never stored in the snapshot (Aiven, Upstash, prod's NATS and the
+# rented server's addresses are not needed after the move).
+export HOME_OVERRIDE_KEYS="DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,NATS_URL,NATS_USER,NATS_PASSWORD,NATS_BUILD_USER,TENANT_EGRESS_DENY_CIDRS,DOMAINS_EDGE_IPS,DOMAINS_PROBE_ADDR,PLATFORM_API_URL,SESSION_COOKIE_DOMAIN,CLOUDFLARE_SAAS_TOKEN"
+
+remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
+
+# A kubectl-style List of the prod-origin Secrets, from prod or the snapshot.
+prod_items() {
+  if [ "$SOURCE" = snapshot ]; then
+    [ -f "$SNAPSHOT" ] || { echo "secrets: no $SNAPSHOT (run: $0 snapshot)" >&2; exit 1; }
+    sops decrypt "$SNAPSHOT"
+  else
+    ssh -o BatchMode=yes "$PROD" "$remote" 2>/dev/null
+  fi
+}
+
+# Compare the snapshot with another List on stdin, value by value; prints key
+# names only. RESEND/SUMOPOD are skipped unless --live: the rehearsal drops them.
+compare_with_snapshot() {
+  SNAP_JSON=$(sops decrypt "$SNAPSHOT") python3 -c '
+import json, os, sys
+snap = json.loads(os.environ["SNAP_JSON"])["items"]
+other = {(s["metadata"]["namespace"], s["metadata"]["name"]): s.get("data", {}) for s in json.load(sys.stdin)["items"]}
+live = os.environ.get("LIVE") == "1"
+skip = lambda k: not live and (k == "RESEND_API_KEY" or k.startswith("SUMOPOD_"))
+n = bad = 0
+for s in snap:
+    key = (s["metadata"]["namespace"], s["metadata"]["name"])
+    cur = other.get(key)
+    if cur is None:
+        print("MISSING %s/%s" % key); bad += 1; continue
+    for k, v in s["data"].items():
+        if skip(k): continue
+        n += 1
+        if cur.get(k) != v:
+            print("DIFF %s/%s %s" % (key + (k,))); bad += 1
+print("%d values compared across %d secrets, %d differ" % (n, len(snap), bad))
+sys.exit(1 if bad else 0)'
+}
+
+if [ "$MODE" = snapshot ]; then
+  prod_items | python3 -c '
+import json, os, sys
+over = set(os.environ["HOME_OVERRIDE_KEYS"].split(","))
+items = []
+for s in json.load(sys.stdin)["items"]:
+    data = dict(s.get("data", {}))
+    if s["metadata"]["name"] == "platform-core-env":
+        data = {k: v for k, v in data.items() if k not in over and not k.startswith(("OPENOBSERVE_", "OTEL_"))}
+    items.append({"metadata": {"namespace": s["metadata"]["namespace"], "name": s["metadata"]["name"]},
+                  "type": s.get("type", "Opaque"), "data": data})
+    print("%s/%s: %d keys" % (s["metadata"]["namespace"], s["metadata"]["name"], len(data)), file=sys.stderr)
+json.dump({"items": items}, sys.stdout)' |
+    sops encrypt --input-type json --output-type json --filename-override "$SNAPSHOT" /dev/stdin > "$SNAPSHOT.tmp"
+  mv "$SNAPSHOT.tmp" "$SNAPSHOT"
+  echo "== verify the snapshot against prod (read again)" >&2
+  SOURCE=prod prod_items | LIVE=1 compare_with_snapshot
+  exit 0
+fi
+
+if [ "$MODE" = verify ]; then
+  # The same Secrets, read from the home cluster (a missing one shows as MISSING).
+  # shellcheck disable=SC2016 # the printf strings are a script for the VM
+  {
+    printf 'echo "{\\"kind\\":\\"List\\",\\"apiVersion\\":\\"v1\\",\\"items\\":["; sep=""\n'
+    printf 'for s in %s; do\n' "$(tr '\n' ' ' <<<"$PROD_SECRETS")"
+    printf '  printf "%%s" "$sep"; sep=","\n'
+    printf '  k3s kubectl -n "${s%%%%/*}" get secret "${s#*/}" -o json 2>/dev/null || printf "{\\"metadata\\":{\\"namespace\\":\\"x\\",\\"name\\":\\"x\\"},\\"data\\":{}}"\n'
+    printf 'done\necho "]}"\n'
+  } | vm 120 | compare_with_snapshot
+  exit 0
+fi
 
 HOME_PG_PASSWORD=$(cd "$REPO/proxmox/opentofu" &&
   echo 'nonsensitive(random_password.postgres["kubeletto"].result)' |
@@ -60,9 +161,7 @@ CLOUDFLARE_SAAS_TOKEN=$(sops exec-env secrets.sops.env 'printf %s "$CLOUDFLARE_S
 EXISTING_NATS=$(echo 'k3s kubectl -n nats get secret nats-auth -o json 2>/dev/null || echo "{}"' | vm)
 export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS CLOUDFLARE_SAAS_TOKEN
 
-remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
-
-ssh -o BatchMode=yes "$PROD" "$remote" 2>/dev/null | python3 -c '
+prod_items | python3 -c '
 import base64, json, os, secrets, sys, urllib.parse as u
 b64 = lambda s: base64.b64encode(s.encode()).decode()
 prod = {(s["metadata"]["namespace"], s["metadata"]["name"]): s for s in json.load(sys.stdin)["items"]}
@@ -109,7 +208,8 @@ env.update({
     "SESSION_COOKIE_DOMAIN": b64("api.kubeletto.com"),
     "CLOUDFLARE_SAAS_TOKEN": b64(os.environ["CLOUDFLARE_SAAS_TOKEN"]),
 })
-dropped = sorted(k for k in env if k == "RESEND_API_KEY" or k.startswith(("SUMOPOD_", "OPENOBSERVE_", "OTEL_")))
+live = os.environ.get("LIVE") == "1"
+dropped = sorted(k for k in env if (not live and (k == "RESEND_API_KEY" or k.startswith("SUMOPOD_"))) or k.startswith(("OPENOBSERVE_", "OTEL_")))
 for k in dropped:
     del env[k]
 print("platform-core-env: %d keys, dropped %s" % (len(env), ",".join(dropped)), file=sys.stderr)
