@@ -71,7 +71,8 @@ the two hEX rules and `services/kubeletto/secrets.sh`; Kubeletto: the leaf
    (VM 301): both closed.
 3. **Secrets:** `services/kubeletto/secrets.sh --live` (**`--live`**, or mail and
    checkout keys are dropped): creates `nats/nats-hub`, ConfigMap
-   `nats/nats-hub-ca`, and the new `REDIS_URL`.
+   `nats/nats-hub-ca`, the new `REDIS_URL` and `REDIS_TLS_CA` (Valkey's
+   certificate, pinned; needs core abb13d63 or later).
 4. **Overlay:** in the Kubeletto worktree merge `shared-nats-valkey` into
    `home-migration`, then `services/kubeletto/apply.sh platform`. The NATS pod
    restarts as a leaf; then `k3s kubectl -n platform rollout restart deploy/platform-core`

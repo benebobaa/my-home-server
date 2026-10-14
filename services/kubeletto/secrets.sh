@@ -9,9 +9,9 @@
 #
 # platform-core-env, from prod with:
 #   DATABASE_URL, DATABASE_URL_DIRECT -> the home database in CT 130
-#   REDIS_URL -> its instance on the lab's shared Valkey (ADR 0016, TLS,
-#     unverified: go-redis takes no CA from a URL); NATS_URL -> the in-cluster
-#     NATS, a leaf of the lab's shared hub
+#   REDIS_URL -> its instance on the lab's shared Valkey (ADR 0016), TLS
+#     verified against REDIS_TLS_CA (output valkey_tls_cert, ADR 0017);
+#     NATS_URL -> the in-cluster NATS, a leaf of the lab's shared hub
 #   NATS_USER/NATS_PASSWORD (platform) + NATS_BUILD_USER (wave 2 NATS auth)
 #   TENANT_EGRESS_DENY_CIDRS -> CGNAT + the home public IPv4 (not in git)
 #   DOMAINS_EDGE_IPS -> Cloudflare's addresses for kubeletto.app;
@@ -79,7 +79,7 @@ vm() {
 # Keys of platform-core-env that home sets itself: never read from prod's
 # values, never stored in the snapshot (Aiven, Upstash, prod's NATS and the
 # rented server's addresses are not needed after the move).
-export HOME_OVERRIDE_KEYS="DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,NATS_URL,NATS_USER,NATS_PASSWORD,NATS_BUILD_USER,TENANT_EGRESS_DENY_CIDRS,DOMAINS_EDGE_IPS,DOMAINS_PROBE_ADDR,PLATFORM_API_URL,SESSION_COOKIE_DOMAIN,CLOUDFLARE_SAAS_TOKEN"
+export HOME_OVERRIDE_KEYS="DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,REDIS_TLS_CA,NATS_URL,NATS_USER,NATS_PASSWORD,NATS_BUILD_USER,TENANT_EGRESS_DENY_CIDRS,DOMAINS_EDGE_IPS,DOMAINS_PROBE_ADDR,PLATFORM_API_URL,SESSION_COOKIE_DOMAIN,CLOUDFLARE_SAAS_TOKEN"
 
 remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
 
@@ -163,7 +163,8 @@ HUB_PASSWORD=$(tf 'nonsensitive(random_password.nats["kubeletto"].result)')
 VALKEY_PASSWORD=$(tf 'nonsensitive(random_password.valkey["kubeletto"].result)')
 [ ${#HUB_PASSWORD} -ge 20 ] && [ ${#VALKEY_PASSWORD} -ge 20 ] || { echo "secrets: no NATS/Valkey password from tofu" >&2; exit 1; }
 HUB_CA=$(cd "$REPO/proxmox/opentofu" && sops exec-env secrets.sops.env 'tofu output -raw nats_tls_cert')
-[[ $HUB_CA == *"BEGIN CERTIFICATE"* ]] || { echo "secrets: no nats_tls_cert output" >&2; exit 1; }
+VALKEY_CA=$(cd "$REPO/proxmox/opentofu" && sops exec-env secrets.sops.env 'tofu output -raw valkey_tls_cert')
+[[ $HUB_CA == *"BEGIN CERTIFICATE"* && $VALKEY_CA == *"BEGIN CERTIFICATE"* ]] || { echo "secrets: no nats_tls_cert/valkey_tls_cert output" >&2; exit 1; }
 HUB_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["nats"]["ip"])' "$REPO/inventory/lab.yaml")
 VALKEY_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["valkey"]["ip"])' "$REPO/inventory/lab.yaml")
 VALKEY_PORT=6380   # local.valkey_instances.kubeletto.port in proxmox/opentofu/valkey.tf
@@ -177,7 +178,7 @@ CLOUDFLARE_SAAS_TOKEN=$(sops exec-env secrets.sops.env 'printf %s "$CLOUDFLARE_S
 # Existing home NATS passwords, so a re-run never rotates them under running pods.
 EXISTING_NATS=$(echo 'k3s kubectl -n nats get secret nats-auth -o json 2>/dev/null || echo "{}"' | vm)
 export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS CLOUDFLARE_SAAS_TOKEN
-export HUB_PASSWORD VALKEY_PASSWORD HUB_CA HUB_HOST VALKEY_HOST VALKEY_PORT
+export HUB_PASSWORD VALKEY_PASSWORD HUB_CA VALKEY_CA HUB_HOST VALKEY_HOST VALKEY_PORT
 
 prod_items | python3 -c '
 import base64, json, os, secrets, sys, urllib.parse as u
@@ -219,8 +220,9 @@ dsn = "postgresql://kubeletto:%s@%s:5432/kubeletto?sslmode=require" % (
     u.quote(os.environ["HOME_PG_PASSWORD"], safe=""), os.environ["HOME_PG_HOST"])
 env.update({
     "DATABASE_URL": b64(dsn), "DATABASE_URL_DIRECT": b64(dsn),
-    "REDIS_URL": b64("rediss://:%s@%s:%s/0?skip_verify=true" % (
+    "REDIS_URL": b64("rediss://:%s@%s:%s/0" % (
         u.quote(os.environ["VALKEY_PASSWORD"], safe=""), os.environ["VALKEY_HOST"], os.environ["VALKEY_PORT"])),
+    "REDIS_TLS_CA": b64(os.environ["VALKEY_CA"]),
     "NATS_URL": b64("nats://nats.nats.svc.cluster.local:4222"),
     "NATS_USER": b64("platform"), "NATS_PASSWORD": nats["platform-password"],
     "NATS_BUILD_USER": b64("build"),
