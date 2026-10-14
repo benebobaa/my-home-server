@@ -60,13 +60,13 @@ outbox lives in Postgres), Valkey holds locks, rate limits and caches.
 
 ## 2. What is weak today (checked, not assumed)
 
-1. **Server and worker share VLAN 25 with allow-all VM firewalls.** The PVE
-   firewall on both VMs is anti-spoofing only (`policy_in ACCEPT`). From the
-   worker, 3 tcp ports of the server answer: 6443 (the API, needed), 10250
-   (kubelet, not needed from the worker) and 9100 (node exporter, not needed).
-   The rest (NodePorts, SSH, etcd) are closed because of Kubernetes policies and
-   sshd, not because of a firewall. A compromised worker VM has the kubelet
-   and exporter ports of the server in reach.
+1. ~~Server and worker share VLAN 25 with allow-all VM firewalls.~~ Fixed
+   2026-10-15: both VMs' Proxmox firewalls are inbound allow-lists built
+   from what conntrack showed (`proxmox/opentofu/firewall.tf`). From the
+   worker only the server's API (6443) and VXLAN answer; its kubelet (10250),
+   node exporter (9100) and NodePorts no longer do. The server reaches the
+   worker's kubelet and VXLAN only; the monitoring host its scrape ports and
+   ping.
 2. **No monitoring of NATS, Valkey, the registry or the core's own flows.**
    Prometheus watches health, Traefik, node metrics and scheduling. Nothing alerts
    if NATS's volume fills, a consumer falls behind or the registry token endpoint

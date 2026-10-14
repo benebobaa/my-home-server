@@ -82,7 +82,14 @@ Both VMs share VLAN 25, and the worker runs tenant code. Each NIC has the
 Proxmox firewall on with ipfilter + macfilter (`proxmox/opentofu/firewall.tf`):
 a VM may send only from its own address (its `ipfilter-net0` ipset) and MAC,
 so the worker cannot claim `10.10.25.20` and pass the Postgres pinhole.
-Policies are ACCEPT; the filter is the protection. This needs the datacenter
+Inbound is an allow-list since 2026-10-15 (`input_policy` DROP): the worker
+may reach the server's API (6443) and VXLAN (8472) only, the server the
+worker's kubelet (10250) and VXLAN, the monitoring host each VM's scrape
+ports (from lab.yaml) and ping; replies to the VMs' own connections pass
+(stateful). The list is what conntrack showed arriving on both VMs; drops
+are logged on the hosts (`/var/log/pve-firewall.log`, lines starting with
+the VMID). Off switch, instantly: `pvesh set /nodes/<node>/qemu/<vmid>/firewall/options --policy_in ACCEPT`
+(then put `k3s_input_policy` in `firewall.tf` back in line). This needs the datacenter
 firewall on, with every host's own firewall explicitly off
 (`files/pve-firewall.sh`). Containers are unaffected (their NICs have
 `firewall=0`). Consequence: no floating address (kube-vip, MetalLB L2) on these
