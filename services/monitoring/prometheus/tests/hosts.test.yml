@@ -39,3 +39,19 @@ tests:
             exp_annotations:
               summary: "pve1: CPU at 92 °C for 10 min"
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostcpuhot
+
+  # the K3s worker's root filesystem (scraped by job service_dmz) at 10 % free
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="service_dmz",instance="k3s-worker",fstype="ext4",mountpoint="/"}'
+        values: '3e9x30'
+      - series: 'node_filesystem_size_bytes{job="service_dmz",instance="k3s-worker",fstype="ext4",mountpoint="/"}'
+        values: '30e9x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HostFilesystemFull
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, fstype: ext4, mountpoint: / }
+            exp_annotations:
+              summary: "k3s-worker: / has 10% free"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostfilesystemfull

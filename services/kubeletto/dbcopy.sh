@@ -127,6 +127,10 @@ find /opt/kdump/db -name '._*' -delete
 chown -R postgres:postgres /opt/kdump/db
 su postgres -c "dropdb --if-exists $db && createdb -O $ROLE $db"
 su postgres -c "pg_restore -d $db -j2 --no-owner --no-acl --role=$ROLE /opt/kdump/db"
+# pg_restore leaves no planner statistics: until autovacuum gets to each table
+# the planner guesses (found 2026-10-14 after the cutover: 19 of 56 tables
+# never analysed). Gather them now, before the copy goes live.
+su postgres -c "vacuumdb --analyze-only --dbname=$db --jobs=2 --quiet"
 EOF
   psql_ct "$db" "select 'size', pg_size_pretty(pg_database_size('$db')); select 'goose', max(version_id) from goose_db_version; select 'tenants', count(*) from tenants;" >&2
 }
