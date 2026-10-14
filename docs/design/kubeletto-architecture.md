@@ -72,8 +72,11 @@ outbox lives in Postgres), Valkey holds locks, rate limits and caches.
    cloudflared, logs) alerts when not ready, stuck (crash loop, image pull,
    missing config) or restarting (`k8s-platform` in `k8s.yml`). NATS's
    storage and consumer backlog are watched once Kubeletto uses the shared
-   hub (`app-nats.yml`). Still blind: a registry that is up but refuses
-   tokens (the 2026-10-14 cutover case) needs a functional probe.
+   hub (`app-nats.yml`). The public path, including the registry's token
+   endpoint (the 2026-10-14 cutover case), is probed from the internet
+   (`KubelettoPublicPathDown`). Not covered: token signing itself (needs a
+   credential), and registry retention (dry run:
+   `docs/experiments/2026-10-15-registry-retention-dry-run.md`).
 3. ~~Recovery of VM 300 is not tested.~~ Tested 2026-10-15: the nightly backup
    restored in 106 s to a NIC-less copy whose API server came up and decrypted
    the secrets (`docs/runbooks/backup-restore.md`). Still untested: a full
