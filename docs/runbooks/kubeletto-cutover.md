@@ -90,9 +90,12 @@ merge `cutover-flip` (and `cutover-live` in the Kubeletto worktree).
 
 ## Rollback (until 2026-11-05)
 
+The flip branch was merged into `main` after the verification (`main` is the
+truth of what is live), so the rollback reverts the merge:
+
 1. `cd network/cloudflare && ./flip.sh back --apply` (the three records back to
-   the rented server, in place), then `git switch main` and `tofu plan` must say
-   No changes.
+   the rented server, in place, no gap), then `git revert -m 1 7874348` (the
+   merge of `cutover-flip`) so `tofu plan` says No changes again.
 2. Prod: `kubectl -n platform scale deploy platform-core --replicas=1`.
 3. Home: scale `platform-core` to 0 so it stops writing.
 
@@ -110,3 +113,57 @@ touched, so they are as they were. Accepted: cost over production-readiness.
   since step 5).
 - Housekeeping: README status, ADR 0011 status, the `kubeletto-prod` SSH alias,
   `docs/incidents` for anything that broke, and the Infisical project stays.
+
+## Cutover record, 2026-10-14 (done, no notice sent)
+
+The operator decided against notifying users (the mail free tier cannot carry
+it) and asked to go as soon as possible. Request volume turned out to be flat
+across the day (bots: ~11.5k an hour at night, ~13k by day), so the window was
+chosen for the operator being awake, not for quiet.
+
+| Time (WIB) | Step |
+| --- | --- |
+| 13:39:20 | prod's core scaled to 0 (API 503, tenant apps kept answering) |
+| 13:42 | dump pulled (the first pull was truncated by a dropped `kubectl exec` stream: rerun, 1 min) |
+| 13:44:32 | preflight clean, home core stopped, `dom-*` routes cleared, **database swapped** |
+| 13:45:26 | live secrets (`--live`) and the `cutover-live` overlay applied, core Ready |
+| 13:47-13:52 | restore of 52 services (all created; 49 then 50 Ready) |
+| 14:02 | smoke test: api route 200, 8 of 8 real tenant hostnames answered, 0 gateway errors |
+| 14:15:25 | **DNS flip** (`flip.sh`, three in-place patches); external `/readyz` 200 within 9 s; `tofu plan` No changes |
+| 14:15-14:45 | real traffic at home (console, deploys, registry tokens, 3 GitHub webhooks 202) |
+
+Freeze to flip: 36 minutes (API and console down, deploys impossible, GitHub
+webhooks in that window lost: GitHub does not redeliver by itself). Tenant apps
+were served by prod throughout; their only outage was the flip itself (seconds).
+
+**What the day showed that the rehearsals did not**
+
+- **The restore emailed customers.** Mail was off in every rehearsal; with
+  `--live` the deploy notifier sent "Deployment Successful/Failed" to the
+  members of every restored service's tenant: **60 emails to 49 owners** between
+  13:48 and 14:43 (56 success, 4 failure), spending free mail quota. Fixed in
+  Kubeletto `ff4aba54`: restore deployments carry the trigger type
+  `platform_restore`, which the notifier skips and the monthly deployment count
+  ignores (the restore pushed 0 tenants over their limit). **That core image has
+  to be rolled out before any further restore** (until then run a restore with
+  mail off). The 53 restore rows already in the database were relabelled
+  `platform_restore` in one guarded transaction.
+- **Custom domains: the gap was 15 to 25 minutes, not 1 to 3.** The three
+  verified customer domains got Cloudflare certificates 12 to 25 min after the
+  flip, and the platform routes a domain only once its certificate is active
+  (404 meanwhile). One of the three has its own DNS on Cloudflare. Plan on 30
+  minutes next time and tell the owners.
+- **Platform-built images need the token endpoint.** The home registry takes
+  its tokens from `api.kubeletto.com`, which points at frozen prod until the
+  flip: an image not already cached on the worker cannot be pulled, and Knative
+  marks that revision failed (one service needed a second restore after the
+  flip). Restore first, flip second is still right (the other order serves 404
+  for every app), but expect a few stragglers and rerun the restore for them.
+- **Two apps cannot move**: `laowtun/webm` (pod Pending on prod since Oct 6)
+  and `wbxl0/bot` (runs on prod from a snapshot only). Their owners redeploy.
+
+**After**: the rented server stays as the rollback until 2026-11-05 with prod's
+core scaled to 0 (rollback loses everything written at home since 13:44);
+`kubeletto_prev` (the pre-cutover database) is dropped after the +24 h check;
+Aiven and Upstash are deleted 7 days after the cutover with the operator's yes
+(decision D6); the Infisical project stays.
