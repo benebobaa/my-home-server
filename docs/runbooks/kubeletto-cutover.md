@@ -36,10 +36,12 @@ after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
 6. **Operator**: tell the custom-domain owners and the tenants about the
    window (API/console down for the database step, ~3 to 15 min; each custom
    domain has a short HTTPS gap, ~1 to 3 min, after the flip).
-7. Prepare, do not apply:
-   - Kubeletto `infra/k8s/home/platform-core-patch.yaml`: delete the
-     `DOMAINS_RECONCILE_TENANTS` line (commit on `home-migration`).
-   - `network/cloudflare/records.tf` and `tunnel.tf`: the edits of step 9.
+7. Both edits of the day are prepared as branches, already committed and
+   checked (nothing applied):
+   - Kubeletto worktree, branch `cutover-live`: `DOMAINS_RECONCILE_TENANTS`
+     removed from the core patch (the overlay renders without it).
+   - homeserver, branch `cutover-flip`: the three records as they are after
+     the flip; applied only through `network/cloudflare/flip.sh` (below).
 
 ## The day
 
@@ -52,7 +54,7 @@ after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
 | 3 | Home: scale `platform-core` to 0; delete all `dom-*` IngressRoutes and Middlewares in ns `traefik` | `kubectl -n traefik get ingressroute` lists none starting `dom-` | |
 | 4 | `./dbcopy.sh swap kubeletto_next --yes`, then `./dbcopy.sh clean` | exit 0; `kubeletto_prev` exists (the rollback copy of the empty-cluster state, drop it after the +24 h check) | |
 | 5 | `./secrets.sh --live` (prod is still up: freshest values), then `./secrets.sh verify` | `0 differ` for the shared keys | |
-| 6 | Apply the patch of step 7 above: `./apply.sh platform` | core Ready; `/readyz` 200 through the monitoring path | |
+| 6 | In the Kubeletto worktree `git switch cutover-live`, then `./apply.sh platform` | core Ready; `/readyz` 200 through the monitoring path | |
 | 7 | Core in worker mode loops over the new database; check logs for errors, no events replayed (`check` was clean) | no `ERROR` for 5 min | |
 | 8 | `./restore.sh run`, read the counts, then `./restore.sh run --apply` | restored = listed − unknown; every `ksvc` Ready; `K8sPodUnschedulable` silent | **yes** (starts every tenant's code at home) |
 | 9 | **DNS flip**: see below | external `curl https://api.kubeletto.com/readyz` is home's | **yes** |
@@ -65,28 +67,32 @@ tenant hostnames against Traefik with the Host header and the fixed SNI
 
 ### Step 9, the DNS flip
 
-In `network/cloudflare/records.tf`:
+Three records change (`*.kubeletto.app` and `api.kubeletto.com` become proxied
+CNAMEs to the tunnel; `domains.kubeletto.app` a proxied CNAME to
+`saas-origin.kubeletto.app`, Cloudflare for SaaS). **Not with a bare
+`tofu apply`**: a type change makes the provider destroy then create each
+record, a gap on `*.kubeletto.app` in which a resolver can cache "does not
+exist". `flip.sh` changes the type in place through the API (tested 2026-10-14):
 
-- `app_wildcard_a` (`*.kubeletto.app`) and `com_api_a` (`api.kubeletto.com`):
-  from the A record `103.59.160.198` to a proxied CNAME
-  `<tunnel id>.cfargotunnel.com` (the rehearsal names in `tunnel.tf` show the
-  form).
-- `app_domains_a` (`domains.kubeletto.app`): from the DNS-only A record to a
-  **proxied CNAME to `saas-origin.kubeletto.app`** (Cloudflare for SaaS; the
-  custom hostnames then validate and go ACTIVE on their own).
-- Delete the rehearsal names `home-api.kubeletto.com` and
-  `probe-rehearsal.kubeletto.app` and the matching ingress rule.
-- Remove `DOMAINS_RECONCILE_TENANTS` from the core patch (step 6 already
-  applied it) and the canary tenant's gate in `saas.tf`.
+```bash
+cd network/cloudflare
+git switch cutover-flip                  # the code is the "after"
+./flip.sh forward                        # dry run: current and wanted values
+./flip.sh forward --apply                # three in-place PATCHes, each verified
+sops exec-env secrets.sops.env 'tofu plan'   # must say: No changes
+```
 
-`sops exec-env secrets.sops.env 'tofu plan'` must show exactly those changes,
-then apply. Records are proxied, so the switch is at Cloudflare's edge within
-seconds and so is the rollback.
+Records are proxied, so the switch is at Cloudflare's edge within seconds and so
+is the rollback. After the +24 h check, remove the rehearsal names
+`home-api.kubeletto.com` and `probe-rehearsal.kubeletto.app` (with the matching
+ingress rule in `tunnel.tf`) and the canary tenant's gate in `saas.tf`, then
+merge `cutover-flip` (and `cutover-live` in the Kubeletto worktree).
 
 ## Rollback (until 2026-11-05)
 
-1. `records.tf`: the three records back to their old values (`git revert` the
-   flip commit), `tofu apply`.
+1. `cd network/cloudflare && ./flip.sh back --apply` (the three records back to
+   the rented server, in place), then `git switch main` and `tofu plan` must say
+   No changes.
 2. Prod: `kubectl -n platform scale deploy platform-core --replicas=1`.
 3. Home: scale `platform-core` to 0 so it stops writing.
 
