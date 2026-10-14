@@ -1,0 +1,40 @@
+# The shared NATS — CT 131 `nats` (services/nats, ADR 0016), scraped through
+# the `service` job (metrics: [7777] in lab.yaml, prometheus-nats-exporter).
+# Down, or up without JetStream, is the generic HttpProbeFailed on its health
+# URL (healthz?js-enabled-only=true); the exporter itself down is TargetDown.
+groups:
+  - name: app-nats
+    rules:
+      # Real bytes stored against the account's JetStream limit (nats.tf),
+      # not the streams' reservations. At the limit, publishes to its streams
+      # are refused.
+      - alert: NatsAccountStorageHigh
+        expr: |
+          jetstream_account_storage_used{job="service"}
+            / jetstream_account_max_storage{job="service"} > 0.80
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "nats: account {{ $labels.account }} uses {{ $value | humanizePercentage }} of its JetStream storage"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsaccountstoragehigh
+
+      # A durable consumer falling behind: its app stopped consuming (down,
+      # stuck, or a poison message).
+      - alert: NatsConsumerBacklog
+        expr: jetstream_consumer_num_pending{job="service"} > 1000
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "nats: consumer {{ $labels.consumer_name }} of {{ $labels.account }}/{{ $labels.stream_name }} is {{ $value }} messages behind"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsconsumerbacklog
+
+      # The CT's root disk holds the JetStream file store.
+      - alert: NatsDiskFilling
+        expr: |
+          (pve_disk_usage_bytes / pve_disk_size_bytes)
+            * on (id) group_left (name) pve_guest_info{name="nats"} > 0.80
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "nats: root disk {{ $value | humanizePercentage }} full"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsdiskfilling

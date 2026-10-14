@@ -394,3 +394,57 @@ New connections are refused soon.
 **Fix:** usually an app leaking connections or a too-large pool: fix the
 app's pool size. Raise `max_connections` (`setup.sh`) only with memory to
 match.
+
+## NATS (CT 131)
+
+NATS itself down, or up without JetStream, is `HttpProbeFailed` on
+`http://10.10.20.22:8222/healthz?js-enabled-only=true`: check
+`pct exec 131 -- systemctl status nats` and VictoriaLogs
+`_stream:{_HOSTNAME="nats"}`; fix with `systemctl start nats` (a config error
+is in the journal: `nats-server -c /etc/nats/nats.conf -t` tests it).
+
+### NatsAccountStorageHigh
+**Meaning:** an app's account stores more than 80 % of its JetStream
+`max_file` (`local.nats_accounts` in `proxmox/opentofu/nats.tf`) for 30 min.
+Real bytes, not the streams' reservations. At 100 % its publishes are refused.
+**Check:** which stream grew: `curl -s 'http://10.10.20.22:8222/jsz?accounts=true&streams=true'`
+from the CT, or `jetstream_stream_total_bytes` in Grafana.
+**Fix:** usually the app's own retention (a stream without `max_age` or
+`max_bytes`, a consumer that never acks). Raise `max_file` in `nats.tf` only
+if the growth is real, within the server's 10 GB and the CT disk.
+
+### NatsConsumerBacklog
+**Meaning:** a durable consumer has more than 1000 messages pending for
+15 min: its app stopped consuming.
+**Check:** the labels name the account, stream and consumer; then the app's
+logs (Kubeletto: core's, in VictoriaLogs).
+**Fix:** restart or repair the consumer's app. A poison message that is
+redelivered forever goes to the app's dead-letter stream if it has one.
+
+### NatsDiskFilling
+**Meaning:** CT 131's root disk (the JetStream file store) is over 80 %
+full.
+**Check:** `du -sh /var/lib/nats/jetstream/*` in the CT (one directory per
+account).
+**Fix:** as `NatsAccountStorageHigh`; or grow `disk_gb` in `nats.tf`
+(in place, online).
+
+## Valkey (CT 132)
+
+### ValkeyDown
+**Meaning:** an instance's exporter cannot reach it (`redis_up 0`) for
+2 min; its app has no cache, locks or rate limits (Kubeletto's core also
+refuses to start without it). Severity from the tier.
+**Check:** `pct exec 132 -- systemctl status valkey-server@<app>` (on pve3);
+VictoriaLogs `_stream:{_HOSTNAME="valkey"}`.
+**Fix:** `systemctl restart valkey-server@<app>`. It holds no data, so a
+rebuild of the CT (`tofu apply -replace=module.valkey...`) is always safe.
+
+### ValkeyMemoryFull
+**Meaning:** an instance is above 95 % of its `maxmemory` for 15 min. With a
+`volatile-*` policy, keys without a TTL are never evicted: once they fill
+the cap, writes fail with `OOM command not allowed`.
+**Check:** `INFO memory` and `INFO keyspace` on the instance (expires vs
+keys: many keys without a TTL is an app bug).
+**Fix:** the app's TTLs; or raise `maxmemory` in `local.valkey_instances`
+(`proxmox/opentofu/valkey.tf`) within the CT's 256 MB.

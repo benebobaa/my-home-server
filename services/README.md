@@ -14,6 +14,8 @@ Built:
 - `logs/` — VictoriaLogs, the lab log store (VLAN 10 LXC).
 - `pbs/` — Proxmox Backup Server, nightly backups of every guest (VLAN 10 LXC, pve3).
 - `postgres/` — the shared PostgreSQL 18, a database per app (VLAN 20 LXC).
+- `nats/` — the shared NATS with JetStream, an account per app (VLAN 20 LXC).
+- `valkey/` — the shared Valkey, an instance per app, cache only (VLAN 20 LXC, pve3).
 
 New services start from `_template/` and follow `docs/standards/` (apps,
 observability).

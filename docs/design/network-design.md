@@ -318,6 +318,7 @@ backend home_https
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
 - **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, routed by severity, and a healthchecks.io dead-man's switch fires when home goes dark. Every host declares how it is watched in `inventory/lab.yaml`, and targets and firewall rules are generated from that ([ADR 0008](../decisions/0008-observability-standard.md), [standard](../standards/observability.md)).
 - **Database:** one shared PostgreSQL 18 in CT 130 `postgres` on VLAN 20, a database + role per app ([ADR 0010](../decisions/0010-shared-postgres-and-app-standard.md), `services/postgres/`). Apps reach it on the same VLAN; nothing else does except through an exact pinhole.
+- **Messaging and cache:** shared NATS with JetStream in CT 131 `nats` (`10.10.20.22`) and Valkey in CT 132 `valkey` (`10.10.20.23`, pve3) on VLAN 20, an account / an instance per app ([ADR 0016](../decisions/0016-shared-nats-and-valkey.md)). Same rule: VLAN 20 directly, anything else through an exact pinhole (an app outside VLAN 20 attaches a NATS leaf node on 7422).
 - **Logs:** VictoriaLogs in CT 121 `logs` on VLAN 10 (`services/logs/`). Nodes and containers ship their journal; the hEX sends remote syslog (UDP 5514). Still to add: an external check of the public tunnel once it exists.
 
 ## 8. Build order and rollback

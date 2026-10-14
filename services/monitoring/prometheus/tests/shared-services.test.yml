@@ -1,0 +1,70 @@
+# promtool unit tests for the shared NATS and Valkey rules (make check):
+# the label names come from the live exporters (2026-10-14), so a rename in
+# an exporter upgrade breaks these tests, not silently the alerts.
+rule_files:
+  - ../rules/app-nats.yml
+  - ../rules/app-valkey.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # kubeletto's account: 7 of 8 GB really stored (reservations do not count)
+      - series: 'jetstream_account_storage_used{job="service",instance="nats",account="kubeletto"}'
+        values: '7000000000x40'
+      - series: 'jetstream_account_max_storage{job="service",instance="nats",account="kubeletto"}'
+        values: '8589934592x40'
+      # a consumer 5000 behind, another at 10: only the first
+      - series: 'jetstream_consumer_num_pending{job="service",instance="nats",account="kubeletto",stream_name="EVENTS",consumer_name="deployer"}'
+        values: '5000x40'
+      - series: 'jetstream_consumer_num_pending{job="service",instance="nats",account="kubeletto",stream_name="BUILDS",consumer_name="watcher"}'
+        values: '10x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NatsAccountStorageHigh
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: NatsAccountStorageHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: nats, account: kubeletto }
+            exp_annotations:
+              summary: "nats: account kubeletto uses 81.49% of its JetStream storage"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsaccountstoragehigh
+      - eval_time: 20m
+        alertname: NatsConsumerBacklog
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: nats, account: kubeletto, stream_name: EVENTS, consumer_name: deployer }
+            exp_annotations:
+              summary: "nats: consumer deployer of kubeletto/EVENTS is 5000 messages behind"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsconsumerbacklog
+
+  - interval: 1m
+    input_series:
+      # down for 5 min, tier standard -> warning
+      - series: 'redis_up{job="service",instance="valkey",tier="standard"}'
+        values: '0x10'
+      # at 97 % of a 96 MB cap -> full; an instance without a cap (0) never fires
+      - series: 'redis_memory_used_bytes{job="service",instance="valkey",tier="standard"}'
+        values: '97650000x20'
+      - series: 'redis_memory_max_bytes{job="service",instance="valkey",tier="standard"}'
+        values: '100663296x20'
+      - series: 'redis_memory_used_bytes{job="service",instance="valkey-nocap",tier="standard"}'
+        values: '97650000x20'
+      - series: 'redis_memory_max_bytes{job="service",instance="valkey-nocap",tier="standard"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ValkeyDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: valkey, tier: standard }
+            exp_annotations:
+              summary: "valkey: a Valkey instance does not answer its exporter"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeydown
+      - eval_time: 16m
+        alertname: ValkeyMemoryFull
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: valkey, tier: standard }
+            exp_annotations:
+              summary: "valkey: a Valkey instance is at 97.01% of its maxmemory"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeymemoryfull

@@ -126,6 +126,26 @@ hosts:
     ip: 10.10.20.21
     note: the lab's shared PostgreSQL 18, one database + role per app (ADR 0010, services/postgres)
     monitoring: { tier: standard, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical once an app depends on it
+  nats:
+    kind: lxc
+    vmid: 131
+    node: pve2 # JetStream is state
+    vlan: servers
+    ip: 10.10.20.22
+    note: the lab's shared NATS with JetStream, one account per app; apps outside VLAN 20 attach a leaf node (ADR 0016, services/nats)
+    # 8222 is NATS's own monitoring port (healthz fails without JetStream);
+    # 7777 is prometheus-nats-exporter reading it (app-nats.yml).
+    monitoring: { tier: standard, health: "http://{ip}:8222/healthz?js-enabled-only=true", metrics: [7777], logs: true }
+  valkey:
+    kind: lxc
+    vmid: 132
+    node: pve3 # a cache, nothing to keep: off pve2's CPU
+    vlan: servers
+    ip: 10.10.20.23
+    note: the lab's shared Valkey, one instance (process, port, password) per app, TLS only, no persistence (ADR 0016, services/valkey)
+    # no HTTP side: one redis_exporter per instance, 9121 upward, redis_up is
+    # the health check (app-valkey.yml)
+    monitoring: { tier: standard, metrics: [9121], logs: true }
   pbs:
     kind: lxc
     vmid: 111
