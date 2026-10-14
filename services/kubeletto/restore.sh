@@ -43,13 +43,25 @@ trap '[ -z "$work" ] || rm -rf "$work"' EXIT
 
 cmd_list() {
   mkdir -p "$CACHE"
-  # Tenant services only (kl-* namespaces); the canary and platform probes are not tenants.
-  ssh -o BatchMode=yes -o ConnectTimeout=15 "$PROD" \
-    "timeout 60 kubectl get ksvc -A --no-headers -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name 2>/dev/null" |
-    awk '$1 ~ /^kl-/ {print $1, $2}' | sort > "$LIST.tmp"
-  [ -s "$LIST.tmp" ] || { rm -f "$LIST.tmp"; echo "no tenant Knative services listed on prod" >&2; exit 1; }
+  # Only the image field of each revision is read (custom-columns), never a
+  # container's env. Tenant services only (kl-* namespaces); the canary's
+  # platform probes are not tenants. Third column: the digest prod resolved, so
+  # the restore runs exactly that image and never re-resolves a tag.
+  local svc rev
+  svc=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$PROD" \
+    "timeout 60 kubectl get ksvc -A --no-headers -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,REV:.status.latestReadyRevisionName 2>/dev/null" |
+    awk '$1 ~ /^kl-/')
+  rev=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$PROD" \
+    "timeout 60 kubectl get revisions.serving.knative.dev -A --no-headers -o custom-columns=NS:.metadata.namespace,REV:.metadata.name,DIGEST:.status.containerStatuses[0].imageDigest 2>/dev/null" |
+    awk '$1 ~ /^kl-/')
+  [ -n "$svc" ] || { echo "no tenant Knative services listed on prod" >&2; exit 1; }
+  # join: a service whose revision has no recorded digest keeps two columns (the
+  # tool then falls back to the stored image)
+  awk 'NR==FNR { d[$1 "/" $2] = $3; next }
+       { r = d[$1 "/" $3]; if (r ~ /@sha256:/) print $1, $2, r; else print $1, $2 }' \
+    <(printf '%s\n' "$rev") <(printf '%s\n' "$svc") | sort > "$LIST.tmp"
   mv "$LIST.tmp" "$LIST"
-  echo "listed $(wc -l < "$LIST" | tr -d ' ') tenant services in $(cut -d' ' -f1 "$LIST" | sort -u | wc -l | tr -d ' ') namespaces -> $LIST" >&2
+  echo "listed $(wc -l < "$LIST" | tr -d ' ') tenant services in $(cut -d' ' -f1 "$LIST" | sort -u | wc -l | tr -d ' ') namespaces, $(awk 'NF==3' "$LIST" | wc -l | tr -d ' ') with a digest -> $LIST" >&2
 }
 
 cmd_run() {

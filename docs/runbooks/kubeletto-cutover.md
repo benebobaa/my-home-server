@@ -45,7 +45,8 @@ after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
 
 | # | Step | Verify | Needs the operator's yes |
 | --- | --- | --- | --- |
-| 0 | `./restore.sh list` (prod's tenant Knative services, read-only; saved in `~/.cache/kubeletto-restore/`, apart from the dump's directory, which step 2 wipes) | "listed N tenant services" | |
+| 0 | `./restore.sh list` (prod's tenant Knative services and the digest each runs, read-only; saved in `~/.cache/kubeletto-restore/`, apart from the dump's directory, which step 2 wipes) | "listed N tenant services" | |
+| 0b | `./images.sh` (pre-pull every external tenant image on the worker; prod's resolved digests come from the list) | `unavailable` lists only images that are dead on prod too or run there from a snapshot (their owners redeploy afterwards) | |
 | 1 | Prod: let in-flight builds finish, then `ssh kubeletto-prod kubectl -n platform scale deploy platform-core --replicas=0` | prod `/readyz` fails; tenant apps still answer | **yes** (API and deploys down) |
 | 2 | `./dbcopy.sh dump && ./dbcopy.sh restore kubeletto_next && KUBELETTO_DB=kubeletto_next ./migrate.sh up && ./dbcopy.sh check kubeletto_next` | `goose version 100`, `clean` | |
 | 3 | Home: scale `platform-core` to 0; delete all `dom-*` IngressRoutes and Middlewares in ns `traefik` | `kubectl -n traefik get ingressroute` lists none starting `dom-` | |
