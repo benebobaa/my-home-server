@@ -40,6 +40,30 @@ modules:
       tls_config:
         insecure_skip_verify: true
 
+  # Kubeletto's public path (Cloudflare DNS -> tunnel -> Traefik -> core),
+  # from outside like a client: real certificate verified, no redirects.
+  public_2xx:
+    prober: http
+    timeout: 15s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+      body_size_limit: 64KB
+
+  # The registry's token endpoint (core's /v1/registry/auth): unauthenticated
+  # it must answer core's own 401 JSON. A Cloudflare error page, a 404 from a
+  # wrong origin or a timeout fails (2026-10-14: it still pointed at the
+  # frozen rented server, and pulls of platform-built images failed).
+  public_registry_auth:
+    prober: http
+    timeout: 15s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+      body_size_limit: 64KB
+      valid_status_codes: [401]
+      fail_if_body_not_matches_regexp: ['"UNAUTHORIZED"']
+
   dns_public_name:
     prober: dns
     timeout: 5s

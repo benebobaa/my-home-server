@@ -215,6 +215,20 @@ tenant is stopped by suspending the tenant
 restarting the node. The evicted pods are recreated by Knative on demand.
 Lasting fix: D9.
 
+### KubelettoPublicPathDown
+**Meaning:** from the internet (the monitoring host, through Cloudflare),
+`api.kubeletto.com/healthz` is not 200 (`instance=kubeletto-api`), or the
+registry's token endpoint `/v1/registry/auth` does not answer core's own 401
+JSON (`kubeletto-registry-auth`), for 5 min. Customers see it: the console
+and CLI fail, and new image pulls of platform-built apps fail.
+**Check:** `probe_http_status_code{job="blackbox_public"}`; by hand:
+`curl -si https://api.kubeletto.com/healthz`. A Cloudflare 52x page: the
+tunnel or cloudflared (`k3s kubectl -n cloudflared get pods`); a 404 or a
+foreign page: the DNS record (`network/cloudflare/flip.sh forward` dry run
+shows where the three records point); a timeout: Traefik or core
+(`HttpProbeFailed` on k3s fires too if core is down).
+**Fix:** by cause; the DNS records are code (`network/cloudflare`).
+
 ### K8sPlatformPodNotReady
 **Meaning:** a platform pod on the K3s cluster (core, NATS, Valkey, the
 registry, Traefik, Kourier, Knative, cloudflared, logs, kube-system; never a

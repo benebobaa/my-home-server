@@ -48,6 +48,18 @@ groups:
           summary: "{{ $labels.instance }}: health check failing (health URL in lab.yaml)"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#httpprobefailed
 
+      # Kubeletto's public path (blackbox_public): the API or the registry's
+      # token endpoint does not answer as the home core from the internet.
+      # HttpProbeFailed on k3s would not see a broken DNS record, tunnel or
+      # Cloudflare setting: that probe goes through a NodePort in the lab.
+      - alert: KubelettoPublicPathDown
+        expr: probe_success{job="blackbox_public"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: Kubeletto does not answer correctly from the internet for 5 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopublicpathdown
+
       - alert: DnsResolverFailing
         expr: probe_success{job="blackbox_dns"} == 0
         for: 3m

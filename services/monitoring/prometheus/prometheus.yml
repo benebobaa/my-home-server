@@ -127,6 +127,18 @@ scrape_configs:
       - files: [/etc/prometheus/targets/http.json]
     relabel_configs: *blackbox_relabel
 
+  # Kubeletto from the outside (the public edge path; nothing else watches
+  # it: the k3s health probe goes through a NodePort inside the lab).
+  - job_name: blackbox_public
+    metrics_path: /probe
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["https://api.kubeletto.com/healthz"]
+        labels: { instance: kubeletto-api, role: public, __param_module: public_2xx }
+      - targets: ["https://api.kubeletto.com/v1/registry/auth?service=registry.kubeletto.com&scope=repository:probe/probe:pull"]
+        labels: { instance: kubeletto-registry-auth, role: public, __param_module: public_registry_auth }
+    relabel_configs: *blackbox_relabel
+
   # The hEX resolver answers every lab VLAN: probe it like a client would.
   - job_name: blackbox_dns
     metrics_path: /probe
