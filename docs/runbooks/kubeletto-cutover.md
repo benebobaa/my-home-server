@@ -91,17 +91,47 @@ merge `cutover-flip` (and `cutover-live` in the Kubeletto worktree).
 ## Rollback (until 2026-11-05)
 
 The flip branch was merged into `main` after the verification (`main` is the
-truth of what is live), so the rollback reverts the merge:
+truth of what is live), so the rollback reverts the merge. Since 2026-10-14
+22:10 WIB the rented server is quiet: its node `kubeletto` is cordoned with
+every tenant pod stopped (they had kept running with no traffic, so bots and
+background jobs ran twice), and five CronJobs are suspended (registry
+retention and GC acted on the R2 bucket home shares, judging "in use" from the
+frozen database; the canaries and the failure watcher tested home). The
+pods that were running are listed in `/root/tenant-pods-before-stop-2026-10-14.txt`
+there. **Order matters:** prod's core must start last, after the tenant pods
+are back. Its crash-loop suspender deleted 17 KServices on 2026-10-11 when
+it found failed revisions.
 
-1. `cd network/cloudflare && ./flip.sh back --apply` (the three records back to
+1. Prod: `kubectl uncordon kubeletto`, then wait until the tenant pods are
+   Running again (`kubectl get pods -A | grep ^kl- | grep -v Running` empty,
+   apart from `svc-852bbab9`, broken there since before the cutover).
+2. `cd network/cloudflare && ./flip.sh back --apply` (the three records back to
    the rented server, in place, no gap), then `git revert -m 1 7874348` (the
    merge of `cutover-flip`) so `tofu plan` says No changes again.
-2. Prod: `kubectl -n platform scale deploy platform-core --replicas=1`.
-3. Home: scale `platform-core` to 0 so it stops writing.
+3. Prod: `kubectl -n platform scale deploy platform-core --replicas=1`.
+4. Home: scale `platform-core` to 0 so it stops writing.
+5. Prod: resume the canaries and the watcher
+   (`kubectl -n monitoring patch cronjob <name> -p '{"spec":{"suspend":false}}'`
+   for `deploy-canary`, `edge-canary`, `cron-failure-watcher`). Resume
+   `registry/registry-retention` and `registry-gc` only once the rollback is
+   final: home's images live in the same bucket.
 
 **The data window**: prod resumes on Aiven, and everything written at home
-after step 4 (sign-ups, deploys, usage) is lost. Tenant apps at prod were never
-touched, so they are as they were. Accepted: cost over production-readiness.
+after the database swap (sign-ups, deploys, usage) is lost. The rollback ends
+for good when Aiven is deleted (decision D6, ~2026-10-21).
+
+## Decommissioning the rented server
+
+After the rollback is over (the operator says so; Aiven's deletion ends it
+regardless), before 2026-11-05: `services/kubeletto/decommission-rented.sh`
+(a dry run lists what is there; `--apply` wipes K3s and its data, which hold
+every platform secret, and takes the node off the tailnet). A wipe of a rented
+disk is best effort (provider snapshots, SSD wear levelling): afterwards rotate
+the shared credentials that lived there (R2 keys, Cloudflare token, Resend,
+the GitHub App key, Infisical). The JWT secret is the operator's call (rotating
+it signs every user out). Then delete the obsolete OpenObserve buckets in R2,
+`flip.sh back` and the rollback comments in `network/cloudflare/`, and the
+`kubeletto-prod` SSH alias.
 
 ## After
 
