@@ -35,6 +35,9 @@ resource "proxmox_virtual_environment_container" "archive" {
   # rescue-staging, /mnt/e4 = pve2 HDD sda4) are mounted by hand, not in fstab.
   # Flip to true once the archive lives on ZFS (services/archive/README.md).
   start_on_boot = false
+  # Stopped on purpose since 2026-10-12, awaiting the operator's deletion
+  # (README Status). Without this every plan would start it again.
+  started = false
 
   features {
     nesting = true
