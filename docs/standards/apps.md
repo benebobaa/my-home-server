@@ -53,8 +53,8 @@ Shared, like the database ([ADR 0016](../decisions/0016-shared-nats-and-valkey.m
   node and gets one exact hEX rule to 7422.
 - **Valkey**, `valkey.home.arpa:<port>` (CT 132,
   [`services/valkey/`](../../services/valkey/README.md)): one instance per
-  app (its own process, port, password, memory cap), TLS only, **no
-  persistence**. Add it to `local.valkey_instances` in
+  app (its own process, port, password, memory cap), TLS only (pin
+  `valkey_tls_cert`, ADR 0017), **no persistence**. Add it to `local.valkey_instances` in
   `proxmox/opentofu/valkey.tf`. Anything that must survive a restart goes in
   Postgres or a JetStream stream, not in Valkey.
 

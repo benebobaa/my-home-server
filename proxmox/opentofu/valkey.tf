@@ -3,11 +3,12 @@
 # services/valkey/README.md
 #
 # VLAN 20 (servers), on pve3: a cache, nothing to keep, so off pve2's CPU.
-# Apps connect to rediss://:<password>@valkey.home.arpa:<port>/0?skip_verify=true
-# (the CT's self-signed certificate). Monitoring scrapes each instance's
+# Apps connect to rediss://:<password>@valkey.home.arpa:<port>/0 and pin the
+# certificate (output valkey_tls_cert; ADR 0017). Monitoring scrapes each instance's
 # exporter (hEX rules generated from lab.yaml's metrics list).
 #
 #   valkey_setup      packages, exporter unit (services/valkey/setup.sh)
+#   valkey_tls        the instances' certificate, generated here (tls.sh)
 #   valkey_instances  one instance per app, passwords on stdin
 
 locals {
@@ -58,6 +59,54 @@ resource "terraform_data" "valkey_setup" {
   }
 }
 
+# The instances' certificate: self-signed, generated here so it survives a
+# rebuild of the CT, with the CT's name and IP so clients pin it (output
+# valkey_tls_cert; Kubeletto: REDIS_TLS_CA) instead of skipping verification
+# (ADR 0017).
+resource "tls_private_key" "valkey" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
+resource "tls_self_signed_cert" "valkey" {
+  private_key_pem = tls_private_key.valkey.private_key_pem
+
+  subject {
+    common_name = "valkey.home.arpa"
+  }
+  dns_names             = ["valkey.home.arpa"]
+  ip_addresses          = [local.host.valkey.ip]
+  validity_period_hours = 24 * 365 * 10
+  allowed_uses          = ["digital_signature", "server_auth"]
+}
+
+output "valkey_tls_cert" {
+  description = "The shared Valkey's TLS certificate (PEM), for clients to pin."
+  value       = tls_self_signed_cert.valkey.cert_pem
+}
+
+resource "terraform_data" "valkey_tls" {
+  triggers_replace = [
+    sha256(tls_self_signed_cert.valkey.cert_pem),
+    filesha256("${local.valkey_dir}/tls.sh"),
+  ]
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.valkey_setup]
+  }
+
+  provisioner "local-exec" {
+    command = "printf '%s\\n%s\\n' \"$CERT\" \"$KEY\" | ${local.valkey_ssh} 'pct exec ${module.valkey.vmid} -- bash /root/valkey/tls.sh'"
+
+    environment = {
+      CERT = tls_self_signed_cert.valkey.cert_pem
+      KEY  = tls_private_key.valkey.private_key_pem
+    }
+  }
+
+  depends_on = [terraform_data.valkey_setup]
+}
+
 # One password per instance. Rotate: tofu apply
 # -replace='random_password.valkey["<app>"]', then the app.
 resource "random_password" "valkey" {
@@ -91,5 +140,5 @@ resource "terraform_data" "valkey_instances" {
     }
   }
 
-  depends_on = [terraform_data.valkey_setup]
+  depends_on = [terraform_data.valkey_setup, terraform_data.valkey_tls]
 }

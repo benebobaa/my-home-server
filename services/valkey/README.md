@@ -11,6 +11,7 @@ process per app and not one shared keyspace: [ADR 0016](../../docs/decisions/001
 | Instances | `valkey-server@<app>` (Debian's template unit), config `/etc/valkey/valkey-<app>.conf`; `redis-exporter@<app>` reads it over its unix socket |
 | Ports | per app from 6380 (TLS only, no plaintext port); exporters from 9121 |
 | State | none (no RDB, no AOF). A restart empties the instance |
+| TLS | self-signed, from OpenTofu (`tls_self_signed_cert.valkey`: `valkey.home.arpa` + the IP), installed by `tls.sh`; output `valkey_tls_cert` to pin (ADR 0017) |
 | Watched | `redis_up` and memory per exporter (`app-valkey.yml`), journal to `logs` |
 | Firewall | nftables in the CT: exporters (9121-9199) only from the monitoring host (`/scrape?target=` would hand an instance's password to any target); instances open to VLAN 20 and the pinholes, password required |
 | Boot | instances bind the CT's address before it exists (`net.ipv4.ip_nonlocal_bind`, this CT only) and restart every 2 s: the first boot lost the bind race |
@@ -34,10 +35,11 @@ process per app and not one shared keyspace: [ADR 0016](../../docs/decisions/001
 3. `tofu apply` (both stacks: routeros for the new scrape port). Deliver the
    password (`random_password.valkey["<app>"]`) to the app.
 
-Connect: `rediss://:<password>@valkey.home.arpa:<port>/0?skip_verify=true`
-(go-redis; the CT's self-signed certificate, not verified, like Postgres's
-`sslmode=require`). Proven 2026-10-14 from VLAN 20 across nodes with go-redis
-`ParseURL` (Kubeletto's client): SET/GET/SETNX over TLS.
+Connect: `rediss://:<password>@valkey.home.arpa:<port>/0`, verifying against
+the certificate OpenTofu generated (`tofu output -raw valkey_tls_cert` in
+`proxmox/opentofu`; ADR 0017). Kubeletto's core: `REDIS_TLS_CA` with that PEM.
+Proven 2026-10-15 from VLAN 20 with go-redis (Kubeletto's client): pinned
+SET/GET/SETNX over TLS, unpinned refused.
 
 Kubeletto uses its instance only after its switch (`services/nats/README.md`,
 "Kubeletto's switch"); until then its core uses the in-cluster Valkey.

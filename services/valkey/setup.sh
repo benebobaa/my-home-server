@@ -30,6 +30,13 @@ usermod -a -G ssl-cert valkey
 usermod -a -G valkey prometheus
 install -d -o valkey -g valkey -m 0750 /var/lib/valkey
 install -d -o root -g prometheus -m 0750 /etc/redis-exporter
+# The instances' certificate comes from OpenTofu (tls.sh, right after this);
+# until then the CT's snakeoil pair.
+install -d -o root -g valkey -m 0750 /etc/valkey/tls
+if [ ! -s /etc/valkey/tls/cert.pem ]; then
+  install -o root -g valkey -m 0644 /etc/ssl/certs/ssl-cert-snakeoil.pem /etc/valkey/tls/cert.pem
+  install -o root -g valkey -m 0640 /etc/ssl/private/ssl-cert-snakeoil.key /etc/valkey/tls/key.pem
+fi
 
 # Valkey must be built with TLS, or every instance would fail to start.
 ldd /usr/bin/valkey-server | grep libssl >/dev/null || { echo "valkey-server has no TLS support" >&2; exit 1; }

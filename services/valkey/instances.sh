@@ -13,8 +13,8 @@
 set -euo pipefail
 
 IP=${1:?usage: instances.sh <listen-ip>}
-CERT=/etc/ssl/certs/ssl-cert-snakeoil.pem
-KEY=/etc/ssl/private/ssl-cert-snakeoil.key
+CERT=/etc/valkey/tls/cert.pem   # tls.sh (OpenTofu): the CT's name and IP, pinnable
+KEY=/etc/valkey/tls/key.pem
 
 wanted=()
 while read -r app port eport maxmem policy pw; do
