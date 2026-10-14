@@ -8,7 +8,7 @@ the move itself (deadline 2026-11-05): README Status.
 | Node | VM | Where | Role | Size |
 | --- | --- | --- | --- | --- |
 | `k3s` | 300 | pve2, 10.10.25.20 | server: control plane, Kubeletto's platform, everything stateful | 4 vCPU, 5 GB (allocatable 3.5 CPU / 3.8 GiB), 40 GB |
-| `k3s-worker` | 301 | pve3, 10.10.25.21 | agent: tenant pods and builds (stateless; disk not backed up) | 4 vCPU, 3 GB (allocatable 3.5 CPU / 2.3 GiB), 30 GB |
+| `k3s-worker` | 301 | pve3, 10.10.25.21 | agent: tenant pods and builds (stateless; disk not backed up) | 4 vCPU, 3 GB (allocatable 3.5 CPU / 2.3 GiB), 36 GB |
 
 Both VMs stay on the laptops: pve1 runs on demand and takes no always-on
 service ([ADR 0012](../../docs/decisions/0012-pve1-on-demand-ai-workstation.md)).
@@ -113,3 +113,21 @@ Done 2026-10-14 for `k3s-worker` (30 to 36 GB, room for the build cache): the
 worker holds the tenant images and the per-service build caches, and pve3's thin
 pool (54 GB, ~61 % used) is already overcommitted by its virtual disks, so grow
 in small steps and keep `ThinPoolFilling` (85 %) in mind.
+
+## The worker's disk budget (build cache)
+
+The worker's 36 GB hold the OS (~3 GB), the tenant images in containerd
+(~20 GB for ~90 images) and, since 2026-10-14, Kubeletto's per-service build
+caches: the three most recently built services each keep BuildKit's state on
+a `local-path` claim (`buildcache-<service uuid>` in `kubeletto-builds`,
+under `/var/lib/rancher/k3s/storage`). The bounds, all in the Kubeletto
+repo's home overlay and `buildkitd-config`:
+
+| Bound | Value | Why |
+| --- | --- | --- |
+| Caches | 3 services (claims beyond, or unused 14 days, are deleted at the next build) | `BUILD_CACHE_MAX_SERVICES`; the build quota allows 4 claims |
+| Per cache | 1.5 GB (`maxUsedSpace`) | a Go or Node build's base image, dependencies and build cache fit |
+| Free space | caches shrink to 256 MB when the disk has under 6 GB free | before the kubelet's image GC (85 % used, ~5.4 GB free) evicts tenant images, which would make scale-from-zero pull from R2 |
+
+So the caches cost at most ~4.5 GB. A lost cache only makes the next build of
+that service cold (measured on this worker: a Go build 128 s cold, 6 s warm).

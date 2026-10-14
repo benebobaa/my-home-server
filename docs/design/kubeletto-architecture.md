@@ -103,3 +103,20 @@ justifies a cluster rebuild, B not unless NATS or Valkey ever becomes durable.
 | Valkey lost | locks and rate limits reset | none needed |
 | Postgres lost | platform down | PBS restore (29 s, proven) |
 | Rented server (until 2026-11-05) | none | it is the rollback, `flip.sh back` |
+| A build cache | that service's next build is cold | none needed; the next build refills it |
+
+## 5. Builds
+
+A push to a connected GitHub repo queues a build; core's scheduler runs at
+most 3 at once and 1 per service, each as a Job in `kubeletto-builds` on the
+worker: rootless BuildKit (no privileges) clones, builds and pushes to the
+in-cluster registry (R2 behind it). Docker Hub base images come through the
+pull-through mirror on the server (20 Gi local volume). Build pods reach only
+DNS, the internet on 80/443, the registry, NATS and core's internal API
+(`allow-build-egress`), never the lab.
+
+Since 2026-10-14 the three most recently built services keep BuildKit's
+cache between builds, on a claim of their own on the worker (never shared
+between services: a cache must not answer another tenant's build). Measured on
+the worker: a Go build 128 s cold, 6 s warm. Disk bounds:
+`services/k3s/README.md` (the worker's disk budget).
