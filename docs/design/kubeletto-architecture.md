@@ -71,9 +71,10 @@ outbox lives in Postgres), Valkey holds locks, rate limits and caches.
    Prometheus watches health, Traefik, node metrics and scheduling. Nothing alerts
    if NATS's volume fills, a consumer falls behind or the registry token endpoint
    fails (it did, for one service, during the cutover).
-3. **Recovery of VM 300 is not tested.** VM 300 holds the cluster state and the
-   secrets. Its nightly backup exists; a restore has never been done. (The
-   database CT's restore was proven.)
+3. ~~Recovery of VM 300 is not tested.~~ Tested 2026-10-15: the nightly backup
+   restored in 106 s to a NIC-less copy whose API server came up and decrypted
+   the secrets (`docs/runbooks/backup-restore.md`). Still untested: a full
+   cut-over to a restored VM 300 with its pods.
 4. **One server node, on pve2.** pve2 also holds Postgres and the monitoring: a pve2
    failure takes the platform, the data and the alerting down together. No
    hardware can be added (budget): the answer is a fast, rehearsed recovery, not HA.
@@ -98,7 +99,7 @@ justifies a cluster rebuild, B not unless NATS or Valkey ever becomes durable.
 | --- | --- | --- |
 | pve3 | tenant apps down; platform, API, console up | pve3 back; the worker rejoins by itself (proven by the reboot test) |
 | pve2 | everything: platform, Postgres, monitoring | pve2 back (guests start on boot, proven 2026-10-14); cluster Ready within ~3 min |
-| VM 300 lost | platform down, tenants keep serving until pods restart | restore from PBS (nightly); or rebuild from the repo + the database + the secrets snapshot (`apply.sh`, `secrets.sh --from-snapshot`, `restore.sh`) |
+| VM 300 lost | platform down, tenants keep serving until pods restart | restore from PBS (nightly; drill 2026-10-15: 106 s, state and secrets intact); or rebuild from the repo + the database + the secrets snapshot (`apply.sh`, `secrets.sh --from-snapshot`, `restore.sh`) |
 | NATS lost | in-flight events lost, streams recreated empty | restart; the outbox in Postgres is the source |
 | Valkey lost | locks and rate limits reset | none needed |
 | Postgres lost | platform down | PBS restore (29 s, proven) |

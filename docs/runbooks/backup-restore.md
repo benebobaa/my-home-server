@@ -43,6 +43,32 @@ pct stop 9120 && pct destroy 9120 --purge 1
 Result then: 3.7 GiB in 45 s; Prometheus answered from data written before
 the backup (26 targets at 05:30Z, pve3's boot at 22:23:54Z).
 
+**Test restore of the K3s server, VM 300** (Kubeletto's cluster state and
+secrets), done 2026-10-15 on pve2 (the only node with the thin-pool room):
+
+```bash
+vol=$(pvesm list pbs --vmid 300 | awk 'NR>1 {print $1}' | tail -1)
+qmrestore "$vol" 9300 --storage local-lvm --unique 1
+qm set 9300 --delete net0 --memory 1536 --balloon 0 --onboot 0 --name restore-drill-300
+qm start 9300
+# K3s refuses to start without a default route ("no default routes found"):
+# give the NIC-less copy a black hole with VM 300's address, then run the
+# server alone (with the kubelet, 1.5 GB thrashes: every platform pod starts)
+qm guest exec 9300 -- sh -c 'ip link add dummy0 type dummy; ip addr add 10.10.25.20/24 dev dummy0;
+  ip link set dummy0 up; ip route add default via 10.10.25.1 dev dummy0;
+  systemctl stop k3s; /usr/local/bin/k3s-killall.sh;
+  systemd-run --unit=k3s-drill /usr/local/bin/k3s server --disable-agent'
+qm guest exec 9300 -- sh -c 'k3s kubectl get --raw /readyz; k3s kubectl -n platform get secret platform-core-env -o go-template="{{len .data}}"'
+qm stop 9300 && qm destroy 9300 --purge 1 --destroy-unreferenced-disks 1
+```
+
+Result: 40 GB (81 % zeros) in 106 s; `readyz ok`; the backup of 2026-10-14
+02:32 WIB had 189 tenant namespaces, 45 Knative services, 22 Secrets, and the
+encrypted Secrets decrypted (platform-core-env: 61 keys; nats-auth, R2,
+TLS), so the encryption key travels with the backup. Never give the copy a
+real NIC: it would be a second control plane with the same address and the
+tunnel's credentials.
+
 **Real restore (the guest is broken or gone):**
 
 1. Stop the broken guest: `pct stop <vmid>`.
