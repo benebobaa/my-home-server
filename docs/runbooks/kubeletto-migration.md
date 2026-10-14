@@ -266,16 +266,21 @@ rehearsal data. Each is repeatable with the commands in the section it names.
 | Cold reboot, **pve3** (worker VM, PBS, `admin-gw`) | back in ~80 s; all 3 guests started by themselves; quorate throughout (3 votes); worker rejoined; every pod Running, all restored apps Ready |
 | Cold reboot, **pve2** (K3s server VM, Postgres, monitoring, logs, `admin-gw2`) | SSH in ~2.5 min; all 5 always-on guests up in 3 min; **Postgres serves on its LAN address** (the 10-11 bind race stays fixed); both K3s nodes Ready in 3 min and all pods Running 20 s later; cloudflared 4 tunnel connections; Prometheus 43 targets up, every rule healthy |
 | PBS restore of **CT 130** (the Kubeletto database) | tonight's snapshot restored into a throwaway CT in 29 s (network stripped before first start: the restored config would reuse the real Postgres IP); Postgres ran crash recovery on the live-taken snapshot and served the data (migration 100, tenants, services, encrypted env vars all present); throwaway destroyed, the real CT untouched. VM 300 (K3s server, holds etcd) and CT 130 are in the nightly job; VM 301 is a stub by design (`backup=false`) |
-| Worker capacity (D9) | 40 warm tenant-shaped services (76 Mi + 32 Mi queue-proxy requests, 50 m + 10 m CPU, minScale 1) requested on a 3.33 GiB worker: **28 pods fit, 12 stay Pending at 98 % of allocatable memory requests**. 25 warm apps plus the platform and the restored apps sit at 89 %, i.e. room for about 2 more |
+| Worker capacity (D9), first measurement | 40 warm tenant-shaped services (76 Mi + 32 Mi requests, minScale 1) on a 3.33 GiB worker: **28 pods fit, 12 stay Pending at 98 % of allocatable memory requests**. 25 warm apps plus the platform and the restored apps sat at 89 % |
+| Worker capacity (D9), **decided: no hardware** (budget) | measured on the worker first: a tenant app really uses 7 to 67 Mi and its queue-proxy 9 to 12 Mi, against 76 + 32 Mi reserved, with 3.07 GB of the VM's 3.9 GB available. The reservations now follow the measurement (queue-proxy 16 Mi, app share 12 % = 61 Mi: 77 Mi per pod). Re-run with **realistic memory** (each pod holds a 50 Mi tmpfs ballast, ~67 MB real per pod, heavier than prod's ~52 Mi average): **40 warm pods fit, the next 4 stay Pending at 99 % of requests; at the ceiling the VM uses 3.57 GB and keeps 348 MB available, no MemoryPressure, no evictions**. Request ceiling and real RAM now meet, +43 % over before, no new hardware |
 | Scheduler alerts | `K8sPodUnschedulable` fired 5 min after the first Pending pod ("12 pod(s) unschedulable"), `K8sNodeMemoryRequestsHigh` fired at 98.5 % after its 15 min, both reached Alertmanager; all resolved ~2 min after the load was deleted. `K8sNodeMemoryPressure` is not provoked (it needs real memory exhaustion) and rests on the unit test |
 | Tenant restore (`restore.sh`) | see "Cutover: database and state", step 7b: 4 services restored and answering |
 | **Dress rehearsal of steps 0 to 7** on the real home database (a fresh prod copy) | list → dump (the hardened uid-70 pod, ~3 min this time) → restore (30 s with the push) → migrate → preflight clean → home core to 0, `dom-*` Traefik objects deleted (6) → **swap on the real database** (nothing connected: instant) → `apply.sh platform` → core `/readyz` 200 → restore dry run: **all 51 listed services resolve, 0 unknown, 0 suspended** → sample restore on two tenants: their services went from `Idled, redeploy required` to ready. The old database kept as `kubeletto_prev`, dropped after. **Found**: `dbcopy.sh dump` wipes its cache directory and `restore.sh list` had saved its list there (step 0 is before step 2), so the list vanished: the list now has its own directory. Also seen: on the new database the core logs `KService permanently missing, marked Idled, redeploy required` for every service until the restore (47 of them, expected) and `platform domain mapping ensure failed` (78, same cause) |
 
-What the capacity number means: prod's 25 warm apps fit, with about two pods
-of headroom: one more busy day of sign-ups and the 29th warm app is
-unschedulable. The growth path (16 GB SODIMM for pve3, or a second worker on
-pve2 once CT 110 is gone) is still the operator's call; the alerts above are
-what will say so in time.
+What the capacity number means: prod's 25 warm apps fit with room for about
+15 more (40 by request, one build running would take 512 Mi of that). The
+alerts are the early warning: `K8sNodeMemoryRequestsHigh` at 90 % (about 36
+warm apps) and `K8sPodUnschedulable`. If sign-ups outgrow that and hardware
+stays off the table, the levers left are software: shorten
+`scale-down-delay` (60 s now, in `knative-config.yaml`) so bot traffic keeps
+fewer apps warm, cap warm free-tier apps, and lower the 512 Mi build
+reservation. Never raise the request shares back: past the real RAM (about 3.5
+GB of the 3.9 GB VM) the kubelet evicts instead of the scheduler refusing.
 
 ## Tenant isolation
 

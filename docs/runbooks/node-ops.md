@@ -34,10 +34,17 @@ timeouts — a busy guest can add up to a couple of minutes).
 pve1 is off by design when not in use (ADR 0012) and wakes on a magic
 packet: BIOS ErP off + Power On By PCI-E on, NIC armed at every boot
 (Ansible `wake_on_lan`, `Wake-on: g`). Send it from another node, which sits
-on VLAN 10 with it (`wakeonlan` is installed on every node by Ansible):
+on VLAN 10 with it:
+
+- **UI:** log in on pve2 or pve3 (`:8006`), select **pve1** (grey, offline) →
+  **Wake-on-LAN** (top-right toolbar). The button is greyed out while pve1 is
+  running. The node you are logged in to sends the packet, from its MGMT
+  interface (`wakeonlan:` entries in the node configs, set by Ansible).
+- **Shell** (`wakeonlan` is installed on every node by Ansible):
 
 ```bash
 ssh root@10.10.10.13 wakeonlan -i 10.10.10.255 58:11:22:db:ea:e8   # or 10.10.10.12
+ssh root@10.10.10.13 pvesh create /nodes/pve1/wakeonlan             # what the button calls
 ```
 
 It answers SSH ~1 min later; the cluster goes from 2 to 3 votes. Shut it

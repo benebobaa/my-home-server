@@ -19,9 +19,11 @@ after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
 
 ## Before the day (no customer impact)
 
-1. **The worker's growth path (D9) is decided and applied**, or the ceiling is
-   accepted: the 4 GB worker holds **28 warm tenant pods**
-   (runbook "Phase 3 rehearsal results"); prod runs 25 and is growing.
+1. **Worker capacity (D9) is settled without hardware** (budget): the request
+   shares follow the measurement and the 4 GB worker holds **40 warm tenant
+   pods** (runbook "Phase 3 rehearsal results"); prod runs 25. Re-check the
+   number of warm apps on prod the day before (`kubectl get ksvc -A`,
+   pods Running): above ~36, shorten `scale-down-delay` first.
 2. `make check`; both Tofu stacks and Ansible `--check`: **No changes**
    (`proxmox/opentofu` also wants to start CT 110 while it is stopped on
    purpose: plan with `-target` or delete CT 110 first).
