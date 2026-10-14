@@ -56,6 +56,7 @@ after step 4); prod's SSH address goes in `KUBELETTO_PROD_SSH` (the
 | 8 | `./restore.sh run`, read the counts, then `./restore.sh run --apply` | restored = listed − unknown; every `ksvc` Ready; `K8sPodUnschedulable` silent | **yes** (starts every tenant's code at home) |
 | 9 | **DNS flip**: see below | external `curl https://api.kubeletto.com/readyz` is home's | **yes** |
 | 10 | Post-flip checks: console login, one tenant app, a GitHub push to a linked repo deploys at home (webhooks reach `api.kubeletto.com`, no GitHub change), one custom domain goes ACTIVE | all pass | |
+| 11 | Deploy the new console: Kubeletto `scripts/deploy-console.sh` (Cloudflare Pages project `kubeletto-console`, from `home-migration`) | custom-domain dialog shows the ALIAS / CNAME target, not an empty "Target IPs" box | operator, or the agent if the token has Pages edit; recommended, not blocking: the old console works against the new API; rollback = redeploy the previous Pages build from the dashboard |
 
 Smoke test before step 9 (no DNS needed): from VM 300, `curl` a sample of
 tenant hostnames against Traefik with the Host header and the fixed SNI
