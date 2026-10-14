@@ -22,6 +22,8 @@
     # The lab's addresses (ADR 0007): read, never retyped here.
     lab: "{{ lookup('file', playbook_dir + '/../inventory/lab.yaml') | from_yaml }}"
     pve_nic: nic0            # trunk NIC name (pinned by the installer)
+    pve_mgmt_if: "vmbr0.{{ lab.vlans.mgmt.id }}"
+    pve_wol_want: "mac={{ pve_nic_mac }},bind-interface={{ pve_mgmt_if }}"
     cluster_name: homelab
     cluster_seed: 10.10.10.13
 
@@ -133,6 +135,24 @@
       ansible.builtin.apt:
         name: wakeonlan
         state: present
+      tags: network
+
+    # The UI's Wake-on-LAN button (offline node → Wake-on-LAN) needs the
+    # target's MAC in its node config, else "No wake on LAN MAC address
+    # defined". The sending node's own entry picks the interface for its
+    # 255.255.255.255 broadcast, so every node gets one, bound to MGMT
+    # where the nodes sit.
+    - name: Read the Proxmox Wake-on-LAN entry
+      ansible.builtin.command: pvenode config get --property wakeonlan
+      register: pve_wol
+      changed_when: false
+      check_mode: false
+      tags: network
+
+    - name: Set the Proxmox Wake-on-LAN entry
+      ansible.builtin.command: pvenode config set --wakeonlan {{ pve_wol_want }}
+      when: "pve_wol.stdout | trim != 'wakeonlan: ' + pve_wol_want"
+      changed_when: true
       tags: network
 
     - name: Install the canonical interfaces file
