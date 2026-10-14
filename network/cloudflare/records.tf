@@ -2,22 +2,28 @@
 # Generated once from the Cloudflare API, then edited by hand: this file is
 # the source of truth from now on. A record changed in the dashboard is drift.
 
+# CUTOVER (docs/runbooks/kubeletto-cutover.md step 9): was an A record to the
+# rented server (103.59.160.198, proxied). Rollback: put that A record back.
 resource "cloudflare_dns_record" "app_wildcard_a" {
   zone_id = local.zone_id.app
   name    = "*.kubeletto.app"
-  type    = "A"
-  content = "103.59.160.198"
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.kubeletto.id}.cfargotunnel.com"
   ttl     = 1
   proxied = true
 }
 
+# CUTOVER: was a DNS-only A record to the rented server. Customers' custom
+# domains CNAME to this name; proxied and pointing at the zone's fallback
+# origin it becomes Cloudflare for SaaS (the custom hostnames validate and go
+# ACTIVE on their own). Rollback: DNS-only A 103.59.160.198.
 resource "cloudflare_dns_record" "app_domains_a" {
   zone_id = local.zone_id.app
   name    = "domains.kubeletto.app"
-  type    = "A"
-  content = "103.59.160.198"
+  type    = "CNAME"
+  content = local.saas_origin
   ttl     = 1
-  proxied = false
+  proxied = true
 }
 
 resource "cloudflare_dns_record" "com_dmarc_txt" {
@@ -38,11 +44,12 @@ resource "cloudflare_dns_record" "com_ai_cname" {
   proxied = false
 }
 
+# CUTOVER: was a proxied A record to the rented server. Rollback: put it back.
 resource "cloudflare_dns_record" "com_api_a" {
   zone_id = local.zone_id.com
   name    = "api.kubeletto.com"
-  type    = "A"
-  content = "103.59.160.198"
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.kubeletto.id}.cfargotunnel.com"
   ttl     = 1
   proxied = true
 }
