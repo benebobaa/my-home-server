@@ -97,3 +97,19 @@ both nodes Ready again. Anti-spoofing: a spoofed `10.10.25.99` on the worker
 cannot reach the gateway (100 % loss, the ipfilter DROP counter rises) while
 its real address can; nodes, pods, Postgres from the server and the icmp
 probes unaffected.
+
+## Growing a node's disk
+
+`proxmox/opentofu/k3s.tf` sets each VM's disk size; a bigger `size` is an
+in-place, online resize (`tofu apply -target=...`). The guest then needs its
+root partition and filesystem grown, once, by hand (cloud-init only grows them
+on first boot):
+
+```bash
+ssh root@<node> "qm guest exec <vmid> -- sh -c 'growpart /dev/sda 1 && resize2fs /dev/sda1 && df -h /'"
+```
+
+Done 2026-10-14 for `k3s-worker` (30 to 36 GB, room for the build cache): the
+worker holds the tenant images and the per-service build caches, and pve3's thin
+pool (54 GB, ~61 % used) is already overcommitted by its virtual disks, so grow
+in small steps and keep `ThinPoolFilling` (85 %) in mind.

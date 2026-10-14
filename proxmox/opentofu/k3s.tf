@@ -190,7 +190,7 @@ resource "proxmox_virtual_environment_vm" "k3s_worker" {
     datastore_id = "local-lvm"
     import_from  = proxmox_download_file.debian_13_cloud_pve3.id
     interface    = "scsi0"
-    size         = 30
+    size         = 36 # 30 -> 36 (2026-10-14): the build cache; pve3 thin pool 54 GB, see services/k3s/README.md
     discard      = "on"
     iothread     = true
     ssd          = true
