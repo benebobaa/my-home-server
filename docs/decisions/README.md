@@ -19,3 +19,4 @@ never edited — supersede them with a new one.
 | [0012](0012-pve1-on-demand-ai-workstation.md) | pve1 is an on-demand AI workstation: the RTX 3060 goes whole to one Ubuntu VM by VFIO; no always-on services; its guests are scripts (the API cannot read an offline node) |
 | [0013](0013-ai-vm-off-the-tailnet.md) | The `ai` VM stays off the tailnet and ships no logs: reached through the admin gateways' route; untrusted-code zones never push into MGMT |
 | [0014](0014-gpu-metrics-and-lab-as-untrusted-zone.md) | GPU metrics from nvidia_gpu_exporter (basic driver readings, no profiling counters); the LAB is an untrusted zone for monitoring like the DMZ |
+| [0015](0015-tenant-capacity-by-measured-reservations.md) | Tenant capacity at home: reservations sized to measured use (40 warm pods on the 4 GB worker), no new hardware, no second worker, no pve1 worker |
