@@ -67,10 +67,13 @@ outbox lives in Postgres), Valkey holds locks, rate limits and caches.
    node exporter (9100) and NodePorts no longer do. The server reaches the
    worker's kubelet and VXLAN only; the monitoring host its scrape ports and
    ping.
-2. **No monitoring of NATS, Valkey, the registry or the core's own flows.**
-   Prometheus watches health, Traefik, node metrics and scheduling. Nothing alerts
-   if NATS's volume fills, a consumer falls behind or the registry token endpoint
-   fails (it did, for one service, during the cutover).
+2. **Monitoring of the platform's parts:** partly fixed 2026-10-15. Every
+   platform pod (registry, NATS, Valkey, core, Traefik, Kourier, Knative,
+   cloudflared, logs) alerts when not ready, stuck (crash loop, image pull,
+   missing config) or restarting (`k8s-platform` in `k8s.yml`). NATS's
+   storage and consumer backlog are watched once Kubeletto uses the shared
+   hub (`app-nats.yml`). Still blind: a registry that is up but refuses
+   tokens (the 2026-10-14 cutover case) needs a functional probe.
 3. ~~Recovery of VM 300 is not tested.~~ Tested 2026-10-15: the nightly backup
    restored in 106 s to a NIC-less copy whose API server came up and decrypted
    the secrets (`docs/runbooks/backup-restore.md`). Still untested: a full

@@ -215,6 +215,35 @@ tenant is stopped by suspending the tenant
 restarting the node. The evicted pods are recreated by Knative on demand.
 Lasting fix: D9.
 
+### K8sPlatformPodNotReady
+**Meaning:** a platform pod on the K3s cluster (core, NATS, Valkey, the
+registry, Traefik, Kourier, Knative, cloudflared, logs, kube-system; never a
+tenant `kl-*` or build pod) has run for 10 min without passing its readiness
+probe. Deploys, builds or traffic through that component fail.
+**Check:** `qm guest exec 300 -- k3s kubectl -n <namespace> describe pod <pod>`
+(Events, Readiness), and its logs. The registry: pushes and pulls; NATS:
+core's event flow; cloudflared: every public request.
+**Fix:** the component's own problem (its logs say which); `kubectl -n <ns>
+rollout restart deploy/<name>` once the cause is gone.
+
+### K8sPlatformPodWaiting
+**Meaning:** a platform container cannot start for 10 min: `CrashLoopBackOff`,
+`ImagePullBackOff`/`ErrImagePull` (registry or Docker Hub unreachable, a
+removed tag), or `CreateContainerConfigError` (a Secret or ConfigMap missing,
+e.g. after a `secrets.sh` run).
+**Check:** the `reason` label; `kubectl -n <ns> describe pod <pod>`; for a
+crash loop `kubectl -n <ns> logs <pod> --previous`.
+**Fix:** by reason: restore the missing object (`services/kubeletto/secrets.sh`),
+the image (pin, registry), or the crash (logs).
+
+### K8sPlatformPodRestarting
+**Meaning:** a platform container restarted more than twice in 30 min (a
+node reboot restarts each once). Often OOM (limit too small) or a failing
+liveness probe.
+**Check:** `kubectl -n <ns> describe pod <pod>` (Last State: `OOMKilled`?),
+`logs --previous`.
+**Fix:** the cause; a memory limit in the Kubeletto home overlay if it is OOM.
+
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.

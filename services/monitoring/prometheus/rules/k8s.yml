@@ -56,3 +56,42 @@ groups:
         annotations:
           summary: "{{ $labels.exported_node }}: MemoryPressure, the kubelet is evicting pods"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure
+
+  # The platform itself (core, NATS, Valkey, the registry and its mirror,
+  # Traefik, Kourier, Knative, cloudflared, logs, kube-system): the 2026-10-14
+  # architecture review found that nothing alerted when one of them failed
+  # (docs/design/kubeletto-architecture.md, weakness 2). Tenant apps (kl-*)
+  # and build pods are excluded: their failures are their owners'.
+  - name: k8s-platform
+    rules:
+      - alert: K8sPlatformPodNotReady
+        expr: |
+          (kube_pod_container_status_ready{job="service_dmz", namespace!~"kl-.*|kubeletto-builds"} == 0)
+            and on (namespace, pod) (kube_pod_status_phase{job="service_dmz", phase="Running"} == 1)
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) runs but is not ready for 10 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodnotready
+
+      # A container that cannot start at all: crash loop, image pull, a
+      # missing Secret or ConfigMap. kube-state-metrics only has the series
+      # while the container waits.
+      - alert: K8sPlatformPodWaiting
+        expr: |
+          kube_pod_container_status_waiting_reason{job="service_dmz", namespace!~"kl-.*|kubeletto-builds",
+            reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError"} == 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) stuck in {{ $labels.reason }} for 10 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodwaiting
+
+      # More than 2 restarts in 30 min: a node reboot restarts each container
+      # once, so this is a component falling over, not maintenance.
+      - alert: K8sPlatformPodRestarting
+        expr: increase(kube_pod_container_status_restarts_total{job="service_dmz", namespace!~"kl-.*|kubeletto-builds"}[30m]) > 2
+        labels: { severity: warning }
+        annotations:
+          summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted {{ $value | humanize }} times in 30 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodrestarting
