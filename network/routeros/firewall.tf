@@ -280,6 +280,35 @@ resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
   place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
 }
 
+# Kubeletto's leaf node to the shared NATS hub, and its core to its Valkey
+# instance (ADR 0016; services/nats/README.md "Kubeletto's switch"). From the
+# K3s server VM only, never the worker: tenant and build code runs there.
+resource "routeros_ip_firewall_filter" "forward_k3s_nats" {
+  chain         = "forward"
+  action        = "accept"
+  in_interface  = routeros_interface_vlan.dmz.name
+  out_interface = routeros_interface_vlan.servers.name
+  src_address   = local.host.k3s.ip
+  dst_address   = local.host.nats.ip
+  protocol      = "tcp"
+  dst_port      = "7422"
+  comment       = "DMZ pinhole: K3s VM to the NATS hub (leaf)"
+  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
+}
+
+resource "routeros_ip_firewall_filter" "forward_k3s_valkey" {
+  chain         = "forward"
+  action        = "accept"
+  in_interface  = routeros_interface_vlan.dmz.name
+  out_interface = routeros_interface_vlan.servers.name
+  src_address   = local.host.k3s.ip
+  dst_address   = local.host.valkey.ip
+  protocol      = "tcp"
+  dst_port      = "6380" # local.valkey_instances.kubeletto.port (proxmox/opentofu/valkey.tf)
+  comment       = "DMZ pinhole: K3s VM to its Valkey instance"
+  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
+}
+
 resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   chain            = "forward"
   action           = "accept"
