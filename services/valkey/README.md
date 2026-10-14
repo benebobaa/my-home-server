@@ -12,6 +12,8 @@ process per app and not one shared keyspace: [ADR 0016](../../docs/decisions/001
 | Ports | per app from 6380 (TLS only, no plaintext port); exporters from 9121 |
 | State | none (no RDB, no AOF). A restart empties the instance |
 | Watched | `redis_up` and memory per exporter (`app-valkey.yml`), journal to `logs` |
+| Firewall | nftables in the CT: exporters (9121-9199) only from the monitoring host (`/scrape?target=` would hand an instance's password to any target); instances open to VLAN 20 and the pinholes, password required |
+| Boot | instances bind the CT's address before it exists (`net.ipv4.ip_nonlocal_bind`, this CT only) and restart every 2 s: the first boot lost the bind race |
 
 | App | Port | Exporter | maxmemory | Policy |
 | --- | --- | --- | --- | --- |

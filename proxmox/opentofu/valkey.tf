@@ -45,6 +45,7 @@ resource "terraform_data" "valkey_setup" {
   triggers_replace = [
     local.valkey_files_sha,
     module.valkey.generation,
+    local.host.monitoring.ip,
   ]
 
   provisioner "local-exec" {
@@ -52,7 +53,7 @@ resource "terraform_data" "valkey_setup" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.valkey_dir} -cf - . \
         | ${local.valkey_ssh} 'pct exec ${module.valkey.vmid} -- sh -c "rm -rf /root/valkey && mkdir -p /root/valkey && tar -xf - -C /root/valkey"'
-      ${local.valkey_ssh} 'pct exec ${module.valkey.vmid} -- bash /root/valkey/setup.sh'
+      ${local.valkey_ssh} 'pct exec ${module.valkey.vmid} -- bash /root/valkey/setup.sh ${local.host.monitoring.ip}'
     EOT
   }
 }

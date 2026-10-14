@@ -48,6 +48,7 @@ resource "terraform_data" "nats_setup" {
     local.nats_files_sha,
     module.nats.generation,
     local.host.nats.ip,
+    local.host.monitoring.ip,
   ]
 
   provisioner "local-exec" {
@@ -55,7 +56,7 @@ resource "terraform_data" "nats_setup" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.nats_dir} -cf - . \
         | ${local.nats_ssh} 'pct exec ${module.nats.vmid} -- sh -c "rm -rf /root/nats && mkdir -p /root/nats && tar -xf - -C /root/nats"'
-      ${local.nats_ssh} 'pct exec ${module.nats.vmid} -- bash /root/nats/setup.sh ${local.host.nats.ip}'
+      ${local.nats_ssh} 'pct exec ${module.nats.vmid} -- bash /root/nats/setup.sh ${local.host.nats.ip} ${local.host.monitoring.ip}'
     EOT
   }
 }

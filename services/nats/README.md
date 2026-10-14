@@ -13,6 +13,7 @@ or streams. Why: [ADR 0016](../../docs/decisions/0016-shared-nats-and-valkey.md)
 | TLS | self-signed, from OpenTofu (`tls_self_signed_cert.nats`: `nats.home.arpa` + the IP, 10 years), installed by `tls.sh`; output `nats_tls_cert` to pin |
 | State | `/var/lib/nats/jetstream` on the CT's 16 GB disk (one directory per account); PBS nightly |
 | Watched | health `8222/healthz?js-enabled-only=true` (fails if JetStream is off), exporter on 7777, alerts `app-nats.yml`, journal to `logs` |
+| Firewall | nftables in the CT: 8222 and 7777 only from the monitoring host (they describe every account's connections and streams); 4222/7422 open to VLAN 20 and the pinholes, NATS authenticates |
 
 ## Giving an app an account
 

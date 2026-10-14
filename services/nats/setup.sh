@@ -9,13 +9,16 @@
 # runs. Accounts and their users are accounts.sh (password hashes on stdin,
 # never in this directory).
 #
-# Argument (from inventory/lab.yaml): this host's IP.
+# Arguments (from inventory/lab.yaml): this host's IP, and the monitoring
+# host's IP (the only one that may reach the monitoring port and exporter).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-LISTEN_IP=${1:?usage: setup.sh <listen-ip>}
+usage="usage: setup.sh <listen-ip> <monitoring-ip>"
+LISTEN_IP=${1:?$usage}
+MONITORING_IP=${2:?$usage}
 
 NATS_VERSION=2.15.0
 NATS_SHA256=5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92 # gitleaks:allow (release checksum)
@@ -24,7 +27,7 @@ EXPORTER_SHA256=209c87410e74eb6e9f7705735f5518a8b0459dda77acfe9db8c15021b08383af
 
 # --- packages, user ---------------------------------------------------------------
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends ca-certificates curl ssl-cert
+apt-get install -y -qq --no-install-recommends ca-certificates curl ssl-cert nftables
 
 id nats >/dev/null 2>&1 || useradd --system --home-dir /var/lib/nats --shell /usr/sbin/nologin nats
 install -d -o nats -g nats -m 0750 /var/lib/nats /var/lib/nats/jetstream
@@ -154,6 +157,28 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+# Only the monitoring host may reach the monitoring port and the exporter:
+# they have no auth, and /connz, /accountz and /jsz describe every account's
+# connections, subscriptions and streams, which one app must not read about
+# another (ADR 0016). 4222 and 7422 stay open to VLAN 20 and the pinholes;
+# NATS authenticates there. The exporter reaches 8222 over lo.
+cat > /etc/nftables.conf <<EOF
+#!/usr/sbin/nft -f
+# managed by services/nats/setup.sh
+flush ruleset
+table inet filter {
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iif lo accept
+    tcp dport { 7777, 8222 } ip saddr ${MONITORING_IP} accept
+    tcp dport { 7777, 8222 } drop
+  }
+}
+EOF
+nft -c -f /etc/nftables.conf
+systemctl enable -q nftables
+systemctl restart nftables
 
 systemctl daemon-reload
 systemctl enable -q nats prometheus-nats-exporter

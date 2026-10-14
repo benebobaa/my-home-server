@@ -68,6 +68,8 @@ EOF
     systemctl restart "valkey-server@${app}"
     systemctl restart "redis-exporter@${app}"
   fi
+  # a no-op when running; brings back one that stopped (a failed boot)
+  systemctl start "valkey-server@${app}" "redis-exporter@${app}"
 
   for _ in $(seq 1 20); do
     [ "$(REDISCLI_AUTH="$pw" valkey-cli --tls --insecure -h "$IP" -p "$port" ping 2>/dev/null)" = PONG ] && break
