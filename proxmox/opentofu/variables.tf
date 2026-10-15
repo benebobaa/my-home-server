@@ -68,3 +68,21 @@ variable "monitoring_snmp_priv_password" {
   type        = string
   sensitive   = true
 }
+
+variable "hermes_telegram_bot_token" {
+  description = "Telegram bot token of the personal agent @hermes_benelabs_bot — its own bot, not the alerts bot (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}
+
+variable "hermes_telegram_allowed_users" {
+  description = "Comma-separated numeric Telegram user ids the agent answers; everyone else is refused (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}
+
+variable "hermes_opencode_go_api_key" {
+  description = "OpenCode Go API key, from the Console workspace that holds the Go subscription (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+}

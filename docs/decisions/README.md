@@ -22,3 +22,4 @@ never edited — supersede them with a new one.
 | [0015](0015-tenant-capacity-by-measured-reservations.md) | Tenant capacity at home: reservations sized to measured use (40 warm pods on the 4 GB worker), no new hardware, no second worker, no pve1 worker |
 | [0016](0016-shared-nats-and-valkey.md) | Shared NATS with JetStream (CT 131, an account per app, a leaf node for apps outside VLAN 20) and Valkey (CT 132, a process per app, cache only); Kubeletto moves onto them after its cutover check |
 | [0017](0017-valkey-clients-pin-the-certificate.md) | Valkey's certificate comes from OpenTofu and clients pin it (Kubeletto: `REDIS_TLS_CA`); supersedes 0016's skip-verify stance |
+| [0018](0018-personal-agent-on-pve1.md) | The personal agent (Hermes Agent, Telegram, OpenCode Go models) runs on pve1 on demand, in a plain unprivileged LXC on the LAB VLAN; native install, no Docker; it can read its own keys (accepted) |
