@@ -69,6 +69,9 @@ HERMES=${AGENT_HOME}/.local/bin/hermes
 as_agent "$HERMES" config set model.provider opencode-go
 as_agent "$HERMES" config set model.default glm-5.3-flash
 as_agent "$HERMES" config set stt.enabled false
+# The agent's shell starts in its home, not in the gateway's working
+# directory (HERMES_HOME, where its config and memory live).
+as_agent "$HERMES" config set terminal.cwd "$AGENT_HOME"
 # Toolsets the Telegram agent does without: browser and computer use are not
 # installed (--skip-*), image generation and TTS need providers of their
 # own, delegation spawns sub-agents on the same quota.
