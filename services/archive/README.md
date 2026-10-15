@@ -64,16 +64,20 @@ a downloaded PDF's sha256 matches the source, video range requests return 206.
 The tailnet ACL is the default allow-all (see `services/admin-gw/README.md`).
 If it is tightened, keep shared users → `archive:443` allowed.
 
-## Not boot-safe yet
+## Boot safety
 
-`start_on_boot = false`: `/mnt/staging` and `/mnt/e4` are mounted by hand
-(rescue leftovers, not in fstab). This goes away when the archive moves to a
-ZFS pool on the HDD. After a pve2 reboot (done this way 2026-10-09):
+`start_on_boot = false`. The sources of the two bind mounts (`/mnt/staging` =
+thin LV `pve/rescue-staging`, `/mnt/e4` = pve2 HDD sda4, NTFS, read-only) are in
+pve2's fstab with `nofail` since 2026-10-15 (Ansible, `storage` tag), after a
+pve2 reboot left them unmounted and CT 110 failed in `lxc.hook.pre-start`
+("Script exited with status 2": the source directory was empty or missing).
+That boot path is not yet proven by a cold reboot; flip `start_on_boot` after
+it is, or when the archive moves to a ZFS pool on the HDD. If the mounts are
+ever missing again:
 
 ```sh
 ssh root@10.10.10.12
-mount -o discard /dev/pve/rescue-staging /mnt/staging
-mount -t ntfs3 -o ro UUID=285A98915A985D7E /mnt/e4   # pve2 HDD sda4, read-only
+mount /mnt/staging && mount /mnt/e4   # fstab entries
 pct start 110
 ```
 

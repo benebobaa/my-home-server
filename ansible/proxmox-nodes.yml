@@ -490,6 +490,51 @@
       changed_when: true
       tags: storage
 
+    # Bind-mount sources of CT 110 `archive` (services/archive). Rescue
+    # leftovers on pve2: a thin LV and the old NTFS HDD (sda4, read-only: it
+    # holds the only copy of the original Captures). `nofail` + a short device
+    # timeout so a missing disk never blocks the host's boot.
+    - name: Declare the archive mount points in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\S+\s+{{ item.mountpoint }}\s'
+        line: "{{ item.line }}"
+      loop:
+        - mountpoint: /mnt/staging
+          line: "/dev/pve/rescue-staging /mnt/staging ext4 defaults,discard,nofail,x-systemd.device-timeout=10s 0 0"
+        - mountpoint: /mnt/e4
+          line: "UUID=285A98915A985D7E /mnt/e4 ntfs3 ro,nofail,x-systemd.device-timeout=10s 0 0"
+      loop_control:
+        label: "{{ item.mountpoint }}"
+      register: archive_fstab
+      when: inventory_hostname == 'pve2'
+      tags: storage
+
+    - name: Reload systemd so it regenerates the mount units
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: archive_fstab is changed  # noqa: no-handler
+      tags: storage
+
+    - name: Read which archive sources are mounted
+      ansible.builtin.command: mountpoint -q {{ item }}
+      loop: [/mnt/staging, /mnt/e4]
+      register: archive_mounted
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: inventory_hostname == 'pve2'
+      tags: storage
+
+    - name: Mount the archive sources that are not mounted
+      ansible.builtin.command: mount {{ item.item }}  # noqa: command-instead-of-module
+      loop: "{{ archive_mounted.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: inventory_hostname == 'pve2' and item.rc != 0
+      changed_when: true
+      tags: storage
+
     # ------------------------------------------------------------- monitoring
     # Host metrics for Prometheus (CT 120 `monitoring`, 10.10.10.16 — see
     # services/monitoring/). node_exporter + Debian's textfile collectors:
