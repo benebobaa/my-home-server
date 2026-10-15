@@ -38,7 +38,7 @@ id "$AGENT_USER" >/dev/null 2>&1 \
   || useradd --create-home --home-dir "$AGENT_HOME" --shell /bin/bash "$AGENT_USER"
 
 # --- Hermes -----------------------------------------------------------------------
-as_agent() { runuser -u "$AGENT_USER" -- env HOME="$AGENT_HOME" HERMES_HOME="$HERMES_HOME" "$@"; }
+as_agent() { runuser -u "$AGENT_USER" -- env -C "$AGENT_HOME" HOME="$AGENT_HOME" HERMES_HOME="$HERMES_HOME" "$@"; }
 
 installed=$(as_agent git -C "${HERMES_HOME}/hermes-agent" rev-parse HEAD 2>/dev/null || true)
 if [ "$installed" != "$HERMES_COMMIT" ]; then
@@ -78,6 +78,52 @@ as_agent "$HERMES" config set terminal.cwd "$AGENT_HOME"
 as_agent "$HERMES" tools disable --platform telegram \
   browser computer_use image_gen tts delegation
 
+# --- scraping toolkit -----------------------------------------------------------------
+# For the agent's own scripts (its browser tool stays off): Python libraries
+# in a venv that is first on its PATH, Playwright's headless Chromium,
+# Tesseract OCR with Indonesian. How the agent should use them is the
+# skills/scraping-toolkit skill, installed below.
+DIR=$(cd "$(dirname "$0")" && pwd)
+TOOLKIT=${AGENT_HOME}/.venvs/scrape
+
+# Chromium's libraries: Playwright 1.63's own list for Debian 13 (its
+# nativeDeps table; `playwright install-deps --dry-run chromium`), minus
+# what a headless scraper of Latin-script sites does without: Xvfb and the
+# CJK, Thai and Unifont fonts. Root installs these itself rather than running
+# the agent-owned `playwright install-deps`.
+apt-get install -y -qq --no-install-recommends \
+  python3-venv tesseract-ocr tesseract-ocr-ind jq sqlite3 \
+  fonts-liberation fonts-noto-color-emoji fonts-freefont-ttf libfontconfig1 libfreetype6 \
+  libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 \
+  libcups2t64 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64 libnspr4 libnss3 \
+  libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+  libxkbcommon0 libxrandr2
+
+# The venv and the browser belong to the agent (it may add packages); they
+# are installed as the agent, from the pinned list.
+[ -x "${TOOLKIT}/bin/python" ] || as_agent python3 -m venv "$TOOLKIT"
+req=$(mktemp)
+install -m 0644 "${DIR}/scraping-requirements.txt" "$req"
+as_agent "${TOOLKIT}/bin/pip" install -q --disable-pip-version-check -r "$req"
+rm -f "$req"
+as_agent "${TOOLKIT}/bin/playwright" install chromium
+
+# The toolkit first on the agent's PATH in login shells (Hermes' terminal
+# starts from a login environment); the gateway unit below sets it too.
+cat > /etc/profile.d/hermes-toolkit.sh <<EOF
+# managed by services/hermes/provision.sh: the agent's scraping toolkit first on PATH
+if [ "\$(id -un)" = ${AGENT_USER} ]; then
+  case ":\$PATH:" in *":${TOOLKIT}/bin:"*) ;; *) PATH="${TOOLKIT}/bin:\$PATH" ;; esac
+fi
+EOF
+
+# The skill that tells the agent what is here (written as the agent, into
+# its own skills directory; Hermes keeps user skills across updates).
+as_agent mkdir -p "${HERMES_HOME}/skills/web/scraping-toolkit"
+# shellcheck disable=SC2016  # $1 expands in the agent's shell
+as_agent sh -c 'cat > "$1"' sh "${HERMES_HOME}/skills/web/scraping-toolkit/SKILL.md" \
+  < "${DIR}/skills/scraping-toolkit/SKILL.md"
+
 # --- service ------------------------------------------------------------------------
 # Root never runs or touches anything under the agent's home: the agent owns
 # it and could plant code or symlinks there. So no `hermes gateway install`
@@ -101,9 +147,14 @@ Type=simple
 User=${AGENT_USER}
 Group=${AGENT_USER}
 WorkingDirectory=${HERMES_HOME}
-Environment=HOME=${AGENT_HOME} USER=${AGENT_USER} LOGNAME=${AGENT_USER}
-Environment=HERMES_HOME=${HERMES_HOME} HERMES_SUPERVISED_CHILD=1
-Environment=PATH=${AGENT_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
+# One quoted assignment per line: Hermes' CLI reads HERMES_HOME back from
+# this file and takes the rest of the line as the value.
+Environment="HOME=${AGENT_HOME}"
+Environment="USER=${AGENT_USER}"
+Environment="LOGNAME=${AGENT_USER}"
+Environment="HERMES_HOME=${HERMES_HOME}"
+Environment="HERMES_SUPERVISED_CHILD=1"
+Environment="PATH=${TOOLKIT}/bin:${AGENT_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=${agent_bin} gateway run
 ExecReload=/bin/kill -USR1 \$MAINPID
 ExecStop=-${agent_bin} --run-module gateway.systemd_stop_mark

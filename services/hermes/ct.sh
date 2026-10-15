@@ -29,7 +29,8 @@ TEMPLATE_PATH=/var/lib/vz/template/cache/${TEMPLATE}
 CORES=2        # a ceiling, not a reservation
 MEMORY=2048    # MiB; Hermes' install builds its TUI with Node
 SWAP=512       # MiB
-DISK=10        # GiB: Debian + Hermes' own Python, Node and venv
+DISK=16        # GiB: Debian, Hermes (~2.5), the scraping toolkit and Chromium
+               # (~1.5), room for the agent's data. Thin: only used blocks count
 STORAGE=local-lvm
 
 if ! pct status "$VMID" >/dev/null 2>&1; then
@@ -64,6 +65,13 @@ pct set "$VMID" \
   --net0 "name=eth0,bridge=vmbr0,tag=${VLAN},ip=${CIDR},gw=${GATEWAY}" \
   --nameserver "$GATEWAY" \
   --searchdomain home.arpa
+
+# Grow the root disk to DISK (never shrinks; live for containers).
+size=$(pct config "$VMID" | sed -n 's/^rootfs:.*size=\([0-9]*\)G.*/\1/p')
+if [ -n "$size" ] && [ "$size" -lt "$DISK" ]; then
+  echo "hermes: growing the root disk ${size}G -> ${DISK}G"
+  pct resize "$VMID" rootfs "${DISK}G"
+fi
 
 if [ "$(pct status "$VMID" | awk '{print $2}')" != running ]; then
   echo "hermes: starting container ${VMID}"

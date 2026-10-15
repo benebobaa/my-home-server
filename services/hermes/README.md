@@ -12,10 +12,11 @@ this: [ADR 0018](../../docs/decisions/0018-personal-agent-on-pve1.md).
 | Model | OpenCode Go (`opencode-go`), default `glm-5.3-flash` |
 | Gateway | `hermes-gateway.service`, a static root-owned unit (`provision.sh`) running as user `hermes`; Telegram long polling: no open port |
 | Allowed | the operator's Telegram user id only (`TELEGRAM_ALLOWED_USERS`) |
-| Size | 2 cores, 2 GB ceiling (gateway ~240 MB, container ~280 MB idle), 512 MB swap, 10 GB disk (3.5 GB used) |
+| Size | 2 cores, 2 GB ceiling (gateway ~240 MB, container ~280 MB idle; a Playwright page ~260 MB more), 512 MB swap, 16 GB thin disk (5.1 GB used) |
 | Starts | with pve1 (`onboot`); bot connected about 15 s after the container starts |
 | Backup | the nightly PBS job, when pve1 is on at 02:30 |
 | Monitoring | ping + PVE API, `best-effort`; no logs leave the container (ADR 0013) |
+| Scraping toolkit | venv `~hermes/.venvs/scrape` first on the agent's PATH (`scraping-requirements.txt`: BeautifulSoup/lxml, requests, curl_cffi, cloudscraper, trafilatura, httpx, tenacity, Playwright, pytesseract/Pillow, phonenumbers, openpyxl), Playwright's Chromium (headless), Tesseract `ind`+`eng`, `jq`, `sqlite3`; the agent learns it from the `scraping-toolkit` skill |
 
 ## Files
 
@@ -24,6 +25,8 @@ this: [ADR 0018](../../docs/decisions/0018-personal-agent-on-pve1.md).
 | `ct.sh` | on pve1 as root (`terraform_data.hermes_ct`) | creates the container from the pinned Debian template, converges cores, memory, network, `onboot`; never restarts it |
 | `provision.sh` | in the container as root (`terraform_data.hermes_provision`) | packages, user `hermes`, Hermes at the pinned commit (run as `hermes`), the repo-owned config keys, the gateway unit |
 | `secrets.sh` | in the container as root (`terraform_data.hermes_secrets`) | merges bot token, allowed user and model key into `~hermes/.hermes/.env` (as `hermes`; other lines kept), restarts the gateway on change |
+| `scraping-requirements.txt` | read by `provision.sh` | the toolkit's direct dependencies, pinned (each release ≥ 2 weeks old when chosen) |
+| `skills/scraping-toolkit/SKILL.md` | copied by `provision.sh` (as `hermes`) to `~/.hermes/skills/web/scraping-toolkit/` | tells the agent what is installed, the ladder for stubborn sites, snippets, limits, manners |
 
 **Root never runs or follows anything in `/home/hermes`**: the agent owns that
 tree and could plant code or symlinks there. Everything Hermes is run as
@@ -70,6 +73,23 @@ Rotate: revoke at the source (BotFather `/revoke`; OpenCode Console → API
 keys), `sops edit proxmox/opentofu/secrets.sops.env`, then
 `tofu apply` in `proxmox/opentofu` (pve1 up): `secrets.sh` restarts the
 gateway.
+
+## The scraping toolkit
+
+Installed for the agent's own scripts; Hermes' browser *tool* stays off (no
+duplicate browser). Chromium's system libraries are Playwright 1.63's list
+for Debian 13 minus Xvfb and CJK/Thai fonts, installed by root from the repo
+(root never runs the agent-owned `playwright install-deps`). Not installed:
+Node/Puppeteer (Playwright covers it). The agent may `pip install` more into
+its venv; a provision run keeps those and re-applies the pinned list.
+
+Smoke test (as `hermes`, login shell): imports of all 13 packages,
+`curl_cffi` with Chrome impersonation, trafilatura on a real article,
+Playwright rendering a JavaScript-only page, Tesseract reading a phone
+number from an image (`ind+eng`) normalised by `phonenumbers`.
+
+In unattended runs (`hermes chat -q`), Hermes' safety filter blocks
+`python3 -c …`; in Telegram it asks the operator to approve instead.
 
 ## Upgrading Hermes
 
