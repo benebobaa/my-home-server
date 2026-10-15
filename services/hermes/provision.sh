@@ -76,20 +76,53 @@ as_agent "$HERMES" tools disable --platform telegram \
   browser computer_use image_gen tts delegation
 
 # --- service ------------------------------------------------------------------------
-# Hermes' own system unit (hermes-gateway-<hash>.service, run as the agent
-# user, linger enabled). The installer runs as root here, so hand the tree
-# back to the agent afterwards.
-env HOME=/root HERMES_HOME="$HERMES_HOME" "$HERMES" gateway install \
-  --system --run-as-user "$AGENT_USER" --if-missing --no-start-now
-chown -R "${AGENT_USER}:${AGENT_USER}" "$AGENT_HOME"
+# Root never runs or touches anything under the agent's home: the agent owns
+# it and could plant code or symlinks there. So no `hermes gateway install`
+# as root; this unit is static and root-owned, modelled on the one that
+# command generates (v0.22.2), under the bare name Hermes' own CLI expects
+# for the agent's default HERMES_HOME. Every Exec* runs as the agent.
+# Linger keeps the agent's user manager (and its bus) up for Hermes' cron
+# workers.
+agent_uid=$(id -u "$AGENT_USER")
+agent_bin=${HERMES_HOME}/hermes-agent/.hermes/bin/hermes
+cat > /etc/systemd/system/hermes-gateway.service <<EOF
+# managed by services/hermes/provision.sh
+[Unit]
+Description=Hermes Agent Gateway - Messaging Platform Integration
+After=network-online.target user@${agent_uid}.service
+Wants=network-online.target user@${agent_uid}.service
+StartLimitIntervalSec=0
 
-unit=$(systemctl list-unit-files --no-legend 'hermes-gateway*.service' | awk '{print $1}')
-[ "$(printf '%s\n' "$unit" | grep -c .)" = 1 ] \
-  || { echo "hermes: expected one gateway unit, found: ${unit:-none}" >&2; exit 1; }
-systemctl enable "$unit" >/dev/null
+[Service]
+Type=simple
+User=${AGENT_USER}
+Group=${AGENT_USER}
+WorkingDirectory=${HERMES_HOME}
+Environment=HOME=${AGENT_HOME} USER=${AGENT_USER} LOGNAME=${AGENT_USER}
+Environment=HERMES_HOME=${HERMES_HOME} HERMES_SUPERVISED_CHILD=1
+Environment=PATH=${AGENT_HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=${agent_bin} gateway run
+ExecReload=/bin/kill -USR1 \$MAINPID
+ExecStop=-${agent_bin} --run-module gateway.systemd_stop_mark
+ExecStopPost=-${agent_bin} --run-module gateway.cgroup_cleanup
+# Hermes' exit codes: 75 = restart me, 78 = fatal config (don't loop).
+Restart=always
+RestartSec=5
+RestartForceExitStatus=75
+SuccessExitStatus=75
+RestartPreventExitStatus=78
+KillMode=mixed
+TimeoutStopSec=70
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+loginctl enable-linger "$AGENT_USER"
+systemctl enable hermes-gateway.service >/dev/null 2>&1
 # Starts once secrets.sh has written the bot token; restarted on upgrades.
-if grep -q '^TELEGRAM_BOT_TOKEN=.' "${HERMES_HOME}/.env" 2>/dev/null; then
-  systemctl restart "$unit"
+if as_agent grep -q '^TELEGRAM_BOT_TOKEN=.' "${HERMES_HOME}/.env" 2>/dev/null; then
+  systemctl restart hermes-gateway.service
 fi
 
 as_agent "$HERMES" --version | head -1

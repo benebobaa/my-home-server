@@ -50,8 +50,10 @@ ssh root@10.10.10.13 pvesh create /nodes/pve1/wakeonlan             # what the b
 It answers SSH ~1 min later; the cluster goes from 2 to 3 votes. Shut it
 down from the UI or `ssh root@10.10.10.11 poweroff` when done: it stops its
 guests cleanly first. Monitoring sends one silent note while it is off
-(`PveNodeDown`, info); everything else about pve1 and `ai` (ping, UI probe,
-scrapes, the GPU exporter) is suppressed. Observed 2026-10-13 after a real
+(`PveNodeDown`, info); everything else about pve1, `ai` and `hermes` (ping,
+UI probe, scrapes, the GPU exporter) is suppressed. Both guests start with
+pve1 (`onboot`): the personal agent's Telegram bot is online about a minute
+after the wake ([services/hermes](../../services/hermes/README.md)). Observed 2026-10-13 after a real
 shutdown: exactly that, cluster quorate on 2 of 3 votes.
 
 After a power cut it stays off unless it was running (BIOS: Restore AC Power

@@ -10,9 +10,9 @@ this: [ADR 0018](../../docs/decisions/0018-personal-agent-on-pve1.md).
 | --- | --- |
 | Hermes | v0.22.2, pinned by commit (`provision.sh`); installed under `/home/hermes/.hermes` (code, its own Python/Node/uv, config, memory, sessions) |
 | Model | OpenCode Go (`opencode-go`), default `glm-5.3-flash` |
-| Gateway | `hermes-gateway-7944f2ae.service` (Hermes' own system unit, user `hermes`), Telegram long polling: no open port |
+| Gateway | `hermes-gateway.service`, a static root-owned unit (`provision.sh`) running as user `hermes`; Telegram long polling: no open port |
 | Allowed | the operator's Telegram user id only (`TELEGRAM_ALLOWED_USERS`) |
-| Size | 2 cores, 2 GB ceiling (about 280 MB in use idle), 512 MB swap, 10 GB disk (3.5 GB used) |
+| Size | 2 cores, 2 GB ceiling (gateway ~240 MB, container ~280 MB idle), 512 MB swap, 10 GB disk (3.5 GB used) |
 | Starts | with pve1 (`onboot`); bot connected about 15 s after the container starts |
 | Backup | the nightly PBS job, when pve1 is on at 02:30 |
 | Monitoring | ping + PVE API, `best-effort`; no logs leave the container (ADR 0013) |
@@ -22,8 +22,15 @@ this: [ADR 0018](../../docs/decisions/0018-personal-agent-on-pve1.md).
 | File | Runs | Does |
 | --- | --- | --- |
 | `ct.sh` | on pve1 as root (`terraform_data.hermes_ct`) | creates the container from the pinned Debian template, converges cores, memory, network, `onboot`; never restarts it |
-| `provision.sh` | in the container as root (`terraform_data.hermes_provision`) | packages, user `hermes`, Hermes at the pinned commit, the repo-owned config keys, the gateway unit |
-| `secrets.sh` | in the container as root (`terraform_data.hermes_secrets`) | merges bot token, allowed user and model key into `~hermes/.hermes/.env` (other lines kept), restarts the gateway on change |
+| `provision.sh` | in the container as root (`terraform_data.hermes_provision`) | packages, user `hermes`, Hermes at the pinned commit (run as `hermes`), the repo-owned config keys, the gateway unit |
+| `secrets.sh` | in the container as root (`terraform_data.hermes_secrets`) | merges bot token, allowed user and model key into `~hermes/.hermes/.env` (as `hermes`; other lines kept), restarts the gateway on change |
+
+**Root never runs or follows anything in `/home/hermes`**: the agent owns that
+tree and could plant code or symlinks there. Everything Hermes is run as
+`hermes`; the unit is written from the repo, not by `hermes gateway install`.
+`hermes gateway status` calls that unit "outdated" (its text differs from
+what Hermes would generate): expected. Don't run `sudo hermes gateway …
+--system`, which would rewrite it as root.
 
 Re-run on purpose (pve1 up):
 
@@ -46,7 +53,7 @@ pct enter 141                   # the container
 runuser -u hermes -- bash -l    # the agent's account
 hermes doctor                   # config + provider check
 hermes tools list --platform telegram
-journalctl -u 'hermes-gateway-*' -f
+journalctl -u hermes-gateway -f
 ```
 
 ## Secrets
@@ -75,7 +82,7 @@ moves the checkout off the pinned commit.
 
 | Symptom | Look at |
 | --- | --- |
-| Bot silent | pve1 up? `pct status 141`; `systemctl status 'hermes-gateway-*'`; the journal shows `Connected to Telegram (polling mode)` on a healthy start |
+| Bot silent | pve1 up? `pct status 141`; `systemctl status hermes-gateway`; the journal shows `Connected to Telegram (polling mode)` on a healthy start |
 | `Conflict: terminated by other getUpdates request` | a second process polls the same token: only this gateway may use it |
 | Model errors (`subscription required`, `Global regions`) | the OpenCode Console: the key must come from the workspace with the Go subscription; DeepSeek needs Privacy → Global regions |
 | Cron jobs not firing | `/run/user/1000/bus` exists? (`dbus-user-session`, linger for `hermes`) |
