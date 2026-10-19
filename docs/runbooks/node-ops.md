@@ -27,7 +27,9 @@ timeouts — a busy guest can add up to a couple of minutes).
 - For a full power-off: shut down first, wait for the screen to go dark, then
   unplug.
 - **Power on:** press the power button. (No Wake-on-LAN for the laptops:
-  they are always on.)
+  they are always on.) After a power cut they power on by themselves when
+  the power returns, with the clock reset to an old date until chrony syncs
+  (about 30 s; [2026-10-16](../incidents/2026-10-16-power-cut-pve1-stuck-off.md)).
 
 ## Wake pve1
 
@@ -57,9 +59,17 @@ after the wake ([services/hermes](../../services/hermes/README.md)). Observed 20
 shutdown: exactly that, cluster quorate on 2 of 3 votes.
 
 After a power cut it stays off unless it was running (BIOS: Restore AC Power
-Loss = Last State). If a wake does nothing: it must have been shut down
-cleanly at least once since the power came back (the NIC is armed by the OS),
-and the switch port P2 must be up.
+Loss = Last State). If a wake does nothing:
+
+1. Press pve1's power button. If it boots, the NIC was not armed: it is armed
+   by the OS, so it needs one clean shutdown after a power cut. Also check
+   that switch port P2 is up.
+2. If the power button does nothing either (no lights, no fans), standby
+   power is stuck, and neither Wake-on-LAN nor the BIOS restore can work.
+   Switch the PSU off at its rear switch, wait 10 s, switch it on, then
+   press the power button if it does not start by itself. This happened
+   after the [2026-10-16 power cut](../incidents/2026-10-16-power-cut-pve1-stuck-off.md):
+   pve1 was running when the power went and stayed dead for three days.
 
 ## Guests after a reboot
 

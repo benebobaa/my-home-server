@@ -89,7 +89,7 @@ Read from the node on 2026-10-13.
 | --- | --- |
 | Board | ASUS PRIME B550M-A, serial `…300104` |
 | Firmware | BIOS 2806 (2022-10-27), UEFI only (CSM off), Secure Boot **off** (OS Type "Other OS") |
-| BIOS settings | SVM on; IOMMU on (AMD CBS → NBIO); Above 4G Decoding on; Re-Size BAR **off**; ErP Ready **off** + Power On By PCI-E **on** (Wake-on-LAN); Restore AC Power Loss = Last State; Armoury Crate download off |
+| BIOS settings | SVM on; IOMMU on (AMD CBS → NBIO); Above 4G Decoding on; Re-Size BAR **off**; ErP Ready **off** + Power On By PCI-E **on** (Wake-on-LAN); Restore AC Power Loss = Last State (as set at install; after the [2026-10-16 power cut](incidents/2026-10-16-power-cut-pve1-stuck-off.md) pve1 did not restore, because standby power was stuck until the PSU was switched off and on; the value is still to be re-read in the BIOS); Armoury Crate download off |
 | CPU | AMD Ryzen 5 5600 (Zen 3): 6 cores / 12 threads, up to 4.47 GHz, microcode `0xa201211`. **No iGPU** |
 | RAM | 32 GB DDR4: 2 × 16 GB Samsung `M378A2K43CB1-CTD` (DIMM_A2, DIMM_B2) at 3200 MT/s. JEDEC 3200 modules: no XMP/D.O.C.P. profile, Auto already runs them at 3200 |
 | GPU | NVIDIA GeForce RTX 3060 12 GB (GA106, `10de:2503`, HDMI audio `10de:228e`), top x16 slot, PCIe 4.0 x16. IOMMU group 16 holds only its two functions. Bound to `vfio-pci` at boot for VM passthrough (ADR 0012): the host has no screen |
