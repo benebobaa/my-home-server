@@ -26,8 +26,7 @@ extracted trees (68,804 files before and after):
 | `irene/14 IRENE PURI KUMALA (laptop Documents copy)` | C: `Users/ASUS/Documents/14 IRENE PURI KUMALA` (likely duplicate, dedupe later) |
 | `irene/A LESSON IRENE MUSIC` | E: (`sda4`) |
 | `irene/zoom-recordings` | mp1 → pve2 HDD `/mnt/e4/_captures-30fps`: `Captures` re-encoded (below) |
-| `bene/old-laptop C-drive`, `bene/old-laptop D-drive` | failed pve3 HDD `sda3` / `sda4`, rescued ([disk-rescue](../../docs/runbooks/disk-rescue.md)) |
-| `bene/BenediktusMUKTI`, `bene/asus-laptop bene` | E: `sda5` / `sda4` |
+| `bene/` | empty: the operator deleted its four folders (old-laptop C-drive and D-drive, BenediktusMUKTI, asus-laptop bene; 39 GB) on 2026-10-25 after checking he no longer needs them. The login `bene` stays |
 | `clara/*` | C: Documents (MATERI D3 CLARA, MATERI CLARA P, AKREDITASI 2018/2020, SPO TB PDF, MATERI SEMINAR TB DAY 2019); E: `sda4` (RPL 2021, BAHAN PPS TB, LOGBOOK, 11.SERTIFIKAT, LAMPIRAN/TOR/PP PN docs, HEALING GARDEN); OneDrive RPL 2021 copy |
 | `family/asus-laptop user files` | the rest of C: `Users/ASUS` (Pictures, Videos, Music, Downloads, Desktop, …) |
 | `family/asus-laptop public files`, `family/asus-laptop E-drive (rest)`, `family/asus-laptop E5-drive (rest)` | remaining C: `Users/Public`, E: `sda4`, E: `sda5` |
