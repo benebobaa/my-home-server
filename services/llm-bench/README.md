@@ -29,7 +29,7 @@ exporters; no engines, no models).
 ## Use
 
 ```bash
-ssh root@10.10.20.40                     # through the admin gateways
+ssh -J root@10.10.10.17 root@10.10.20.40 # jump via admin-gw2 (or .15): the gateways route MGMT + ai, not VLAN 20
 curl -s http://10.10.30.10:8000/v1/models
 guidellm benchmark --target http://10.10.30.10:8000 ... --output-path /opt/bench/results/<run>.json
 lm_eval --model local-completions --model_args base_url=http://10.10.30.10:8000/v1/completions,model=<id> ...
