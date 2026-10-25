@@ -63,5 +63,5 @@ gexec 30 - grep RmProfilingAdminOnly /proc/driver/nvidia/params
 # the lab's teardown.
 if ! qm listsnapshot "$VMID" | grep -qw bench-baseline; then
   echo "ai: snapshot bench-baseline"
-  qm snapshot "$VMID" bench-baseline --description "LLM bench lab baseline (ADR 0019): driver, CUDA, Docker GPU runtime, exporters, chrony, /data; no engines, no models"
+  qm snapshot "$VMID" bench-baseline --description "LLM bench lab baseline (ADR 0019): driver, CUDA, uv, exporters, chrony, /data; no Docker, no engines, no models"
 fi

@@ -55,7 +55,7 @@ Constraints:
   so a flip is not drift.
 - **In `ai`** (`services/ai/provision.sh`): chrony replaces timesyncd,
   node_exporter, `/data/{models,results}` as a directory on the root disk
-  (no second disk, no Docker data-root move). `converge.sh` takes one
+  (no second disk; Docker is gone, ADR 0020). `converge.sh` takes one
   disk-only snapshot, `bench-baseline`, after provisioning (a VM with a
   passed-through GPU cannot save its RAM).
 - **No inference engines or models are installed by code.** Running the

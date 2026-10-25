@@ -2,9 +2,9 @@
 
 VM 140 on **pve1**, Ubuntu 24.04 LTS, the RTX 3060 by VFIO passthrough, on
 the LAB VLAN (`10.10.30.10`, internet only). The operator's machine for the
-AI/LLM/AI-infra study plan: NVIDIA driver + CUDA toolkit, Docker with the
-NVIDIA container toolkit (vLLM, SGLang, TensorRT-LLM images), uv for
-Python. Why it looks like this:
+AI/LLM/AI-infra study plan: NVIDIA driver + CUDA toolkit, uv for Python
+(vLLM, SGLang and PyTorch in venvs). No Docker
+([ADR 0020](../../docs/decisions/0020-ai-vm-without-docker.md)). Why it looks like this:
 [ADR 0012](../../docs/decisions/0012-pve1-on-demand-ai-workstation.md).
 
 | | |
@@ -25,7 +25,7 @@ Python. Why it looks like this:
 | `vm.sh` | on pve1 as root (`terraform_data.ai_vm`) | creates the VM from the pinned cloud image, sets GPU passthrough, CPU, memory, network; never restarts a running VM |
 | `user-data.yaml.tftpl` | cloud-init, first boot | hostname, user + key, guest agent |
 | `converge.sh` | on pve1 (`terraform_data.ai_converge`) | waits for the agent, runs `provision.sh` in the guest, one reboot for the driver, `nvidia-smi` check |
-| `provision.sh` | in the guest as root | full upgrade, driver (branch pinned), CUDA toolkit, Docker + NVIDIA runtime, uv, GPU exporter (pinned, sha256); GPU profiling for every user (`ncu`/`nsys` without root), persistence mode on; purges Tailscale and the journal uploader |
+| `provision.sh` | in the guest as root | full upgrade, driver (branch pinned), CUDA toolkit, uv, GPU exporter (pinned, sha256); GPU profiling for every user (`ncu`/`nsys` without root), persistence mode on; purges Tailscale, the journal uploader and Docker |
 
 Why scripts and not a bpg VM resource: pve1 is off most days and the PVE
 API cannot read an offline node, so a provider resource would break every
@@ -64,7 +64,7 @@ Host ai
 
 1. Wake pve1 ([node-ops](../../docs/runbooks/node-ops.md#wake-pve1)); `ai`
    starts with it (~1–2 min).
-2. Work: `nvidia-smi`, `uv venv && uv pip install torch`, `docker run --gpus all …`,
+2. Work: `nvidia-smi`, `uv venv && uv pip install torch` (or `vllm`, `sglang`),
    profile with `ncu` / `nsys` (CUDA bin is on `PATH` at login).
 3. Shut down pve1 when done (UI or `ssh root@10.10.10.11 poweroff`): it
    stops the VM cleanly first.

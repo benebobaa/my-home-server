@@ -14,9 +14,9 @@
 # - CUDA toolkit (nvcc, Nsight) from NVIDIA's repo, toolkit only: the
 #   driver stays Ubuntu's. Its version must not exceed what the driver
 #   supports (`nvidia-smi` header).
-# - Docker CE + NVIDIA container toolkit: vLLM, SGLang and TensorRT-LLM ship
-#   as images that expect `--gpus all`.
-# - uv for Python environments; PyTorch goes into projects, not the system.
+# - uv for Python environments; PyTorch, vLLM and SGLang go into project
+#   venvs, not the system. No Docker (operator, 2026-10-25, ADR 0020):
+#   engines run natively; purged if an earlier version installed it.
 # - nvidia_gpu_exporter for Prometheus (pulled from MGMT; ADR 0014).
 #
 # Deliberately absent: Tailscale and journal shipping. This VM runs
@@ -50,18 +50,14 @@ repo() { # repo <name> <keyring url> <list line>
 install -d -m 0755 /etc/apt/keyrings
 # shellcheck source=/dev/null
 . /etc/os-release
-repo docker https://download.docker.com/linux/ubuntu/gpg \
-  "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable"
-repo nvidia-container-toolkit https://nvidia.github.io/libnvidia-container/gpgkey \
-  "deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$(ARCH) /"
 repo cuda https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/3bf863cc.pub \
   "deb [signed-by=/etc/apt/keyrings/cuda.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/ /"
 
 # NVIDIA's CUDA repo also carries drivers: never let it supply them.
 cat > /etc/apt/preferences.d/cuda-repo-no-drivers <<'EOF'
 # managed by services/ai/provision.sh — the driver comes from Ubuntu.
-# Driver packages only: the container toolkit is in this repo too (same
-# versions as its own repo), and a wider glob makes apt "downgrade" it.
+# Driver packages only: a wider glob also blocks the repo's other NVIDIA
+# tools.
 Package: nvidia-driver-* nvidia-kernel-* nvidia-dkms-* nvidia-headless-* nvidia-utils-* nvidia-compute-utils-* nvidia-firmware-* nvidia-open* nvidia-fabricmanager* libnvidia-compute-* libnvidia-gl-* libnvidia-cfg1-* libnvidia-decode-* libnvidia-encode-* libnvidia-extra-* libnvidia-fbc1-* xserver-xorg-video-nvidia-* cuda-drivers* cuda-compat*
 Pin: origin developer.download.nvidia.com
 Pin-Priority: -1
@@ -73,9 +69,21 @@ ubuntu-drivers install --gpgpu "nvidia:${NVIDIA_BRANCH}"
 "${APT[@]}" install \
   "nvidia-utils-${NVIDIA_BRANCH}" \
   "$CUDA_TOOLKIT" \
-  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-  nvidia-container-toolkit \
   build-essential git curl htop nvtop tmux python3-venv pipx
+
+# No Docker (ADR 0020): purge it, the NVIDIA container toolkit, their repos
+# and their data, if an earlier version installed them.
+docker_pkgs=$({ dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' \
+  'docker-*' containerd.io 'nvidia-container-*' 'libnvidia-container*' 2>/dev/null || true; } | awk '$1 != "un" {print $2}')
+if [ -n "$docker_pkgs" ]; then
+  systemctl disable --now docker.socket docker.service containerd.service 2>/dev/null || true
+  # shellcheck disable=SC2086 # one package per word
+  "${APT[@]}" purge $docker_pkgs
+  rm -rf /var/lib/docker /var/lib/containerd /etc/docker /etc/nvidia-container-runtime
+fi
+rm -f /etc/apt/sources.list.d/docker.list /etc/apt/sources.list.d/nvidia-container-toolkit.list \
+  /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/nvidia-container-toolkit.gpg
+if getent group docker >/dev/null; then groupdel docker; fi
 
 # Keep the whole system current (unattended-upgrades only takes -security);
 # a new kernel brings its NVIDIA modules with it (the -generic module meta).
@@ -131,13 +139,6 @@ if [ "$(dpkg-query -W -f='${Version}' nvidia-gpu-exporter 2>/dev/null)" != "$GPU
 fi
 systemctl enable -q --now nvidia_gpu_exporter
 
-# Docker uses the NVIDIA runtime for --gpus.
-if ! grep -q nvidia /etc/docker/daemon.json 2>/dev/null; then
-  nvidia-ctk runtime configure --runtime=docker
-  systemctl restart docker
-fi
-usermod -aG docker "$USER_NAME"
-
 # nvcc on every login shell's PATH.
 cat > /etc/profile.d/cuda.sh <<'EOF'
 # managed by services/ai/provision.sh
@@ -180,4 +181,4 @@ if ! nvidia-smi >/dev/null 2>&1; then
   echo "ai: NVIDIA driver installed; a reboot loads it"
   touch /run/ai-reboot-required
 fi
-echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker, gpu exporter ${GPU_EXPORTER_VERSION}, bench lab)"
+echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, gpu exporter ${GPU_EXPORTER_VERSION}, bench lab; no docker)"

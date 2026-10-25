@@ -23,8 +23,8 @@ ai ──✕──▶ any lab VLAN (default deny)    ai ──▶ internet (kill
 
 In `ai` (`services/ai/provision.sh`): chrony, node_exporter `:9100`, the GPU
 exporter `:9835`, `/data/models` and `/data/results` on the root disk, and
-the disk snapshot `bench-baseline` (driver, CUDA, Docker GPU runtime,
-exporters; no engines, no models).
+the disk snapshot `bench-baseline` (driver, CUDA, uv,
+exporters; no Docker, no engines, no models).
 
 ## Use
 
@@ -35,9 +35,18 @@ guidellm benchmark --target http://10.10.30.10:8000 ... --output-path /opt/bench
 lm_eval --model local-completions --model_args base_url=http://10.10.30.10:8000/v1/completions,model=<id> ...
 ```
 
-Engines on `ai` must listen on `0.0.0.0:8000` (Docker: `-p 8000:8000`), and
-vLLM/SGLang serve `/metrics` there (SGLang: `--enable-metrics`). Models go in
-`/data/models` (e.g. `-v /data/models:/root/.cache/huggingface`).
+Engines on `ai` run natively, one `uv` venv each (no Docker, ADR 0020),
+listen on `0.0.0.0:8000` and keep models in `/data/models`
+(`export HF_HOME=/data/models`):
+
+```bash
+vllm serve <model> --host 0.0.0.0 --port 8000
+python -m sglang.launch_server --model-path <model> --host 0.0.0.0 --port 8000 --enable-metrics
+OLLAMA_HOST=0.0.0.0:8000 OLLAMA_MODELS=/data/models/ollama ollama serve   # no /metrics
+```
+
+vLLM and SGLang serve `/metrics` on the same port. Keep `uv pip freeze`
+next to each run's results: it is the engine's pinned version.
 Grafana: **Nvidia GPU Metrics** for the card; Explore on `{instance="ai"}`
 for node_exporter and the engine's own series (`vllm:*`, `sglang:*`).
 
