@@ -22,9 +22,12 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 | Setting | Where it comes from |
 | --- | --- |
 | apt repos (enterprise off, no-subscription on) | this playbook |
-| lid-switch ignore (`logind.conf`) | this playbook |
-| sleep/suspend targets masked | this playbook |
-| `usbcore.autosuspend=-1` in GRUB | this playbook |
+| lid-switch ignore (`logind.conf`) | hosts with `laptop=true` |
+| sleep/suspend targets masked | this playbook (every node) |
+| `usbcore.autosuspend=-1` in GRUB | hosts with `laptop=true` |
+| Wake-on-LAN armed at boot (`WakeOnLan=magic` in the `nic0` link file) | hosts with `wake_on_lan=true` (pve1, on demand) |
+| Proxmox Wake-on-LAN entry (`pvenode config`: `mac=`, `bind-interface=vmbr0.10`), so the UI's **Wake-on-LAN** button works from any node | `pve_nic_mac` per host; the MGMT VLAN id from `inventory/lab.yaml` |
+| VM GPU passthrough (`--tags vfio`): `vfio-pci` claims the GPU by id at boot, host GPU drivers blacklisted, initramfs rebuilt | hosts with `vfio_pci_ids` (pve1, ADR 0012) |
 | `/etc/network/interfaces` (VLAN-aware trunk) | `proxmox/nodes/<node>/interfaces` |
 | NIC pinning (`.link` → `nic0`) | `pve_nic_mac` per host in `inventory.ini` |
 | root `authorized_keys` (admin key) | `~/.ssh/id_ed25519.pub` on the operator machine |
@@ -35,8 +38,9 @@ ansible-playbook proxmox-nodes.yml --tags upgrade   # explicit full upgrade
 
 ## What it verifies (read-only asserts)
 
-FQDN, USB NIC speed (must be 1000 Mb/s), autosuspend active in the running
-kernel, sleep masked, NIC MAC pinning, `pveversion` report; GPU hosts:
+FQDN, NIC speed (must be 1000 Mb/s), autosuspend active in the running
+kernel (laptops), sleep masked, NIC MAC pinning, `pveversion` report;
+passthrough hosts: every GPU function on `vfio-pci`, NIC `Wake-on: g`; GPU hosts:
 `/dev/nvidia-uvm` present + `nvidia-persistenced` active; storage: thin-pool
 profile attached + monitored, swappiness 10, trim timer active.
 

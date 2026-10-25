@@ -8,6 +8,7 @@
 # Conventions
 #   VMIDs   101-109 access/edge     110-119 storage/data
 #           120-129 observability   130-139 databases
+#           140-149 workstations (pve1, on demand)
 #           200-299 apps            300-399 tenant (DMZ)
 #   IPs     .1 gateway (hEX); MGMT .11-.13 nodes, .14 PBS, .15+ infra guests;
 #           other VLANs: .10-.49 static, .100-.199 DHCP (VLANs 30/40/50 only)
@@ -57,8 +58,9 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.11
     cluster_ip: 10.10.60.11
-    status: planned
-    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060 (on demand)
+    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060; on demand, off by design (ADR 0012)
+    # best-effort: powered off most of the time, so being down is info only.
+    monitoring: { tier: best-effort, health: "https://{ip}:8006/", health_module: http_any, logs: true }
   pve2:
     kind: node
     vlan: mgmt
@@ -124,6 +126,26 @@ hosts:
     ip: 10.10.20.21
     note: the lab's shared PostgreSQL 18, one database + role per app (ADR 0010, services/postgres)
     monitoring: { tier: standard, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical once an app depends on it
+  nats:
+    kind: lxc
+    vmid: 131
+    node: pve2 # JetStream is state
+    vlan: servers
+    ip: 10.10.20.22
+    note: the lab's shared NATS with JetStream, one account per app; apps outside VLAN 20 attach a leaf node (ADR 0016, services/nats)
+    # 8222 is NATS's own monitoring port (healthz fails without JetStream);
+    # 7777 is prometheus-nats-exporter reading it (app-nats.yml).
+    monitoring: { tier: standard, health: "http://{ip}:8222/healthz?js-enabled-only=true", metrics: [7777], logs: true }
+  valkey:
+    kind: lxc
+    vmid: 132
+    node: pve3 # a cache, nothing to keep: off pve2's CPU
+    vlan: servers
+    ip: 10.10.20.23
+    note: the lab's shared Valkey, one instance (process, port, password) per app, TLS only, no persistence (ADR 0016, services/valkey)
+    # no HTTP side: one redis_exporter per instance, 9121 upward, redis_up is
+    # the health check (app-valkey.yml)
+    monitoring: { tier: standard, metrics: [9121], logs: true }
   pbs:
     kind: lxc
     vmid: 111
@@ -136,7 +158,7 @@ hosts:
   k3s:
     kind: vm
     vmid: 300
-    node: pve2 # interim: moves to pve1 when it is built (offline migration)
+    node: pve2 # stays: pve1 is on demand, no always-on services (ADR 0012)
     vlan: dmz
     ip: 10.10.25.20
     dns: false # resolves through public resolvers (no home.arpa from the DMZ)
@@ -145,8 +167,10 @@ hosts:
     # (Kubeletto repo infra/k8s/home/monitoring.yaml): 30080 is a proxy that
     # serves core's /readyz and nothing else; 30910 is Traefik's metrics;
     # 9100 node_exporter (node-exporter.yaml, hostNetwork; tenant egress
-    # denies node IPs). All admit only the monitoring host.
-    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 9100] }
+    # denies node IPs); 30931 kube-state-metrics (kube-state-metrics.yaml:
+    # unschedulable pods, memory requests, MemoryPressure). All admit only
+    # the monitoring host.
+    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 30931, 9100] }
   k3s-worker:
     kind: vm
     vmid: 301
@@ -159,6 +183,44 @@ hosts:
     # node_exporter, for its memory: tenant requests are overcommitted
     # (Kubeletto docs/migration D9).
     monitoring: { tier: best-effort, metrics: [9100] }
+  ai:
+    kind: vm
+    vmid: 140
+    node: pve1 # the GPU node, on demand: off whenever pve1 is (ADR 0012)
+    vlan: lab # internet only: runs code from pip, model hubs and GitHub
+    ip: 10.10.30.10
+    note: AI workstation — Ubuntu 24.04, RTX 3060 by passthrough; reached via the admin gateways' route (services/ai/)
+    # best-effort: off by design most days; pve1 being down explains it.
+    # No logs: it runs untrusted code (pip, model hubs, GitHub), so like the
+    # DMZ it never pushes into MGMT (VictoriaLogs serves queries on 9428).
+    # 9835: nvidia_gpu_exporter (GPU temperature, power, clocks, VRAM;
+    # ADR 0014), scraped with the untrusted-zone limits. LLM bench lab
+    # (ADR 0019, temporary): 9100 node_exporter (per-core CPU), 8000 the
+    # engine under test (vLLM/SGLang /metrics; down while none runs or
+    # Ollama runs: TargetDown is info for best-effort, a silent record).
+    monitoring: { tier: best-effort, logs: false, metrics: [9835, 9100, 8000] }
+  hermes:
+    kind: lxc
+    vmid: 141
+    node: pve1 # on demand like ai: the bot is online while pve1 is up (ADR 0018)
+    vlan: lab # internet only: the agent runs shell commands chosen by a model
+    ip: 10.10.30.11
+    note: personal agent — Hermes Agent, Telegram gateway (services/hermes/)
+    # best-effort: off whenever pve1 is. No logs: untrusted zone (ADR 0013).
+    # No health URL or metrics: Telegram polling opens no port.
+    monitoring: { tier: best-effort, logs: false }
+
+  llm-bench:
+    kind: lxc
+    vmid: 201
+    node: pve2 # its results are backed up; pve3 gets nothing new
+    vlan: servers
+    ip: 10.10.20.40
+    note: TEMPORARY LLM serving bench client (GuideLLM, lm-eval) → ai:8000; removed after the article (ADR 0019, services/llm-bench)
+    # best-effort: a load generator, nothing depends on it. No HTTP side.
+    # No logs: it runs code from PyPI and the Hugging Face hub, and the log
+    # store's insert port also answers queries (the LAB rule, ADR 0013).
+    monitoring: { tier: best-effort, logs: false }
 
   # --- reserved ---------------------------------------------------------------
   edge:

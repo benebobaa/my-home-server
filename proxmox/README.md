@@ -5,7 +5,7 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
 
 | Node | Machine | MGMT (VLAN 10) | CLUSTER (VLAN 60) | Switch port | Status |
 | --- | --- | --- | --- | --- | --- |
-| pve1 | desktop — Ryzen 5 5600 / 32GB / RTX 3060 | 10.10.10.11 | 10.10.60.11 | P2 | being built |
+| pve1 | desktop — Ryzen 5 5600 / 32GB / RTX 3060 | 10.10.10.11 | 10.10.60.11 | P2 | configured (on demand) |
 | pve2 | Asus i3-7 laptop, 12GB + USB NIC | 10.10.10.12 | 10.10.60.12 | P3 | configured |
 | pve3 | Asus i3-7 laptop, 8GB + USB NIC | 10.10.10.13 | 10.10.60.13 | P4 | configured |
 
@@ -13,20 +13,23 @@ The 3-node cluster: a custom desktop (`pve1`) plus two Asus i3 laptops
   [`../docs/runbooks/proxmox-install.md`](../docs/runbooks/proxmox-install.md).
 - **Guests are code:** new containers/VMs are provisioned with OpenTofu
   (`opentofu/`, bpg provider) — see [`opentofu/README.md`](opentofu/README.md).
-- **Cluster:** `homelab` — pve2 + pve3 joined 2026-10-08 (corosync over
-  VLAN 60, `10.10.60.12/13`). Formation + recovery notes:
-  [`../docs/runbooks/proxmox-cluster.md`](../docs/runbooks/proxmox-cluster.md);
-  pve1 joins when built.
+- **Cluster:** `homelab` — pve2 + pve3 joined 2026-10-08, pve1 on
+  2026-10-13 (corosync over VLAN 60, `10.10.60.11/12/13`). Formation +
+  recovery notes:
+  [`../docs/runbooks/proxmox-cluster.md`](../docs/runbooks/proxmox-cluster.md).
 - Node networking: VLAN-aware bridge on the trunk NIC (design §5). Management on
   VLAN 10, cluster on VLAN 60. No HA on the USB-NIC nodes (the laptops); the
   desktop node can carry HA later.
 - Guest VLAN tags: 20 (SERVERS), 25 (DMZ), 30 (LAB).
-- `pve1` build notes: enable SVM + IOMMU in BIOS (GPU passthrough for the
-  RTX 3060 later); boot from an NVMe SSD.
-- `pve1` runs **on-demand** (~4 days/week — electricity ≈ AI workstation):
-  always-on services (edge, admin-gw, monitoring) belong on the laptops; AI
-  training/serving runs on `pve1` while it is up. Wake-on-LAN from a laptop to
-  start it remotely is planned.
+- `pve1` details: PVE 9.2, kernel 7.0.x, onboard Realtek NIC pinned as
+  `nic0`, boots from its NVMe. BIOS settings in the install runbook. The
+  RTX 3060 is bound to `vfio-pci` (Ansible `vfio` tag): it goes whole to
+  one VM, and the host has no screen.
+- `pve1` runs **on demand** ([ADR 0012](../docs/decisions/0012-pve1-on-demand-ai-workstation.md)):
+  always-on services (edge, admin-gw, monitoring, K3s) belong on the
+  laptops; the AI workstation VM (`services/ai/`) runs on `pve1` while it is
+  up. Wake it from another node:
+  [`node-ops.md`](../docs/runbooks/node-ops.md#wake-pve1).
 - GPUs: both laptops carry an NVIDIA MX130 (Maxwell, `sm_50`) — tested working
   2026-10-08 (NVIDIA 580.178.04, Secure Boot off on both). Guests get them via
   shared LXC passthrough — runbook

@@ -2,11 +2,9 @@
 # arbitrary code, so VMs, never LXCs). DMZ (VLAN 25): the server `k3s`
 # (10.10.25.20, pve2) and the worker `k3s-worker` (10.10.25.21, pve3).
 #
-# Interim on pve2 (2026-10-11): Kubeletto's rented server ends 2026-11-05 and
-# pve1 is not built yet. When pve1 joins the cluster the VM moves there
-# offline (`cpu.type = host` is fine for that; a live migration between the
-# laptops' Intel and pve1's Ryzen would not be). K3s itself is installed in a
-# later step; this file is the machine only.
+# Both stay on the laptops: pve1 runs on demand and takes no always-on
+# service (ADR 0012). K3s itself is installed in a later step; this file is
+# the machine only.
 #
 # Everything in the guest goes through the pinned root SSH to the node and
 # `qm guest exec` (the guest agent, installed by cloud-init). The VM itself
@@ -192,7 +190,7 @@ resource "proxmox_virtual_environment_vm" "k3s_worker" {
     datastore_id = "local-lvm"
     import_from  = proxmox_download_file.debian_13_cloud_pve3.id
     interface    = "scsi0"
-    size         = 30
+    size         = 36 # 30 -> 36 (2026-10-14): the build cache; pve3 thin pool 54 GB, see services/k3s/README.md
     discard      = "on"
     iothread     = true
     ssd          = true

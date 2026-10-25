@@ -1,0 +1,7 @@
+# The bench venv (/opt/bench), top-level pins; setup.sh installs torch first
+# from PyTorch's CPU index (guidellm and lm-eval import it, and the default
+# CUDA wheels add ~3 GB this container never uses: the model runs on `ai`).
+guidellm[recommended]==0.8.1
+lm-eval[api]==0.4.13
+pandas==3.1.0
+matplotlib==3.11.2

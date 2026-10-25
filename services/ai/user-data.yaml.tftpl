@@ -1,0 +1,25 @@
+#cloud-config
+# ai — the on-demand AI workstation VM (ADR 0012), first-boot config.
+# Rendered by proxmox/opentofu/ai.tf into local:snippets/ on pve1. Network
+# (static IP on VLAN 30, the hEX as resolver) comes from the Proxmox
+# cloud-init network data, not from here.
+#
+# Unlike the K3s VMs this is the operator's own machine: one login user with
+# the admin key and passwordless sudo, SSH key-only. The guest agent comes
+# first: OpenTofu provisions the rest through it (services/ai/provision.sh).
+hostname: ${hostname}
+manage_etc_hosts: true
+users:
+  - name: ${user}
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+disable_root: true
+ssh_pwauth: false
+package_update: true
+packages:
+  - qemu-guest-agent
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]

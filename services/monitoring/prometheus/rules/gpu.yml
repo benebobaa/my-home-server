@@ -1,0 +1,38 @@
+# GPU alerts — nvidia_gpu_exporter in the `ai` VM (pve1's RTX 3060; ADR 0014),
+# scraped by job service_dmz. Only the basic driver readings exist (exec
+# backend): temperature, power, clocks and the clock-event reasons. Xid error
+# counts need the exporter's NVML backend and are not collected.
+#
+# No alert on VRAM use: vLLM and SGLang pre-allocate ~90 % of VRAM by design.
+# pve1 off: no series at all, so these stay silent (its TargetDown is
+# suppressed by PveNodeDown via the node label).
+groups:
+  - name: gpu
+    rules:
+      # The RTX 3060 starts slowing itself down around 83 °C and shuts down
+      # near 93 °C. Hours at the limit mean a dusty cooler, a dead fan or a
+      # hot room, and a training run that is slower than it should be.
+      - alert: GpuHot
+        expr: max by (instance, uuid) (nvidia_smi_temperature_gpu) >= 83
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: GPU at {{ $value }} °C for 5 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#gpuhot
+
+      # Hardware slowdown: the board itself pulls the clocks down — over
+      # temperature (hw_thermal_slowdown) or the power supply asserting the
+      # power brake (hw_power_brake_slowdown, a PSU that cannot keep up). The
+      # ordinary 170 W power cap (sw_power_cap) is normal and not alerted.
+      - alert: GpuHardwareSlowdown
+        # One selector over the three flags (`a or b` would drop b wherever a
+        # has a series with the same labels, i.e. always).
+        expr: |
+          max by (instance, uuid) (
+            {__name__=~"nvidia_smi_clocks_event_reasons_hw_(slowdown|thermal_slowdown|power_brake_slowdown)"}
+          ) == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: GPU clocks forced down by hardware (thermal or power brake) for 5 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#gpuhardwareslowdown

@@ -84,7 +84,8 @@ inhibit_rules:
   # Internet down: the HTTP/DNS-to-outside alerts are symptoms of it.
   - source_matchers: ['alertname="InternetDown"']
     target_matchers: ['alertname="DnsResolverFailing"']
-  # A PVE node down explains its guests.
+  # A PVE node down explains its guests, and its own and their unreachable
+  # / scrape / UI alerts (every target carries `node`: monitoring.tf).
   - source_matchers: ['alertname="PveNodeDown"']
-    target_matchers: ['alertname="PveGuestDown"']
+    target_matchers: ['alertname=~"PveGuestDown|HostUnreachable|TargetDown|HttpProbeFailed"']
     equal: [node]

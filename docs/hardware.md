@@ -14,7 +14,7 @@ MACs are shortened to their last digits. Update this file when a part changes
 
 | Identity | Hardware | CPU | RAM | Storage | Network |
 | --- | --- | --- | --- | --- | --- |
-| `pve1` | Desktop (planned, not built) | Ryzen 5 5600 | 32 GB | not recorded | not recorded |
+| `pve1` | Desktop, ASUS PRIME B550M-A | Ryzen 5 5600, 6C/12T | 32 GB DDR4 | 500 GB NVMe | onboard GbE (RTL8111) |
 | `pve2` | ASUS VivoBook 14 X407UF | i3-7020U, 2C/4T | 12 GB DDR4 | 480 GB SSD + 1 TB HDD | USB GbE |
 | `pve3` | ASUS VivoBook 14 X407UF | i3-7020U, 2C/4T | 8 GB DDR4 | 128 GB SSD | USB GbE |
 | `hex` | MikroTik hEX RB750Gr3 r4 | MT7621, 880 MHz | 256 MB | 16 MB flash | 5× GbE |
@@ -80,11 +80,29 @@ uncorrectable, 40 °C. Its vendor attributes don't add up: 400
 44 hours. Don't trust its SMART numbers, and keep the placement rule
 (stateless or rebuildable guests only, AGENTS.md).
 
-## pve1 — desktop (planned)
+## pve1 — desktop (on-demand AI workstation)
 
-Recorded so far: AMD Ryzen 5 5600 (6 cores / 12 threads), 32 GB RAM,
-NVIDIA RTX 3060. Board, disks, NIC and PSU are not recorded yet; fill them in
-from the box when it's built. It runs on demand, not always-on.
+Built and installed 2026-10-12; role in [ADR 0012](decisions/0012-pve1-on-demand-ai-workstation.md).
+Read from the node on 2026-10-13.
+
+| Part | Detail |
+| --- | --- |
+| Board | ASUS PRIME B550M-A, serial `…300104` |
+| Firmware | BIOS 2806 (2022-10-27), UEFI only (CSM off), Secure Boot **off** (OS Type "Other OS") |
+| BIOS settings | SVM on; IOMMU on (AMD CBS → NBIO); Above 4G Decoding on; Re-Size BAR **off**; ErP Ready **off** + Power On By PCI-E **on** (Wake-on-LAN); Restore AC Power Loss = Last State (as set at install; after the [2026-10-16 power cut](incidents/2026-10-16-power-cut-pve1-stuck-off.md) pve1 did not restore, because standby power was stuck until the PSU was switched off and on; the value is still to be re-read in the BIOS); Armoury Crate download off |
+| CPU | AMD Ryzen 5 5600 (Zen 3): 6 cores / 12 threads, up to 4.47 GHz, microcode `0xa201211`. **No iGPU** |
+| RAM | 32 GB DDR4: 2 × 16 GB Samsung `M378A2K43CB1-CTD` (DIMM_A2, DIMM_B2) at 3200 MT/s. JEDEC 3200 modules: no XMP/D.O.C.P. profile, Auto already runs them at 3200 |
+| GPU | NVIDIA GeForce RTX 3060 12 GB (GA106, `10de:2503`, HDMI audio `10de:228e`), top x16 slot, PCIe 4.0 x16. IOMMU group 16 holds only its two functions. Bound to `vfio-pci` at boot for VM passthrough (ADR 0012): the host has no screen |
+| NVMe (`nvme0n1`, boot) | ADATA LEGEND 860, 500 GB, DRAM-less, serial `…284435`, fw `H251223a` |
+| NIC | Realtek RTL8111 onboard gigabit (`10ec:8168`, `r8169`), 1000 Mb/s, MAC `…:ea:e8` (`nic0`), Wake-on `g` (magic packet, armed by Ansible) |
+| OS | Proxmox VE 9.2.21, kernel 7.0.14-23-pve |
+
+NVMe layout (VG `pve`, 464 GB, 16 GB free): root 96 GB, swap 8 GB, thin pool
+`data` 337 GB. A second M.2 slot is free (chipset, PCIe 3.0): the data disk
+for models and datasets when the first fills.
+
+Health on 2026-10-13: SMART PASSED, 1 power-on hour, 0 % used, 0 media
+errors, 43 °C.
 
 ## hex — MikroTik hEX RB750Gr3
 
@@ -137,7 +155,7 @@ Tailscale through `admin-gw`.
   runs at 2133 MT/s whatever the module speed.
 - **Storage.** pve2's SSD thin pool is the tight spot (70 %, mostly
   `rescue-staging`). pve3 has an empty 2.5" SATA bay.
-- **The i3-7020U has no turbo.** CPU-heavy work belongs to pve1.
+- **The i3-7020U has no turbo.** CPU-heavy work belongs to pve1, while it is up.
 
 ## Refreshing
 

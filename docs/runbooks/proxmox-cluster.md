@@ -1,6 +1,7 @@
 # Runbook: form the Proxmox cluster (`homelab`)
 
-**When:** done once (2026-10-08) for pve2 + pve3; pve1 joins when built.
+**When:** done once (2026-10-08) for pve2 + pve3; pve1 joined 2026-10-13
+(`ansible-playbook proxmox-nodes.yml --limit pve1 --tags cluster`).
 **Needs:** nodes converged (Ansible), same PVE version, the joining node's
 root SSH key on the seed, corosync link IPs on VLAN 60 (`10.10.60.x`).
 
@@ -8,7 +9,7 @@ root SSH key on the seed, corosync link IPs on VLAN 60 (`10.10.60.x`).
 
 | | seed (first node) | joining node(s) |
 | --- | --- | --- |
-| Node | pve3 | pve2 (pve1 later) |
+| Node | pve3 | pve2, pve1 |
 | MGMT IP | 10.10.10.13 | 10.10.10.12 |
 | Corosync link0 (VLAN 60) | 10.10.60.13 | 10.10.60.12 |
 | Cluster name | `homelab` | — |
@@ -76,8 +77,8 @@ pvesh get /cluster/resources --type vm   # guests from all nodes
 - 2-node cluster: if either node is down, quorum is lost (management actions
   lock; running guests keep running). Emergency: `pvecm expected 1` on the
   remaining node; reset with `pvecm expected 2` once both are back.
-- pve1 joins as the 3rd node (same §3 command, `--link0 10.10.60.11`) — it is
-  **on-demand (~4 days/week)** by design. Quorum is a majority, so a
+- pve1 is the 3rd node (joined 2026-10-13, `--link0 10.10.60.11`) and runs
+  **on demand** by design (ADR 0012). Quorum is a majority, so a
   part-time member never hurts: while pve1 is up, any 2 of 3 nodes stay
   quorate (bonus: either laptop can be maintained); while pve1 is off, the
   two laptops must both be up (same as today). If you later want quorum that

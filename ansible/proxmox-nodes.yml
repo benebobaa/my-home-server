@@ -21,7 +21,9 @@
     admin_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
     # The lab's addresses (ADR 0007): read, never retyped here.
     lab: "{{ lookup('file', playbook_dir + '/../inventory/lab.yaml') | from_yaml }}"
-    pve_nic: nic0            # USB NIC name (pinned by the installer)
+    pve_nic: nic0            # trunk NIC name (pinned by the installer)
+    pve_mgmt_if: "vmbr0.{{ lab.vlans.mgmt.id }}"
+    pve_wol_want: "mac={{ pve_nic_mac }},bind-interface={{ pve_mgmt_if }}"
     cluster_name: homelab
     cluster_seed: 10.10.10.13
 
@@ -82,8 +84,10 @@
       loop:
         - { regexp: '^#?HandleLidSwitch=', line: 'HandleLidSwitch=ignore' }
         - { regexp: '^#?HandleLidSwitchExternalPower=', line: 'HandleLidSwitchExternalPower=ignore' }
+      when: laptop | default(false)
       tags: logind
 
+    # Every node: a server never sleeps (pve1 is powered off, not suspended).
     - name: Mask sleep/suspend targets
       ansible.builtin.systemd_service:
         name: "{{ item }}"
@@ -100,10 +104,15 @@
         path: /etc/default/grub
         regexp: '^(GRUB_CMDLINE_LINUX_DEFAULT="(?!.*usbcore\.autosuspend=-1).*)"$'
         replace: '\1 usbcore.autosuspend=-1"'
+      when: laptop | default(false)
       notify: Update grub
       tags: grub
 
     # ---------------------------------------------------------------- network
+    # wake_on_lan: udev arms the NIC for magic packets at every boot (the
+    # r8169 default is off), so an on-demand node can be woken after a
+    # clean shutdown. The BIOS side (ErP off, power on by PCI-E) is in
+    # docs/hardware.md.
     - name: Ensure NIC pinning matches the declared MAC (pve_nic_mac)
       ansible.builtin.copy:
         dest: /usr/local/lib/systemd/network/50-pmx-nic0.link
@@ -115,7 +124,35 @@
 
           [Link]
           Name=nic0
+          {% if wake_on_lan | default(false) %}
+          WakeOnLan=magic
+          {% endif %}
         mode: "0644"
+      tags: network
+
+    # Any node can wake an on-demand one (docs/runbooks/node-ops.md).
+    - name: Install wakeonlan
+      ansible.builtin.apt:
+        name: wakeonlan
+        state: present
+      tags: network
+
+    # The UI's Wake-on-LAN button (offline node → Wake-on-LAN) needs the
+    # target's MAC in its node config, else "No wake on LAN MAC address
+    # defined". The sending node's own entry picks the interface for its
+    # 255.255.255.255 broadcast, so every node gets one, bound to MGMT
+    # where the nodes sit.
+    - name: Read the Proxmox Wake-on-LAN entry
+      ansible.builtin.command: pvenode config get --property wakeonlan
+      register: pve_wol
+      changed_when: false
+      check_mode: false
+      tags: network
+
+    - name: Set the Proxmox Wake-on-LAN entry
+      ansible.builtin.command: pvenode config set --wakeonlan {{ pve_wol_want }}
+      when: "pve_wol.stdout | trim != 'wakeonlan: ' + pve_wol_want"
+      changed_when: true
       tags: network
 
     - name: Install the canonical interfaces file
@@ -278,6 +315,45 @@
       when: has_nvidia_gpu | default(false)
       tags: gpu
 
+    # ------------------------------------------------------------------ vfio
+    # The other GPU model (ADR 0012): the whole card goes to ONE VM, which runs
+    # its own NVIDIA driver and CUDA. The host never loads a GPU driver:
+    # vfio-pci claims the card (both functions: VGA + HDMI audio) at boot and
+    # the in-kernel drivers that would race it are blacklisted. The card must
+    # sit alone in its IOMMU group (pve1: group 16, checked 2026-10-13).
+    # Side effect: the host has no screen once vfio-pci binds (the 5600 has
+    # no iGPU). Console rescue: at the GRUB menu press `e` and append
+    # `module_blacklist=vfio_pci` to the linux line.
+    - name: Load the vfio modules at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/vfio.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (vfio tag).
+          vfio
+          vfio_iommu_type1
+          vfio_pci
+        mode: "0644"
+      when: vfio_pci_ids is defined
+      notify: Update initramfs
+      tags: vfio
+
+    - name: Bind the passthrough GPU to vfio-pci, keep host GPU drivers off it
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/vfio.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (vfio tag).
+          options vfio-pci ids={{ vfio_pci_ids }} disable_vga=1
+          softdep nouveau pre: vfio-pci
+          softdep nova_core pre: vfio-pci
+          softdep snd_hda_intel pre: vfio-pci
+          blacklist nouveau
+          blacklist nova_core
+          blacklist nvidiafb
+        mode: "0644"
+      when: vfio_pci_ids is defined
+      notify: Update initramfs
+      tags: vfio
+
     # --------------------------------------------------------------- storage
     # Guest disks live on LVM-thin (local-lvm = pve/data). Thin pools can be
     # over-committed; at 100% every guest on the pool freezes and can corrupt.
@@ -366,10 +442,14 @@
             [Unit]
             Description=Weekly container fstrim
 
+            # No catch-up run at boot (Persistent=false): right after a
+            # boot /etc/pve is read-only until the cluster is quorate, so
+            # pct fails (pve3, after the 2026-10-11 power cut). A missed
+            # weekly trim is harmless.
             [Timer]
             OnCalendar=Sun 03:30
             RandomizedDelaySec=30min
-            Persistent=true
+            Persistent=false
 
             [Install]
             WantedBy=timers.target
@@ -407,6 +487,51 @@
     - name: Apply swappiness now
       ansible.builtin.command: sysctl -p /etc/sysctl.d/90-homelab.conf
       when: live_swappiness.stdout | trim != '10'
+      changed_when: true
+      tags: storage
+
+    # Bind-mount sources of CT 110 `archive` (services/archive). Rescue
+    # leftovers on pve2: a thin LV and the old NTFS HDD (sda4, read-only: it
+    # holds the only copy of the original Captures). `nofail` + a short device
+    # timeout so a missing disk never blocks the host's boot.
+    - name: Declare the archive mount points in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\S+\s+{{ item.mountpoint }}\s'
+        line: "{{ item.line }}"
+      loop:
+        - mountpoint: /mnt/staging
+          line: "/dev/pve/rescue-staging /mnt/staging ext4 defaults,discard,nofail,x-systemd.device-timeout=10s 0 0"
+        - mountpoint: /mnt/e4
+          line: "UUID=285A98915A985D7E /mnt/e4 ntfs3 ro,nofail,x-systemd.device-timeout=10s 0 0"
+      loop_control:
+        label: "{{ item.mountpoint }}"
+      register: archive_fstab
+      when: inventory_hostname == 'pve2'
+      tags: storage
+
+    - name: Reload systemd so it regenerates the mount units
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: archive_fstab is changed  # noqa: no-handler
+      tags: storage
+
+    - name: Read which archive sources are mounted
+      ansible.builtin.command: mountpoint -q {{ item }}
+      loop: [/mnt/staging, /mnt/e4]
+      register: archive_mounted
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: inventory_hostname == 'pve2'
+      tags: storage
+
+    - name: Mount the archive sources that are not mounted
+      ansible.builtin.command: mount {{ item.item }}  # noqa: command-instead-of-module
+      loop: "{{ archive_mounted.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: inventory_hostname == 'pve2' and item.rc != 0
       changed_when: true
       tags: storage
 
@@ -495,6 +620,34 @@
       loop_control:
         label: "{{ item.name }}"
       tags: monitoring
+
+    # Debian's smartmon timer starts only when /dev/sd* or /dev/hd* exists
+    # (ConditionPathExistsGlob, OR-ed with the leading "|"). pve1 has NVMe only,
+    # so its SMART collector never ran by itself and HostTextfileCollectorStale
+    # fired on the one file the installer's USB disk had left behind
+    # (2026-10-14). A drop-in adds NVMe to the same OR-group; smartmon.sh
+    # already queries NVMe (`smartctl -d nvme`). Harmless where sd* exists.
+    - name: Drop-in directory of the SMART collector timer
+      ansible.builtin.file:
+        path: /etc/systemd/system/prometheus-node-exporter-smartmon.timer.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: monitoring
+
+    - name: Let the SMART collector timer also run on NVMe-only nodes
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/prometheus-node-exporter-smartmon.timer.d/nvme.conf
+        content: |
+          # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+          [Unit]
+          ConditionPathExistsGlob=|/dev/nvme*
+        owner: root
+        group: root
+        mode: "0644"
+      tags: monitoring
+      # the "Enable ... timers" task below runs daemon_reload before starting
 
     - name: Enable node_exporter and the collector timers
       ansible.builtin.systemd_service:
@@ -601,6 +754,7 @@
       ansible.builtin.assert:
         that: "'usbcore.autosuspend=-1' in cmdline.stdout"
         fail_msg: "GRUB has the fix but the kernel didn't get it — reboot pending?"
+      when: laptop | default(false)
       tags: verify
 
     # Read-only probes below use systemctl directly: the systemd module would
@@ -616,7 +770,7 @@
     - name: Assert sleep is masked
       ansible.builtin.assert:
         that: sleep_state.stdout == 'masked'
-        fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — laptops must not sleep"
+        fail_msg: "sleep.target is '{{ sleep_state.stdout }}' — nodes must not sleep"
       tags: verify
 
     - name: Read nic0 MAC
@@ -675,6 +829,42 @@
         that: persistenced_state.stdout == 'active'
         fail_msg: "nvidia-persistenced is '{{ persistenced_state.stdout }}', expected 'active'"
       when: has_nvidia_gpu | default(false)
+      tags: verify
+
+    - name: Read the passthrough GPU's drivers
+      ansible.builtin.shell: |
+        set -o pipefail
+        for id in $(echo '{{ vfio_pci_ids }}' | tr ',' ' '); do
+          lspci -nnk -d "$id" | awk -v id="$id" '/Kernel driver in use/ { print id "=" $NF }'
+        done
+      args:
+        executable: /bin/bash
+      register: vfio_state
+      changed_when: false
+      check_mode: false
+      when: vfio_pci_ids is defined
+      tags: verify
+
+    - name: Assert vfio-pci owns every passthrough function
+      ansible.builtin.assert:
+        that: vfio_state.stdout_lines | sort == vfio_pci_ids.split(',') | map('regex_replace', '$', '=vfio-pci') | sort
+        fail_msg: "GPU drivers: {{ vfio_state.stdout_lines }} — reboot pending after the vfio tag?"
+      when: vfio_pci_ids is defined
+      tags: verify
+
+    - name: Read Wake-on-LAN state
+      ansible.builtin.command: "ethtool {{ pve_nic }}"
+      register: wol_state
+      changed_when: false
+      check_mode: false
+      when: wake_on_lan | default(false)
+      tags: verify
+
+    - name: Assert the NIC is armed for magic packets
+      ansible.builtin.assert:
+        that: wol_state.stdout is search('\n\s*Wake-on:\s*g')
+        fail_msg: "{{ pve_nic }} Wake-on is not 'g' — reboot pending after the network tag?"
+      when: wake_on_lan | default(false)
       tags: verify
 
     - name: Read storage safety state
@@ -764,6 +954,10 @@
 
     - name: Update grub
       ansible.builtin.command: update-grub
+      changed_when: true
+
+    - name: Update initramfs
+      ansible.builtin.command: update-initramfs -u -k all
       changed_when: true
 
     - name: Warn reboot for network

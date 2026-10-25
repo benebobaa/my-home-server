@@ -28,17 +28,24 @@ tailscale set --auto-update
 printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' > /etc/sysctl.d/99-admin-gw.conf
 sysctl --system >/dev/null 2>&1 || true
 
+# The routes this gateway advertises (both gateways the same). New ones need
+# approving once in the Tailscale admin console. 10.10.30.10/32 is `ai`
+# (inventory/lab.yaml): the operator's only way in, since that VM runs
+# untrusted code and stays off the tailnet (ADR 0012).
+ROUTES=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32
+
 if tailscale status >/dev/null 2>&1; then
-  echo "tailscale: already up"
+  tailscale set --advertise-routes="$ROUTES"
+  echo "tailscale: up, advertising $ROUTES"
 else
   cat <<'EOF'
 
 admin-gw bootstrap complete. One interactive step remains (account-level):
 
   tailscale up --hostname=admin-gw --accept-dns=false \
-    --advertise-routes=10.10.10.0/24,192.168.99.0/29
+    --advertise-routes=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32
 
-Then approve the two subnet routes in the Tailscale admin console and
+Then approve the subnet routes in the Tailscale admin console and
 disable key expiry for the device. Details: services/admin-gw/README.md
 EOF
 fi

@@ -40,6 +40,8 @@ routers with the same routes: `admin-gw` (CT 101 on pve3) and `admin-gw2`
 | Target | Address |
 | --- | --- |
 | pve2 / pve3 (SSH `root@`, UI `:8006`) | `10.10.10.12` / `10.10.10.13` |
+| pve1 (on demand: often off; wake it first, `docs/runbooks/node-ops.md`) | `10.10.10.11` |
+| `ai` VM on pve1 (SSH `bene@`, via the admin gateways' route) | `10.10.30.10` |
 | hEX REST (what Tofu uses) | `https://192.168.99.1/rest/<path>` |
 | hEX SSH / WinBox | `10.10.10.1` (port 22 / 8291) |
 | Switch UI | `http://192.168.99.2` |
@@ -54,7 +56,8 @@ VLANs and static IPs: `docs/design/network-design.md` §2.
 mise install
 make check   # static: tofu fmt/validate, tflint, shellcheck, yamllint,
              # ansible-lint, promtool/amtool, gitleaks — CI runs exactly this
-make drift   # both tofu plans + Ansible --check (needs the age key + lab)
+make drift   # both tofu plans + Ansible --check (needs the age key + lab;
+             # pve1 is often off: wake it, or expect it `unreachable`)
 
 # OpenTofu — secrets come from SOPS, decrypted into the process env only
 cd network/routeros   # or network/cloudflare, proxmox/opentofu
@@ -87,7 +90,8 @@ matters.
    management path. ether3 is the fallback if access breaks.
 3. Change the code, review the plan or diff, apply.
 4. **Verify against reality.** Done means `No changes` from both Tofu stacks,
-   `changed=0 failed=0` from a full Ansible `--check`, and the live effect
+   `changed=0 failed=0` from a full Ansible `--check` (pve1 included: wake
+   it, or `--limit '!pve1'` and say so), and the live effect
    observed directly (the effective value, a test run, a real restore).
    Anything that must survive a boot is proven by a **cold reboot**: live
    checks once missed a `/dev/nvidia-uvm` that only existed because a CUDA
@@ -110,8 +114,11 @@ matters.
   them one at a time.
 - **Placement**: stateful guests (databases, monitoring data, PBS primary) go
   on pve2. pve3 has a no-name SSD and gets only stateless or rebuildable
-  guests. pve1 (desktop, RTX 3060) is not built yet and will run on demand,
-  never always-on services.
+  guests. pve1 (desktop, RTX 3060) runs on demand (off most days, woken by
+  Wake-on-LAN, `docs/runbooks/node-ops.md`) and never hosts always-on
+  services; its GPU goes whole to the `ai` VM (ADR 0012). The PVE API
+  cannot read pve1 while it is off, so guests there are root scripts
+  (`services/ai/`), not provider resources.
 - Unattended apt on hosts: pass `-o Dpkg::Options::=--force-confold`. Some
   conffiles carry local config (`/etc/dkms/framework.conf`), and a conffile
   prompt aborts non-interactive runs.
@@ -149,7 +156,8 @@ Reach for the runbook before acting on its area: GPU passthrough to LXC
 cluster join/recovery (`proxmox-cluster.md`), node install
 (`proxmox-install.md`), power operations (`node-ops.md`), router/switch
 bootstrap (`hex-bootstrap.md`, `switch-bootstrap.md`), what an alert means
-(`alerts.md`), restoring from backup (`backup-restore.md`).
+(`alerts.md`), restoring from backup (`backup-restore.md`), moving Kubeletto home
+(`kubeletto-cutover.md`, inventory in `kubeletto-migration.md`).
 
 ## Working with the operator
 

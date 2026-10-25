@@ -114,8 +114,14 @@ stopping and configuring guests, and backups, are locked.
 in an emergency, on the survivor: `pvecm expected 1`.
 
 ### PveNodeDown
-**Meaning:** a node is offline in the cluster.
+**Meaning:** a node is offline in the cluster. Severity follows the node's
+tier: pve2/pve3 are critical; pve1 is best-effort and is off by design
+(ADR 0012), so for it this is a silent note, not a fault. While it fires,
+the node's own and its guests' `HostUnreachable`, `TargetDown`,
+`HttpProbeFailed` and `PveGuestDown` are suppressed.
 **Fix:** as `HostUnreachable` for that node; then wait for `Quorate: Yes`.
+For pve1: nothing, unless you meant it to be up — wake it
+([node-ops](node-ops.md#wake-pve1)).
 
 ### PveGuestDown
 **Meaning:** a guest with `onboot=1` is not running.
@@ -161,6 +167,97 @@ Check `kubectl top pods -A --sort-by=memory` and
 nothing to restart — find the app that grew. Lasting fix: the D9 growth
 path (a bigger or second worker), not raising requests.
 
+### K8sPodUnschedulable
+**Meaning:** the scheduler of the Kubeletto cluster (`k3s`, `k3s-worker`)
+refused a pod for 5 min: no node has room. A tenant app or a build cannot
+start. Scale-from-zero Pending (image pull, seconds) does not count: only a
+pod the scheduler marked unschedulable does.
+**Check:** `kubectl get pods -A --field-selector status.phase=Pending`, then
+`kubectl describe pod -n <ns> <pod>` (Events: `Insufficient memory` or a
+taint/selector mismatch). Through VM 300's guest agent, as in
+`services/kubeletto/apply.sh` (the API is not reachable from the LAN).
+**Fix:** `Insufficient memory` is D9 (Kubeletto `docs/migration`): requests
+are overcommitted on the 4 GB worker. See also K8sNodeMemoryRequestsHigh.
+Find what holds the reservation (`kubectl describe node k3s-worker`,
+Allocated resources); the lasting fix is the growth path (a bigger or second
+worker), not raising limits. A selector/taint cause means a platform pod
+lost its `control-plane` nodeSelector or toleration: platform pods must
+carry both (they only reach Postgres from `k3s`).
+**Background:** on 2026-10-11 the rented server sat at 99 % memory requests,
+tenant pods went Pending and 17 services were deleted by the crash-loop
+suspender (`docs/incidents/2026-10-11-kubeletto-prod-ksvc-deletions.md`). At
+home that suspender is log-only (D5); the tenant outage remains.
+
+### K8sNodeMemoryRequestsHigh
+**Meaning:** pods on a node reserve over 90 % of its allocatable memory
+(sum of memory requests of Running and scheduled Pending pods) for 15 min.
+Free RAM can look fine: the scheduler counts requests, not use. The next
+cold start or build may not fit; it is the warning before
+K8sPodUnschedulable.
+**Check:** `kubectl describe node k3s-worker` (Allocated resources),
+`kubectl top pods -A --sort-by=memory` for real use against requests.
+**Fix:** Kubeletto's home request shares are already low (memory 15 %,
+builds 250m/512Mi, queue-proxy 32Mi: Kubeletto `e8f37aee`). Nothing to
+restart. If tenants really grew, the growth path is D9: 16 GB SODIMM for
+pve3, or a second worker on pve2 once CT 110 is gone. pve1 is not an option
+(on demand, ADR 0012).
+
+### K8sNodeMemoryPressure
+**Meaning:** the kubelet reports `MemoryPressure=true` on a node for 2 min:
+it is short of memory and evicts pods (BestEffort first, then those over
+their request). Tenant apps are being killed.
+**Check:** `kubectl describe node <node>` (Conditions, Events: `Evicted`,
+`EvictionThresholdMet`), `kubectl get pods -A | grep Evicted`, and
+`free -m` in the VM through the guest agent.
+**Fix:** find what grew (`kubectl top pods -A --sort-by=memory`); a runaway
+tenant is stopped by suspending the tenant
+(`docs/runbooks/kubeletto-migration.md`, "Suspending a tenant"), not by
+restarting the node. The evicted pods are recreated by Knative on demand.
+Lasting fix: D9.
+
+### KubelettoPublicPathDown
+**Meaning:** from the internet (the monitoring host, through Cloudflare),
+`api.kubeletto.com/healthz` is not 200 (`instance=kubeletto-api`), or the
+registry's token endpoint `/v1/registry/auth` does not answer core's own 401
+JSON (`kubeletto-registry-auth`), for 5 min. Customers see it: the console
+and CLI fail, and new image pulls of platform-built apps fail.
+**Check:** `probe_http_status_code{job="blackbox_public"}`; by hand:
+`curl -si https://api.kubeletto.com/healthz`. A Cloudflare 52x page: the
+tunnel or cloudflared (`k3s kubectl -n cloudflared get pods`); a 404 or a
+foreign page: the DNS record (`network/cloudflare/flip.sh forward` dry run
+shows where the three records point); a timeout: Traefik or core
+(`HttpProbeFailed` on k3s fires too if core is down).
+**Fix:** by cause; the DNS records are code (`network/cloudflare`).
+
+### K8sPlatformPodNotReady
+**Meaning:** a platform pod on the K3s cluster (core, NATS, Valkey, the
+registry, Traefik, Kourier, Knative, cloudflared, logs, kube-system; never a
+tenant `kl-*` or build pod) has run for 10 min without passing its readiness
+probe. Deploys, builds or traffic through that component fail.
+**Check:** `qm guest exec 300 -- k3s kubectl -n <namespace> describe pod <pod>`
+(Events, Readiness), and its logs. The registry: pushes and pulls; NATS:
+core's event flow; cloudflared: every public request.
+**Fix:** the component's own problem (its logs say which); `kubectl -n <ns>
+rollout restart deploy/<name>` once the cause is gone.
+
+### K8sPlatformPodWaiting
+**Meaning:** a platform container cannot start for 10 min: `CrashLoopBackOff`,
+`ImagePullBackOff`/`ErrImagePull` (registry or Docker Hub unreachable, a
+removed tag), or `CreateContainerConfigError` (a Secret or ConfigMap missing,
+e.g. after a `secrets.sh` run).
+**Check:** the `reason` label; `kubectl -n <ns> describe pod <pod>`; for a
+crash loop `kubectl -n <ns> logs <pod> --previous`.
+**Fix:** by reason: restore the missing object (`services/kubeletto/secrets.sh`),
+the image (pin, registry), or the crash (logs).
+
+### K8sPlatformPodRestarting
+**Meaning:** a platform container restarted more than twice in 30 min (a
+node reboot restarts each once). Often OOM (limit too small) or a failing
+liveness probe.
+**Check:** `kubectl -n <ns> describe pod <pod>` (Last State: `OOMKilled`?),
+`logs --previous`.
+**Fix:** the cause; a memory limit in the Kubeletto home overlay if it is OOM.
+
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.
@@ -202,15 +299,26 @@ replacement.
 **Fix:** airflow (laptop lid, dust). Physical: operator.
 
 ### HostCpuHot
-**Meaning:** CPU package above 90 °C for 10 min.
-**Check:** what is using the CPU (`top`); a transcode or build?
-**Fix:** airflow, or limit the guest's cores.
+**Meaning:** CPU package above 90 °C for 10 min, on any Proxmox node: Intel's
+`coretemp` (pve2, pve3) or AMD's `k10temp` (pve1), chosen by hwmon chip name
+(NVMe and ACPI sensors do not count).
+**Check:** what is using the CPU (`top`); a transcode, a build, or on pve1 the
+GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
+(`services/ai/README.md`), so a sustained 90 means more than that test did.
+**Fix:** airflow, or limit the guest's cores. The Ryzen throttles at 95 °C.
 
 ### HostTextfileCollectorStale
 **Meaning:** the SMART or thin-pool collector has not written for over 1 h:
 the disk and pool alerts above are blind.
 **Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
 **Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
+**Known cause (pve1, found 2026-10-14):** Debian's SMART timer runs only when
+`/dev/sd*` or `/dev/hd*` exists, and pve1 has NVMe only: the timer never fired
+by itself, and the alert came from the one file the installer's USB disk left.
+A drop-in (`prometheus-node-exporter-smartmon.timer.d/nvme.conf`, Ansible
+`monitoring` tag) adds `/dev/nvme*`. Verify on a node: `systemctl cat
+prometheus-node-exporter-smartmon.timer | grep nvme` and the age of
+`/var/lib/prometheus/node-exporter/smartmon.prom` is under 15 min.
 
 ### HostSystemdUnitFailed
 **Meaning:** a systemd unit is in `failed` state for 10 min.
@@ -227,6 +335,34 @@ all suffer.
 **Meaning:** a node rebooted in the last 15 min. Info only.
 **Check:** expected (maintenance)? If not, `journalctl -b -1 -n 50` for the
 reason, and `HostOnBattery` for a power cut.
+
+## GPU (pve1's RTX 3060, in the `ai` VM)
+
+Metrics come from nvidia_gpu_exporter in `ai` (`:9835`, ADR 0014); the
+**Nvidia GPU Metrics** dashboard (Grafana → Homelab) shows them. While pve1
+is off there is no data and nothing fires. Live view: `ssh ai nvtop`.
+
+### GpuHot
+**Meaning:** the GPU at 83 °C or more for 5 min. The card slows itself down
+from about 83 °C and shuts down near 93 °C, so long runs get slower.
+**Check:** `ssh ai nvidia-smi` (temperature, fan %, power); what is running;
+the dashboard's temperature and fan history.
+**Fix:** airflow: dust in the GPU cooler or case filters, a stopped fan, a
+hot room, the PC's side against a wall. Physical: operator. Meanwhile a
+lower power limit cools it at a small speed cost:
+`ssh ai sudo nvidia-smi -pl 140` (resets at boot).
+
+### GpuHardwareSlowdown
+**Meaning:** the board forced the GPU clocks down for 5 min: over
+temperature (`hw_thermal_slowdown`) or the power supply asserting the power
+brake (`hw_power_brake_slowdown`). The normal 170 W power cap does not fire
+this.
+**Check:** the dashboard's clock-event reasons panel: thermal or power brake?
+`ssh ai nvidia-smi -q -d PERFORMANCE`.
+**Fix:** thermal → as `GpuHot`. Power brake → the PSU (model not recorded
+yet, `docs/hardware.md`) or its PCIe power cable cannot keep up: check the
+8-pin connector is seated, use a dedicated cable from the PSU, and record
+the PSU model; until then `nvidia-smi -pl 140` lowers the draw.
 
 ## The monitoring stack itself
 
@@ -301,3 +437,57 @@ New connections are refused soon.
 **Fix:** usually an app leaking connections or a too-large pool: fix the
 app's pool size. Raise `max_connections` (`setup.sh`) only with memory to
 match.
+
+## NATS (CT 131)
+
+NATS itself down, or up without JetStream, is `HttpProbeFailed` on
+`http://10.10.20.22:8222/healthz?js-enabled-only=true`: check
+`pct exec 131 -- systemctl status nats` and VictoriaLogs
+`_stream:{_HOSTNAME="nats"}`; fix with `systemctl start nats` (a config error
+is in the journal: `nats-server -c /etc/nats/nats.conf -t` tests it).
+
+### NatsAccountStorageHigh
+**Meaning:** an app's account stores more than 80 % of its JetStream
+`max_file` (`local.nats_accounts` in `proxmox/opentofu/nats.tf`) for 30 min.
+Real bytes, not the streams' reservations. At 100 % its publishes are refused.
+**Check:** which stream grew: `curl -s 'http://10.10.20.22:8222/jsz?accounts=true&streams=true'`
+from the CT, or `jetstream_stream_total_bytes` in Grafana.
+**Fix:** usually the app's own retention (a stream without `max_age` or
+`max_bytes`, a consumer that never acks). Raise `max_file` in `nats.tf` only
+if the growth is real, within the server's 10 GB and the CT disk.
+
+### NatsConsumerBacklog
+**Meaning:** a durable consumer has more than 1000 messages pending for
+15 min: its app stopped consuming.
+**Check:** the labels name the account, stream and consumer; then the app's
+logs (Kubeletto: core's, in VictoriaLogs).
+**Fix:** restart or repair the consumer's app. A poison message that is
+redelivered forever goes to the app's dead-letter stream if it has one.
+
+### NatsDiskFilling
+**Meaning:** CT 131's root disk (the JetStream file store) is over 80 %
+full.
+**Check:** `du -sh /var/lib/nats/jetstream/*` in the CT (one directory per
+account).
+**Fix:** as `NatsAccountStorageHigh`; or grow `disk_gb` in `nats.tf`
+(in place, online).
+
+## Valkey (CT 132)
+
+### ValkeyDown
+**Meaning:** an instance's exporter cannot reach it (`redis_up 0`) for
+2 min; its app has no cache, locks or rate limits (Kubeletto's core also
+refuses to start without it). Severity from the tier.
+**Check:** `pct exec 132 -- systemctl status valkey-server@<app>` (on pve3);
+VictoriaLogs `_stream:{_HOSTNAME="valkey"}`.
+**Fix:** `systemctl restart valkey-server@<app>`. It holds no data, so a
+rebuild of the CT (`tofu apply -replace=module.valkey...`) is always safe.
+
+### ValkeyMemoryFull
+**Meaning:** an instance is above 95 % of its `maxmemory` for 15 min. With a
+`volatile-*` policy, keys without a TTL are never evicted: once they fill
+the cap, writes fail with `OOM command not allowed`.
+**Check:** `INFO memory` and `INFO keyspace` on the instance (expires vs
+keys: many keys without a TTL is an app bug).
+**Fix:** the app's TTLs; or raise `maxmemory` in `local.valkey_instances`
+(`proxmox/opentofu/valkey.tf`) within the CT's 256 MB.

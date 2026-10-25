@@ -62,6 +62,7 @@ ansible-lint:
 # The same checks setup.sh / secrets.sh run in the CT before a reload.
 monitoring-config:
 	$(X) promtool check rules $(RULES)
+	$(X) promtool test rules services/monitoring/prometheus/tests/*.test.yml
 	$(X) promtool check config --syntax-only services/monitoring/prometheus/prometheus.yml
 	sed -e 's/__TELEGRAM_CHAT_ID__/1/' \
 	    -e 's|/etc/prometheus/alertmanager-templates/|$(CURDIR)/services/monitoring/alertmanager/|' \

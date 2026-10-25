@@ -1,0 +1,29 @@
+# The shared Valkey — CT 132 `valkey` (services/valkey, ADR 0016), one
+# instance per app, each with its own redis_exporter scraped through the
+# `service` job (metrics: [9121, …] in lab.yaml). Valkey has no HTTP side:
+# the exporter's redis_up is the health check; the exporter itself down is
+# TargetDown.
+groups:
+  - name: app-valkey
+    rules:
+      # Severity from the host's tier in lab.yaml (ADR 0008).
+      - alert: ValkeyDown
+        expr: redis_up{job="service"} == 0
+        for: 2m
+        labels:
+          severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
+        annotations:
+          summary: "{{ $labels.instance }}: a Valkey instance does not answer its exporter"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeydown
+
+      # Full is normal for a cache that evicts; with volatile-* policies it is
+      # not: when the keys without a TTL fill maxmemory, writes fail with OOM.
+      - alert: ValkeyMemoryFull
+        expr: |
+          redis_memory_used_bytes{job="service"}
+            / (redis_memory_max_bytes{job="service"} > 0) > 0.95
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: a Valkey instance is at {{ $value | humanizePercentage }} of its maxmemory"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeymemoryfull

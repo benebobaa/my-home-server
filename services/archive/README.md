@@ -26,8 +26,7 @@ extracted trees (68,804 files before and after):
 | `irene/14 IRENE PURI KUMALA (laptop Documents copy)` | C: `Users/ASUS/Documents/14 IRENE PURI KUMALA` (likely duplicate, dedupe later) |
 | `irene/A LESSON IRENE MUSIC` | E: (`sda4`) |
 | `irene/zoom-recordings` | mp1 → pve2 HDD `/mnt/e4/_captures-30fps`: `Captures` re-encoded (below) |
-| `bene/old-laptop C-drive`, `bene/old-laptop D-drive` | failed pve3 HDD `sda3` / `sda4`, rescued ([disk-rescue](../../docs/runbooks/disk-rescue.md)) |
-| `bene/BenediktusMUKTI`, `bene/asus-laptop bene` | E: `sda5` / `sda4` |
+| `bene/` | empty: the operator deleted its four folders (old-laptop C-drive and D-drive, BenediktusMUKTI, asus-laptop bene; 39 GB) on 2026-10-25 after checking he no longer needs them. The login `bene` stays |
 | `clara/*` | C: Documents (MATERI D3 CLARA, MATERI CLARA P, AKREDITASI 2018/2020, SPO TB PDF, MATERI SEMINAR TB DAY 2019); E: `sda4` (RPL 2021, BAHAN PPS TB, LOGBOOK, 11.SERTIFIKAT, LAMPIRAN/TOR/PP PN docs, HEALING GARDEN); OneDrive RPL 2021 copy |
 | `family/asus-laptop user files` | the rest of C: `Users/ASUS` (Pictures, Videos, Music, Downloads, Desktop, …) |
 | `family/asus-laptop public files`, `family/asus-laptop E-drive (rest)`, `family/asus-laptop E5-drive (rest)` | remaining C: `Users/Public`, E: `sda4`, E: `sda5` |
@@ -64,16 +63,20 @@ a downloaded PDF's sha256 matches the source, video range requests return 206.
 The tailnet ACL is the default allow-all (see `services/admin-gw/README.md`).
 If it is tightened, keep shared users → `archive:443` allowed.
 
-## Not boot-safe yet
+## Boot safety
 
-`start_on_boot = false`: `/mnt/staging` and `/mnt/e4` are mounted by hand
-(rescue leftovers, not in fstab). This goes away when the archive moves to a
-ZFS pool on the HDD. After a pve2 reboot (done this way 2026-10-09):
+`start_on_boot = false`. The sources of the two bind mounts (`/mnt/staging` =
+thin LV `pve/rescue-staging`, `/mnt/e4` = pve2 HDD sda4, NTFS, read-only) are in
+pve2's fstab with `nofail` since 2026-10-15 (Ansible, `storage` tag), after a
+pve2 reboot left them unmounted and CT 110 failed in `lxc.hook.pre-start`
+("Script exited with status 2": the source directory was empty or missing).
+That boot path is not yet proven by a cold reboot; flip `start_on_boot` after
+it is, or when the archive moves to a ZFS pool on the HDD. If the mounts are
+ever missing again:
 
 ```sh
 ssh root@10.10.10.12
-mount -o discard /dev/pve/rescue-staging /mnt/staging
-mount -t ntfs3 -o ro UUID=285A98915A985D7E /mnt/e4   # pve2 HDD sda4, read-only
+mount /mnt/staging && mount /mnt/e4   # fstab entries
 pct start 110
 ```
 

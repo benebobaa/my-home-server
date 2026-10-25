@@ -27,8 +27,20 @@ locals {
   # --- scrape targets, generated from the `monitoring:` blocks in lab.yaml ----
   # (ADR 0008). One file_sd file per job; Prometheus re-reads them on change,
   # so adding a host is a targets push, not a setup run. Every target carries
-  # `instance` (the inventory name) and `tier` (drives alert severity).
+  # `instance` (the inventory name) and `tier` (drives alert severity), and
+  # `node` where it has one (the Proxmox node it runs on, or itself for a
+  # node): a node that is down then explains its own and its guests' alerts
+  # (Alertmanager inhibition), which keeps an on-demand node quiet (ADR 0012).
   watched = { for n, h in local.host : n => h if h.status == "live" && h.monitoring.enabled }
+  # Zones that run untrusted code (ADR 0013, 0014): the DMZ (Kubeletto
+  # tenants) and the LAB (the `ai` workstation: pip, model hubs, GitHub).
+  untrusted_vlans = ["dmz", "lab"]
+  target_labels = {
+    for n, h in local.watched : n => merge(
+      { instance = n, tier = h.monitoring.tier },
+      h.kind == "node" ? { node = n } : h.node != null ? { node = h.node } : {},
+    )
+  }
   # The node that hosts monitoring serves the cluster-wide PVE series; the
   # others only their node config (otherwise every series is doubled).
   pve_cluster_node = local.host.monitoring.node
@@ -36,33 +48,35 @@ locals {
   scrape_targets = {
     icmp = [for n, h in local.watched : {
       targets = [h.ip]
-      labels  = { instance = n, tier = h.monitoring.tier }
+      labels  = local.target_labels[n]
     }]
-    # The DMZ runs tenant code, so its answers are untrusted: its health URLs
+    # Untrusted zones (DMZ, LAB) give untrusted answers: their health URLs
     # use the http_dmz module (no redirects, capped body — a redirect would
-    # turn the probe into a request into MGMT) and its metrics go to the
-    # service_dmz job (sample, label and body limits).
+    # turn the probe into a request into MGMT) and their metrics go to the
+    # service_dmz job (sample, label and body limits). The names say "dmz"
+    # for history: alert rules match on job="service_dmz".
     http = [for n, h in local.watched : {
       targets = [h.monitoring.health]
-      labels = {
-        instance       = n
-        tier           = h.monitoring.tier
-        __param_module = h.vlan == "dmz" ? "http_dmz" : h.monitoring.health_module
-      }
+      labels = merge(local.target_labels[n], {
+        __param_module = contains(local.untrusted_vlans, h.vlan) ? "http_dmz" : h.monitoring.health_module
+      })
     } if h.monitoring.health != null]
     service = [for n, h in local.watched : {
       targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
-      labels  = { instance = n, service = n, tier = h.monitoring.tier }
-    } if length(h.monitoring.metrics) > 0 && h.vlan != "dmz"]
+      labels  = merge(local.target_labels[n], { service = n })
+    } if length(h.monitoring.metrics) > 0 && !contains(local.untrusted_vlans, h.vlan)]
     service_dmz = [for n, h in local.watched : {
       targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
-      labels  = { instance = n, service = n, tier = h.monitoring.tier }
-    } if length(h.monitoring.metrics) > 0 && h.vlan == "dmz"]
+      labels  = merge(local.target_labels[n], { service = n })
+    } if length(h.monitoring.metrics) > 0 && contains(local.untrusted_vlans, h.vlan)]
     # Proxmox nodes: node_exporter (Ansible `monitoring` tag) + the PVE API.
     node = [for n, h in local.watched : {
       targets = ["${h.ip}:9100"]
-      labels  = { instance = n, tier = h.monitoring.tier }
+      labels  = local.target_labels[n]
     } if h.kind == "node"]
+    # No `node` target label here: the exporter's own `node` (where a guest
+    # runs) must survive; a target label would rename it `exported_node`.
+    # Its TargetDown is still explained by HostUnreachable (same instance).
     pve = [for n, h in local.watched : {
       targets = [h.ip]
       labels = {

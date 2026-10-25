@@ -171,7 +171,7 @@ add chain=forward action=drop comment="default drop"
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | TRUSTED | yes | yes | yes | yes | n/a | yes | yes |
 | MGMT | n/a | no | no | no | no | no | yes |
-| SERVERS | no | n/a | no | no | no | no | yes |
+| SERVERS | no | n/a | no | exact pinholes | no | no | yes |
 | DMZ | no | exact pinholes | n/a | no | no | no | capped, filtered |
 | LAB | no | no | no | n/a | no | no | yes |
 | IOT | no | no | no | no | no | n/a | yes |
@@ -195,6 +195,12 @@ public IP. So, beyond the table above:
   (source, destination, port). First: K3s VM `10.10.25.20` → Postgres
   `10.10.20.21:5432` (Postgres live since 2026-10-10, ADR 0010; the K3s VM — VM 300 — since 2026-10-11, verified from inside: only this pinhole and public egress). The earlier generic
   `dmz-backends` list rule (443/8080) is gone.
+
+- **SERVERS → LAB, temporary (ADR 0019).** One exact pinhole for the LLM
+  bench lab: `llm-bench` `10.10.20.40` → `ai` `10.10.30.10:8000` (rule
+  `bench lab: llm-bench to ai engine API`). Nothing in the LAB opens the
+  other way. `ai` also has a disabled kill switch to the WAN (`block ai
+  internet during runs`, flipped by hand). Both go at the lab's teardown.
 
 - **Anti-spoofing.** Allow rules trust source addresses, so the hEX runs
   strict reverse-path filtering (`/ip settings rp-filter=strict`): a packet
@@ -318,6 +324,7 @@ backend home_https
 - **Resilience:** a small UPS for ONT, hEX, switch and nodes is worth it for power dips.
 - **Monitoring:** Prometheus + Alertmanager + Grafana in CT 120 on VLAN 10 ([ADR 0006](../decisions/0006-monitoring-stack.md), `services/monitoring/`). Alerts go to Telegram, routed by severity, and a healthchecks.io dead-man's switch fires when home goes dark. Every host declares how it is watched in `inventory/lab.yaml`, and targets and firewall rules are generated from that ([ADR 0008](../decisions/0008-observability-standard.md), [standard](../standards/observability.md)).
 - **Database:** one shared PostgreSQL 18 in CT 130 `postgres` on VLAN 20, a database + role per app ([ADR 0010](../decisions/0010-shared-postgres-and-app-standard.md), `services/postgres/`). Apps reach it on the same VLAN; nothing else does except through an exact pinhole.
+- **Messaging and cache:** shared NATS with JetStream in CT 131 `nats` (`10.10.20.22`) and Valkey in CT 132 `valkey` (`10.10.20.23`, pve3) on VLAN 20, an account / an instance per app ([ADR 0016](../decisions/0016-shared-nats-and-valkey.md)). Same rule: VLAN 20 directly, anything else through an exact pinhole (an app outside VLAN 20 attaches a NATS leaf node on 7422).
 - **Logs:** VictoriaLogs in CT 121 `logs` on VLAN 10 (`services/logs/`). Nodes and containers ship their journal; the hEX sends remote syslog (UDP 5514). Still to add: an external check of the public tunnel once it exists.
 
 ## 8. Build order and rollback
@@ -350,7 +357,7 @@ backend home_https
 - Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy as code still to do.
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - Role of the 8GB laptop (pve3: full member vs quorum-only). PBS now runs there (ADR 0009); a disk in its empty bay would give the datastore room to grow.
-- Wake-on-LAN for `pve1` (magic packet sent from an always-on laptop) so the on-demand AI node can boot remotely.
+- ~~Wake-on-LAN for `pve1`.~~ Done 2026-10-13: magic packet from any node on VLAN 10 (`docs/runbooks/node-ops.md`, ADR 0012).
 - VPS provider and region (only if an ADR 0004 trigger fires). If the VPS becomes the DMZ's egress exit, that needs policy routing, and `rp-filter=strict` does not work with routing tables: switch to `loose` and keep the per-interface pins on the accepts.
 - ~~DMZ tenants can resolve `home.arpa` names through the hEX.~~ Done 2026-10-10: the input chain drops DNS from `vlan25-dmz` ahead of the LAN accepts; DMZ guests use public resolvers. The DMZ is also out of `NOT-WAN` (no MAC-WinBox/MAC-Telnet/neighbor discovery from tenants).
 - The `dmz-smtp` / `dmz-private` log rules would flood the hEX's 1000-line memory log under a tenant scan, and cost CPU on the MIPS. Remote syslog is live (ADR 0008), so the lines are kept off-box; rate-limiting the log rules is still open.

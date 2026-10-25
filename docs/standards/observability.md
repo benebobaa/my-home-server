@@ -32,8 +32,8 @@ Or `monitoring: none`, with the reason in `note`.
 | --- | --- |
 | `tier` | **critical**: down = something important is broken now, page any hour. **standard**: should work; a warning, held overnight. **best-effort**: info only (no sound). |
 | `health` | An HTTP endpoint that answers **2xx only when the app works** (its database reachable, etc.), cheaply, without auth. UIs that answer 401 or a redirect: add `health_module: http_any`. No HTTP side (a database): leave it out and alert on the exporter instead. |
-| `metrics` | Only if the app already serves Prometheus `/metrics`. Don't add an exporter just for this: CPU, memory, disk and network per guest come from the Proxmox API for free. **Exception: databases get an exporter** (ADR 0010): they have no HTTP health URL, and their failures are invisible from the Proxmox API. Its up-metric (`pg_up`) is then the health check, in an app alert. |
-| `logs` | `true` for every guest that runs systemd. **Not allowed in the DMZ**: the DMZ never pushes into MGMT. |
+| `metrics` | Only if the app already serves Prometheus `/metrics`. Don't add an exporter just for this: CPU, memory, disk and network per guest come from the Proxmox API for free. **Exceptions, for what the Proxmox API cannot see:** databases get an exporter (ADR 0010): they have no HTTP health URL, and their failures are invisible from outside; its up-metric (`pg_up`) is then the health check, in an app alert. A guest with a passed-through GPU gets `nvidia_gpu_exporter` (ADR 0014): temperature, power, clocks and VRAM, basic driver readings only (no profiling counters). Temporary: `ai` also runs node_exporter while the LLM bench lab exists (ADR 0019). Hosts in an untrusted zone (DMZ, LAB) are scraped with limits (job `service_dmz`). |
+| `logs` | `true` for every guest that runs systemd. **Not allowed in an untrusted zone** (DMZ, LAB: ADR 0008, 0013): those never push into MGMT. `make check` refuses it. |
 
 ## 2. What the app must do
 

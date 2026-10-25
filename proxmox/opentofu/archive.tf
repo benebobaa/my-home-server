@@ -31,10 +31,14 @@ resource "proxmox_virtual_environment_container" "archive" {
   unprivileged = true
   # Bind mounts pin it to pve2.
   migrate = false
-  # Not boot-safe yet: its mount sources (/mnt/staging = thin LV
-  # rescue-staging, /mnt/e4 = pve2 HDD sda4) are mounted by hand, not in fstab.
-  # Flip to true once the archive lives on ZFS (services/archive/README.md).
+  # Mount sources are in fstab with nofail (Ansible, storage tag), but not yet
+  # proven by a cold boot of pve2 (it carries Kubeletto's k3s server and
+  # Postgres): stay off at boot until it is. Flip to true after that proof or
+  # once the archive lives on ZFS (services/archive/README.md).
   start_on_boot = false
+  # Running again since 2026-10-15 (the operator kept the archive; it was
+  # stopped 2026-10-12 awaiting deletion).
+  started = true
 
   features {
     nesting = true

@@ -1,0 +1,59 @@
+# promtool unit tests for the k8s-platform group in rules/k8s.yml (make
+# check): platform pods alert, tenant (kl-*) and build pods never do.
+rule_files:
+  - ../rules/k8s.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # the registry runs but is not ready; a tenant pod the same: only the registry alerts
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="registry",pod="registry-1",container="registry"}'
+        values: '0x20'
+      - series: 'kube_pod_status_phase{job="service_dmz",namespace="registry",pod="registry-1",phase="Running"}'
+        values: '1x20'
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-abc-abc",pod="svc-1",container="user-container"}'
+        values: '0x20'
+      - series: 'kube_pod_status_phase{job="service_dmz",namespace="kl-abc-abc",pod="svc-1",phase="Running"}'
+        values: '1x20'
+      # a finished (Succeeded) platform pod is not ready either: never alerts
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kube-system",pod="helm-install-x",container="helm"}'
+        values: '0x20'
+      - series: 'kube_pod_status_phase{job="service_dmz",namespace="kube-system",pod="helm-install-x",phase="Running"}'
+        values: '0x20'
+      # NATS in a crash loop; a build pod stuck pulling: only NATS
+      - series: 'kube_pod_container_status_waiting_reason{job="service_dmz",namespace="nats",pod="nats-1",container="nats",reason="CrashLoopBackOff"}'
+        values: '1x20'
+      - series: 'kube_pod_container_status_waiting_reason{job="service_dmz",namespace="kubeletto-builds",pod="build-1",container="worker",reason="ImagePullBackOff"}'
+        values: '1x20'
+      # core restarts 4 times in 20 min; Traefik once (a reboot): only core
+      - series: 'kube_pod_container_status_restarts_total{job="service_dmz",namespace="platform",pod="platform-core-1",container="core"}'
+        values: '0 0 0 0 0 1 1 1 1 1 2 2 2 2 2 3 3 3 3 3 4'
+      - series: 'kube_pod_container_status_restarts_total{job="service_dmz",namespace="traefik",pod="traefik-1",container="traefik"}'
+        values: '0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: K8sPlatformPodNotReady
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: K8sPlatformPodNotReady
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, namespace: registry, pod: registry-1, container: registry }
+            exp_annotations:
+              summary: "k3s: registry/registry-1 (registry) runs but is not ready for 10 min"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodnotready
+      - eval_time: 12m
+        alertname: K8sPlatformPodWaiting
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, namespace: nats, pod: nats-1, container: nats, reason: CrashLoopBackOff }
+            exp_annotations:
+              summary: "k3s: nats/nats-1 (nats) stuck in CrashLoopBackOff for 10 min"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodwaiting
+      - eval_time: 20m
+        alertname: K8sPlatformPodRestarting
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, namespace: platform, pod: platform-core-1, container: core }
+            exp_annotations:
+              summary: "k3s: platform/platform-core-1 (core) restarted 4 times in 30 min"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodrestarting

@@ -63,16 +63,20 @@ scrape_configs:
     file_sd_configs:
       - files: [/etc/prometheus/targets/service.json]
 
-  # App metrics from the DMZ (hosts on vlan dmz: the Kubeletto cluster). The
-  # zone runs tenant code, so the endpoint is untrusted: no redirects, and
-  # hard limits so a hostile /metrics cannot exhaust Prometheus. Over a limit
-  # the scrape fails, which shows as the target down (TargetDown alert).
+  # App metrics from the untrusted zones (ADR 0013, 0014): the DMZ (the
+  # Kubeletto cluster, tenant code) and the LAB (`ai`, the GPU workstation:
+  # pip/GitHub code). No redirects, and hard limits so a hostile /metrics
+  # cannot exhaust Prometheus. Over a limit the scrape fails, which shows as
+  # the target down (TargetDown alert). The name stays service_dmz.
   # Sized 2026-10-12: k3s served 125 samples, 21 KB, at most 5 labels.
+  # 2026-10-13: ai's nvidia_gpu_exporter serves 149 samples, 30 KB, and
+  # nvidia_smi_gpu_info carries 12 labels + 5 target labels = 17, so the
+  # label limit is 24 (16 failed every scrape).
   - job_name: service_dmz
     follow_redirects: false
     body_size_limit: 4MB
     sample_limit: 20000
-    label_limit: 16
+    label_limit: 24
     label_name_length_limit: 64
     label_value_length_limit: 256
     file_sd_configs:
@@ -121,6 +125,18 @@ scrape_configs:
     metrics_path: /probe
     file_sd_configs:
       - files: [/etc/prometheus/targets/http.json]
+    relabel_configs: *blackbox_relabel
+
+  # Kubeletto from the outside (the public edge path; nothing else watches
+  # it: the k3s health probe goes through a NodePort inside the lab).
+  - job_name: blackbox_public
+    metrics_path: /probe
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["https://api.kubeletto.com/healthz"]
+        labels: { instance: kubeletto-api, role: public, __param_module: public_2xx }
+      - targets: ["https://api.kubeletto.com/v1/registry/auth?service=registry.kubeletto.com&scope=repository:probe/probe:pull"]
+        labels: { instance: kubeletto-registry-auth, role: public, __param_module: public_registry_auth }
     relabel_configs: *blackbox_relabel
 
   # The hEX resolver answers every lab VLAN: probe it like a client would.

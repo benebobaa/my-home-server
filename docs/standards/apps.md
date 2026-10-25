@@ -41,13 +41,30 @@ One shared PostgreSQL 18, `postgres.home.arpa:5432` (CT 130,
 - The database is dumped nightly and backed up with the CT; nothing for the
   app to do.
 
+## 3a. Messaging and cache
+
+Shared, like the database ([ADR 0016](../decisions/0016-shared-nats-and-valkey.md)):
+
+- **NATS with JetStream**, `tls://nats.home.arpa:4222` (CT 131,
+  [`services/nats/`](../../services/nats/README.md)): one account per app,
+  with its JetStream limits and one user named after the app. Add it to
+  `local.nats_accounts` in `proxmox/opentofu/nats.tf`. Pin the hub's
+  certificate (`nats_tls_cert`). An app outside VLAN 20 runs its own leaf
+  node and gets one exact hEX rule to 7422.
+- **Valkey**, `valkey.home.arpa:<port>` (CT 132,
+  [`services/valkey/`](../../services/valkey/README.md)): one instance per
+  app (its own process, port, password, memory cap), TLS only (pin
+  `valkey_tls_cert`, ADR 0017), **no persistence**. Add it to `local.valkey_instances` in
+  `proxmox/opentofu/valkey.tf`. Anything that must survive a restart goes in
+  Postgres or a JetStream stream, not in Valkey.
+
 ## 4. Secrets
 
 - **Never in the repo in plain text, never in the guest image, never in
   argv or logs.** They reach the guest on stdin through the pinned root SSH
   (`ssh root@<node>` → `pct exec`), like `services/monitoring/secrets.sh`.
 - **Generated** where possible (`random_password` in OpenTofu, encrypted
-  state): database passwords always are.
+  state): database, NATS and Valkey passwords always are.
 - **Given** (API tokens, third-party keys): in the stack's
   `secrets.sops.env`, passed as `TF_VAR_*` ([secrets runbook](../runbooks/secrets.md)).
 - In the guest: a root-owned file readable only by the service's user, or
