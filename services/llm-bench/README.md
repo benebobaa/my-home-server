@@ -11,7 +11,7 @@ generator for benchmarking Ollama, vLLM and SGLang on the `ai` VM's RTX 3060.
 | Tools | venv `/opt/bench/venv` (active at login): GuideLLM 0.8.1, lm-eval 0.4.13 (`[api]`), pandas, matplotlib, torch 2.14.1 CPU |
 | Results | `/opt/bench/results` (backed up; `ai` is not) |
 | Reaches | `ai:8000` only (hEX rule `bench lab: llm-bench to ai engine API`), plus the internet |
-| Monitoring | ping, logs in VictoriaLogs; best-effort |
+| Monitoring | ping; best-effort. No log shipping (runs PyPI / model-hub code; ADR 0019): `journalctl` in the CT |
 
 ## How it fits
 
@@ -67,8 +67,7 @@ One commit, then converge (`tofu apply` in both stacks, pve1 up for the
 `ai` part):
 
 1. `inventory/lab.yaml`: delete the `llm-bench` host; `ai` metrics back to `[9835]`.
-2. Delete `proxmox/opentofu/llm-bench.tf`, `services/llm-bench/`, and the
-   `llm-bench` lines in `proxmox/opentofu/logs.tf`.
+2. Delete `proxmox/opentofu/llm-bench.tf` and `services/llm-bench/`.
 3. `network/routeros/firewall.tf`: delete `forward_bench_ai` and
    `forward_ai_no_internet`.
 4. `services/ai/provision.sh`: delete the bench block; in its place, once,

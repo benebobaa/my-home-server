@@ -218,7 +218,9 @@ hosts:
     ip: 10.10.20.40
     note: TEMPORARY LLM serving bench client (GuideLLM, lm-eval) → ai:8000; removed after the article (ADR 0019, services/llm-bench)
     # best-effort: a load generator, nothing depends on it. No HTTP side.
-    monitoring: { tier: best-effort, logs: true }
+    # No logs: it runs code from PyPI and the Hugging Face hub, and the log
+    # store's insert port also answers queries (the LAB rule, ADR 0013).
+    monitoring: { tier: best-effort, logs: false }
 
   # --- reserved ---------------------------------------------------------------
   edge:

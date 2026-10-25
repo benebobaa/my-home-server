@@ -31,7 +31,10 @@ Constraints:
   backups, which keep the results. A venv at `/opt/bench` with GuideLLM,
   lm-eval, pandas and matplotlib, torch as the CPU build. Static IP from
   `lab.yaml` (VLAN 20 has no DHCP). No chrony: an unprivileged container
-  runs on the host's clock.
+  runs on the host's clock. **No log shipping** (`logs: false`): it runs
+  code from PyPI and the Hugging Face hub, and VictoriaLogs answers queries
+  on its insert port, so like the LAB it gets no rule into MGMT (flagged by
+  the commit security review; the first build shipped logs for 15 minutes).
 - **One exact hEX pinhole, VLAN 20 → LAB:** `llm-bench` → `ai:8000`
   (`forward_bench_ai`), the engine's OpenAI-compatible API. Nothing opens
   the other way; replies ride the established-connection rule. The first
@@ -64,10 +67,16 @@ Constraints:
   written since, `/data` included; results worth keeping go to `llm-bench`.
 - The snapshot holds old blocks as the disk changes; deleting it at
   teardown frees them.
+- `llm-bench` stays on VLAN 20 as the operator asked, beside Postgres, NATS
+  and Valkey, which admit only authenticated TLS clients with their own
+  credentials; it holds none. Moving it into the LAB VLAN would isolate it
+  further (and put it one L2 hop from `ai`), but needs a new admin-gateway
+  route approved in the Tailscale console; not worth it for a temporary
+  client.
 - `hermes` (CT 141) shares the LAB VLAN with `ai` and can reach `:8000`
   without the hEX. Not a path into the lab; accepted for the lab's life.
 - **Teardown** (one change, then converge; checklist in
   `services/llm-bench/README.md`): remove `llm-bench` from `lab.yaml` and
-  its `.tf`/`logs.tf` lines, the two hEX rules, ports 9100/8000 from `ai`,
+  its `.tf`, the two hEX rules, ports 9100/8000 from `ai`,
   the bench block in `provision.sh` and `converge.sh`; delete the snapshot;
   write a short ADR that supersedes this one ("removed").

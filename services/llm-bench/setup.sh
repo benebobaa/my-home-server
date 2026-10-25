@@ -10,7 +10,9 @@
 # up nightly; `ai` is not backed up).
 #
 # No chrony: an unprivileged container cannot set the clock; it runs on
-# pve2's (chrony on the host).
+# pve2's (chrony on the host). No journal shipping either (lab.yaml: it runs
+# code from PyPI and model hubs, and the log store answers queries on its
+# insert port), so the uploader is purged if an earlier version had it.
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -34,6 +36,12 @@ if [ "$(cat /opt/bench/.requirements.sha256 2>/dev/null)" != "$want" ]; then
   "$VENV/bin/pip" install -q --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH}+cpu"
   "$VENV/bin/pip" install -q -r "$DIR/requirements.txt"
   echo "$want" > /opt/bench/.requirements.sha256
+fi
+
+systemctl disable --now systemd-journal-upload.service 2>/dev/null || true
+if dpkg -s systemd-journal-remote >/dev/null 2>&1; then
+  apt-get purge -y -qq systemd-journal-remote
+  rm -rf /etc/systemd/journal-upload.conf.d /var/lib/systemd/journal-upload
 fi
 
 # The venv on root's PATH at login.
