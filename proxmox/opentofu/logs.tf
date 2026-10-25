@@ -27,13 +27,14 @@ locals {
   guest_generation = merge(
     { for k, m in module.admin_gw : k => m.generation },
     {
-      monitoring = module.monitoring.generation
-      logs       = module.logs.generation
-      pbs        = module.pbs.generation
-      postgres   = module.postgres.generation
-      nats       = module.nats.generation
-      valkey     = module.valkey.generation
-      archive    = proxmox_virtual_environment_container.archive.network_interface[0].mac_address
+      monitoring  = module.monitoring.generation
+      logs        = module.logs.generation
+      pbs         = module.pbs.generation
+      postgres    = module.postgres.generation
+      nats        = module.nats.generation
+      valkey      = module.valkey.generation
+      "llm-bench" = module.llm_bench.generation # temporary (ADR 0019)
+      archive     = proxmox_virtual_environment_container.archive.network_interface[0].mac_address
     },
   )
   log_shippers = {
@@ -95,6 +96,7 @@ resource "terraform_data" "log_shipping" {
     terraform_data.postgres_setup,
     terraform_data.nats_setup,
     terraform_data.valkey_setup,
+    terraform_data.llm_bench_setup,
     terraform_data.archive_root_config,
   ]
 }

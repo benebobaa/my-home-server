@@ -194,8 +194,11 @@ hosts:
     # No logs: it runs untrusted code (pip, model hubs, GitHub), so like the
     # DMZ it never pushes into MGMT (VictoriaLogs serves queries on 9428).
     # 9835: nvidia_gpu_exporter (GPU temperature, power, clocks, VRAM;
-    # ADR 0014), scraped with the untrusted-zone limits.
-    monitoring: { tier: best-effort, logs: false, metrics: [9835] }
+    # ADR 0014), scraped with the untrusted-zone limits. LLM bench lab
+    # (ADR 0019, temporary): 9100 node_exporter (per-core CPU), 8000 the
+    # engine under test (vLLM/SGLang /metrics; down while none runs or
+    # Ollama runs: TargetDown is info for best-effort, a silent record).
+    monitoring: { tier: best-effort, logs: false, metrics: [9835, 9100, 8000] }
   hermes:
     kind: lxc
     vmid: 141
@@ -206,6 +209,16 @@ hosts:
     # best-effort: off whenever pve1 is. No logs: untrusted zone (ADR 0013).
     # No health URL or metrics: Telegram polling opens no port.
     monitoring: { tier: best-effort, logs: false }
+
+  llm-bench:
+    kind: lxc
+    vmid: 201
+    node: pve2 # its results are backed up; pve3 gets nothing new
+    vlan: servers
+    ip: 10.10.20.40
+    note: TEMPORARY LLM serving bench client (GuideLLM, lm-eval) → ai:8000; removed after the article (ADR 0019, services/llm-bench)
+    # best-effort: a load generator, nothing depends on it. No HTTP side.
+    monitoring: { tier: best-effort, logs: true }
 
   # --- reserved ---------------------------------------------------------------
   edge:

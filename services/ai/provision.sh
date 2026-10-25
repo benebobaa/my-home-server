@@ -147,6 +147,19 @@ EOF
 sudo -u "$USER_NAME" -H pipx install --quiet uv >/dev/null 2>&1 || sudo -u "$USER_NAME" -H pipx upgrade --quiet uv >/dev/null 2>&1 || true
 sudo -u "$USER_NAME" -H pipx ensurepath >/dev/null 2>&1 || true
 
+# --- LLM serving bench lab (ADR 0019, temporary: goes with it) ---------------
+# chrony instead of timesyncd: the bench client (llm-bench) and this VM time
+# the same requests. node_exporter :9100: per-core CPU and memory during a
+# run (a tokenizer or scheduler pinned on one core), which the PVE API
+# averages away; pulled by monitoring like the GPU exporter (service_dmz).
+# No textfile collectors (no recommends). /data is a directory on the root
+# disk: pve1 has one NVMe, so a second disk would be no faster and would
+# overcommit its thin pool. Models re-download; results worth keeping go to
+# llm-bench (backed up), not here.
+"${APT[@]}" install --no-install-recommends chrony prometheus-node-exporter
+systemctl enable -q --now chrony prometheus-node-exporter
+install -d -o "$USER_NAME" -g "$USER_NAME" -m 0755 /data /data/models /data/results
+
 # Never on the tailnet, never shipping into MGMT (see the header).
 if dpkg -s tailscale >/dev/null 2>&1; then
   tailscale logout 2>/dev/null || true
@@ -167,4 +180,4 @@ if ! nvidia-smi >/dev/null 2>&1; then
   echo "ai: NVIDIA driver installed; a reboot loads it"
   touch /run/ai-reboot-required
 fi
-echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker, gpu exporter ${GPU_EXPORTER_VERSION})"
+echo "ai: provisioned (driver ${NVIDIA_BRANCH}, ${CUDA_TOOLKIT}, docker, gpu exporter ${GPU_EXPORTER_VERSION}, bench lab)"

@@ -56,3 +56,12 @@ fi
 # shellcheck disable=SC2016
 gexec 60 - sh -c 'for i in $(seq 30); do nvidia-smi --query-gpu=persistence_mode --format=csv,noheader | grep -q Enabled && break; sleep 2; done; nvidia-smi --query-gpu=name,driver_version,memory.total,persistence_mode --format=csv,noheader'
 gexec 30 - grep RmProfilingAdminOnly /proc/driver/nvidia/params
+
+# LLM bench lab (ADR 0019, temporary): one disk-only baseline to return to
+# between engines (`qm rollback`; a VM with a passed-through GPU cannot save
+# its RAM, so a rollback stops it). Taken once, never refreshed; deleted at
+# the lab's teardown.
+if ! qm listsnapshot "$VMID" | grep -qw bench-baseline; then
+  echo "ai: snapshot bench-baseline"
+  qm snapshot "$VMID" bench-baseline --description "LLM bench lab baseline (ADR 0019): driver, CUDA, Docker GPU runtime, exporters, chrony, /data; no engines, no models"
+fi

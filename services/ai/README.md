@@ -16,6 +16,7 @@ Python. Why it looks like this:
 | Console | serial (`qm terminal 140` on pve1) — no VGA |
 | Starts | with pve1 (`onboot`): wake pve1 and the VM comes up by itself |
 | Monitoring | ping + PVE API, and GPU metrics from `nvidia_gpu_exporter` `:9835` (pulled by Prometheus; dashboard **Nvidia GPU Metrics**, alerts `GpuHot`, `GpuHardwareSlowdown`; ADR 0014). No logs leave the VM (ADR 0013) |
+| Bench lab (temporary, [ADR 0019](../../docs/decisions/0019-temporary-llm-serving-bench-lab.md)) | node_exporter `:9100`, the engine's `:8000/metrics`, chrony, `/data/{models,results}` on the root disk, snapshot `bench-baseline`; `llm-bench` may reach `:8000`. Use and teardown: [`services/llm-bench/`](../llm-bench/README.md) |
 
 ## Files
 
