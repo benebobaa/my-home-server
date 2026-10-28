@@ -118,6 +118,15 @@ hosts:
     ip: 10.10.10.18
     note: VictoriaLogs — journald + hEX syslog for the whole lab (services/logs)
     monitoring: { tier: standard, health: "http://{ip}:9428/health", metrics: [9428], logs: true }
+  traces:
+    kind: lxc
+    vmid: 122
+    node: pve1 # always on, NVMe; stateful like pbs-replica beside it (ADR 0023, 0025, 0026)
+    vlan: mgmt
+    ip: 10.10.10.20
+    note: VictoriaTraces — the lab's trace store, OTLP in on 10428, Grafana's Jaeger data source (services/traces, ADR 0026)
+    # Standard until an app depends on it, then critical (ADR 0026, as 0010 and 0016).
+    monitoring: { tier: standard, health: "http://{ip}:10428/health", metrics: [10428], logs: true }
   postgres:
     kind: lxc
     vmid: 130
