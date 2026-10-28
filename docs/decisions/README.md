@@ -25,3 +25,4 @@ never edited — supersede them with a new one.
 | [0018](0018-personal-agent-on-pve1.md) | The personal agent (Hermes Agent, Telegram, OpenCode Go models) runs on pve1 on demand, in a plain unprivileged LXC on the LAB VLAN; native install, no Docker; it can read its own keys (accepted) |
 | [0019](0019-temporary-llm-serving-bench-lab.md) | Temporary LLM serving bench lab (until the article): `llm-bench` CT 201 on VLAN 20, one pinhole to `ai:8000`, node_exporter + engine metrics on `ai`, an internet kill switch for `ai` |
 | [0020](0020-ai-vm-without-docker.md) | The `ai` VM runs without Docker or the NVIDIA container toolkit; engines run natively in `uv` venvs (supersedes 0012's Docker line) |
+| [0021](0021-registry-on-the-k3s-servers-own-disk.md) | Kubeletto's registry keeps its blobs on a dedicated disk of the K3s server VM, not in R2; no backup, accepted (supersedes the "registry stays on R2" line of 0004 and 0011) |
