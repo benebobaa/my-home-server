@@ -61,7 +61,7 @@ Or `monitoring: none`, with the reason in `note`.
 | `PveGuestDown` if it should run (`start_on_boot`) and doesn't | cluster rules |
 | Scrape of its `/metrics`, labelled `instance`, `service`, `tier` | job `service` |
 | Its logs, 30 days | Grafana → Explore → VictoriaLogs: `_stream:{_HOSTNAME="myapp"}` |
-| Its traces, 30 days, once it sends them | Grafana → Explore → Traces (Jaeger), by `service.name` |
+| Its traces, 30 days, once it sends them | Grafana → Explore → Traces (Tempo data source), or Drilldown → Traces, by `service.name` |
 | The Service dashboard (pick the host) | Grafana → Homelab → Service |
 | The hEX rules for the above, if it lives outside MGMT | generated in `network/routeros/firewall.tf` |
 

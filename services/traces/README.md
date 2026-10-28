@@ -7,14 +7,15 @@ How an app sends traces: [docs/standards/observability.md](../../docs/standards/
 | | |
 | --- | --- |
 | Send (OTLP/HTTP) | `http://traces.home.arpa:10428/insert/opentelemetry/v1/traces` (JSON or protobuf) |
-| Query | Grafana → Explore → **Traces** (data source `traces`, Jaeger), or the dashboard *Trace store (VictoriaTraces)* |
+| Query | Grafana → Explore → **Traces** (data source `traces`, Tempo), **Drilldown → Traces**, or the dashboard *Trace store (VictoriaTraces)* |
 | Built-in UI | `http://traces.home.arpa:10428/select/vmui` (MGMT only, no login) |
-| Jaeger API (Grafana's) | `http://traces.home.arpa:10428/select/jaeger` |
+| Tempo API (Grafana's data source) | `http://traces.home.arpa:10428/select/tempo`: TraceQL search and metrics, what Traces Drilldown reads |
+| Jaeger API | `http://traces.home.arpa:10428/select/jaeger` (the smoke test reads back through it) |
 | Health | `http://traces.home.arpa:10428/health` (probed by `blackbox_http`, severity from `tier`) |
 | Metrics | `http://traces.home.arpa:10428/metrics`: `vt_*` series (ingest, drops, disk) |
 | Retention | 30 days, hard-capped at 16 GiB on a 20 GB disk: the oldest days go first |
 | Built by | `proxmox/opentofu/traces.tf` → `setup.sh` (pinned release, sha256 of the tarball and of the binary) |
-| Version | `TRACES_VERSION` in `setup.sh` (v0.12.1). **Pre-1.0 (v0.x):** the vendor documents the Jaeger query path as subject to change without notice. After every upgrade, re-run the smoke test and open the trace search panel |
+| Version | `TRACES_VERSION` in `setup.sh` (v0.12.1). **Pre-1.0 (v0.x):** the vendor documents its query paths as subject to change without notice. After every upgrade, re-run the smoke test and open the trace search panel |
 | Alerts | `TracesNearDiskCap` (info, 14.5 GiB, [`rules/traces.yml`](../monitoring/prometheus/rules/traces.yml)); down is `TargetDown` / `HttpProbeFailed` |
 | Backup | in the nightly PBS job (`--all`), so the main datastore on pve3 gets it. It may not hold it at steady state (about 5 GB free there, ADR 0025). Open: exclude it like CT 112, or accept the growth. The spans are 30 days, rebuildable from the senders |
 | Logs | journald to the log store, like every guest (`logs: true`) |
@@ -49,7 +50,7 @@ seconds after it returns 200 (`vt_pending_rows`).
 
 ## Gotchas
 
-- The Jaeger API answers **400** to a request without `service`. The dashboard's Service box therefore holds a placeholder (`type-a-service`) that no service has, which shows *no data* rather than an error.
+- The Service box on the trace dashboard holds a placeholder (`type-a-service`) that no service has, so the search shows *no data* until a sender exists.
 - The smoke service `lab-smoke` stays until the 30-day retention drops it. It is a test record, not an app.
 - The release's `-healthcheck` flag is not used: `/health` is what the monitoring block probes.
 

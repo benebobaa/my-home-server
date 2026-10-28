@@ -28,11 +28,12 @@ datasources:
     access: proxy
     url: http://logs.home.arpa:9428
     editable: false
-  # The lab trace store (CT 122, services/traces, ADR 0028). Grafana's Jaeger
-  # data source reads VictoriaTraces' Jaeger query API.
+  # The lab trace store (CT 122, services/traces, ADR 0028). Grafana's Tempo
+  # data source reads VictoriaTraces' Tempo API, which is what Traces
+  # Drilldown needs: TraceQL search and TraceQL metrics (RED).
   - name: Traces
     uid: traces
-    type: jaeger
+    type: tempo
     access: proxy
-    url: http://traces.home.arpa:10428/select/jaeger
+    url: http://traces.home.arpa:10428/select/tempo
     editable: false

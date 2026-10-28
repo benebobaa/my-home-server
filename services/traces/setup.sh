@@ -10,7 +10,8 @@
 # Receives:
 #   OTLP/HTTP  :10428 /insert/opentelemetry/v1/traces   senders in MGMT (ADR 0028)
 # Serves:
-#   :10428 /select/jaeger   Grafana's Jaeger data source (platform-traces)
+#   :10428 /select/tempo    Grafana's Tempo data source (platform-traces, Traces Drilldown)
+#   :10428 /select/jaeger   the Jaeger query API (the smoke test)
 #   :10428 /select/vmui     the built-in UI
 set -euo pipefail
 
@@ -83,4 +84,4 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 curl -fsS http://127.0.0.1:10428/health >/dev/null
-echo "traces setup complete: VictoriaTraces ${TRACES_VERSION} on :10428 (OTLP/HTTP ingest, Jaeger query, /select/vmui)"
+echo "traces setup complete: VictoriaTraces ${TRACES_VERSION} on :10428 (OTLP/HTTP ingest, Tempo and Jaeger query, /select/vmui)"
