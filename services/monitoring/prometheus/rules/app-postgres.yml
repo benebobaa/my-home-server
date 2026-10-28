@@ -29,8 +29,11 @@ groups:
 
       # Connections near max_connections (100, services/postgres/setup.sh):
       # new ones are refused soon. Usually an app leaking connections.
+      # max by (instance): after a tier change both the old and the new series
+      # sit in the 5-min lookback, and a bare right-hand side fails the match
+      # ("duplicate series"). It happened on 2026-10-28.
       - alert: PostgresConnectionsHigh
-        expr: sum by (instance) (pg_stat_activity_count{job="service"}) / on (instance) pg_settings_max_connections{job="service"} > 0.8
+        expr: sum by (instance) (pg_stat_activity_count{job="service"}) / on (instance) max by (instance) (pg_settings_max_connections{job="service"}) > 0.8
         for: 10m
         labels: { severity: warning }
         annotations:
