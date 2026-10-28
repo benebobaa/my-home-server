@@ -53,24 +53,29 @@ runs there.
   and the PBS backup of CT 130; Valkey keeps nothing (no persistence).
 - Aiven and Upstash can be deleted a week after the flip.
 
-## Follow-up (2026-10-28 15:37): the premise was wrong
+## Follow-up (2026-10-28): a probe that looked like a failure, and what it showed
 
-The two pinholes were applied at 15:35 and probed from a pod in larasrouter's
-namespace (5432 and 6381 open, 22 and 6380 closed: as intended) **and from a pod
-in another tenant's namespace (5432 and 6381 open too)**. Kubeletto's
-base NetworkPolicy denies only CGNAT (`TENANT_EGRESS_DENY_CIDRS`) and the home
-public IP, not the lab ranges; until now the router was the only thing between a
-tenant pod and the lab, and a rule that matches the worker's address cannot
-tell pods apart. Every tenant could have tried the larasrouter role's
-password against Postgres and Valkey. The rules were removed (plan 0 to add,
-0 to change, 2 to destroy). Nothing was flipped: larasrouter still uses Aiven and
-Upstash. The database, role, `pg_hba` line, Valkey instance and the additive
-`larasrouter-data` policy stay (inert without a path).
+The two pinholes were applied at 15:35. A probe pod in another tenant's
+namespace (the canary) reached 5432 and 6381 at 15:37, so the rules were
+removed at once, believing the tenants' base NetworkPolicy did not deny private
+ranges. **That reading was wrong.** The base policy does deny 10/8, 172.16/12,
+192.168/16, link-local and CGNAT (checked on the live object), and a probe that
+waits 25 s before connecting is blocked from every private target (the
+server's API port 10.10.25.20:6443, the in-cluster API 10.43.0.1:443) and reaches
+only the public internet. The first probe ran in the first second of the
+pod's life: **kube-router programs a new pod's firewall a moment after the pod
+starts, and until then the pod is unrestricted.**
 
-To go on, first deny every tenant the lab: add `10.10.0.0/16`, `192.168.0.0/16`
-and `172.16.0.0/12` to `TENANT_EGRESS_DENY_CIDRS` (the cluster's own
-`10.42.0.0/16` and `10.43.0.0/16` are untouched), re-ensure the base policy in
-the existing tenant namespaces (core applies it at deploy), prove with the same
-probe that a second tenant is blocked everywhere, and only then reopen the two
-rules. That changes egress for all tenants, so it is its own change with its
-own check.
+What this means for the rules:
+
+- In steady state only larasrouter's namespace (through `larasrouter-data`)
+  reaches Postgres and its Valkey; any other tenant is blocked, as designed.
+- **Residual:** a new tenant pod has a window of a few seconds, at every start,
+  in which it can open a connection to anything its node can route to, the two
+  pinholed ports included (and, today, the kube-apiserver and node ports).
+  A connection still needs the credentials: `pg_hba` admits only the
+  `larasrouter` role for its database over TLS (scram, a 32-character random
+  password), Valkey requires its password. The operator decides whether that
+  is acceptable; the alternative is a data store inside the DMZ.
+- Separately, the same window is a pre-existing property of the platform, not
+  introduced here.

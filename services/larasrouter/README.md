@@ -1,8 +1,8 @@
 # larasrouter on the shared Postgres and Valkey
 
-> **Blocked, do not flip yet.** The hEX pinholes were applied and removed again:
-> other tenants' pods could reach the two ports too (ADR 0022, Follow-up).
-> Tenants must be denied the lab ranges first.
+> **Pinholes pending.** They were applied, then removed after a probe that turned out
+> to be a pod-startup race (ADR 0022, Follow-up). They go back with the operator's
+> apply once the residual (a few seconds per pod start) is accepted.
 
 [ADR 0022](../../docs/decisions/0022-a-tenant-app-uses-the-shared-postgres-and-valkey.md).
 larasrouter runs on Kubeletto as tenant `f42a6fae` (account `larasrouter@gmail.com`,
