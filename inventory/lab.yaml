@@ -145,7 +145,7 @@ hosts:
     note: the lab's shared Valkey, one instance (process, port, password) per app, TLS only, no persistence (ADR 0016, services/valkey)
     # no HTTP side: one redis_exporter per instance, 9121 upward, redis_up is
     # the health check (app-valkey.yml)
-    monitoring: { tier: standard, metrics: [9121], logs: true }
+    monitoring: { tier: standard, metrics: [9121, 9122], logs: true }
   pbs:
     kind: lxc
     vmid: 111

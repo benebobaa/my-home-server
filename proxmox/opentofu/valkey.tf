@@ -23,7 +23,8 @@ locals {
   # port must be in lab.yaml's `valkey` metrics list (checked below), or
   # nothing scrapes it and the hEX drops the scrape.
   valkey_instances = {
-    kubeletto = { port = 6380, exporter_port = 9121, maxmemory = "96mb", policy = "volatile-lru" }
+    kubeletto   = { port = 6380, exporter_port = 9121, maxmemory = "96mb", policy = "volatile-lru" }
+    larasrouter = { port = 6381, exporter_port = 9122, maxmemory = "64mb", policy = "volatile-lru" }
   }
 }
 

@@ -26,3 +26,4 @@ never edited — supersede them with a new one.
 | [0019](0019-temporary-llm-serving-bench-lab.md) | Temporary LLM serving bench lab (until the article): `llm-bench` CT 201 on VLAN 20, one pinhole to `ai:8000`, node_exporter + engine metrics on `ai`, an internet kill switch for `ai` |
 | [0020](0020-ai-vm-without-docker.md) | The `ai` VM runs without Docker or the NVIDIA container toolkit; engines run natively in `uv` venvs (supersedes 0012's Docker line) |
 | [0021](0021-registry-on-the-k3s-servers-own-disk.md) | Kubeletto's registry keeps its blobs on a dedicated disk of the K3s server VM, not in R2; no backup, accepted (supersedes the "registry stays on R2" line of 0004 and 0011) |
+| [0022](0022-a-tenant-app-uses-the-shared-postgres-and-valkey.md) | larasrouter, a Kubeletto tenant app, uses the shared Postgres and Valkey through two worker pinholes and a per-namespace egress policy (amends the DMZ rule for this one app) |

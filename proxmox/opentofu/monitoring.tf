@@ -61,14 +61,17 @@ locals {
         __param_module = contains(local.untrusted_vlans, h.vlan) ? "http_dmz" : h.monitoring.health_module
       })
     } if h.monitoring.health != null]
-    service = [for n, h in local.watched : {
-      targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
-      labels  = merge(local.target_labels[n], { service = n })
-    } if length(h.monitoring.metrics) > 0 && !contains(local.untrusted_vlans, h.vlan)]
-    service_dmz = [for n, h in local.watched : {
-      targets = [for p in h.monitoring.metrics : "${h.ip}:${p}"]
-      labels  = merge(local.target_labels[n], { service = n })
-    } if length(h.monitoring.metrics) > 0 && contains(local.untrusted_vlans, h.vlan)]
+    # A host with more than one metrics port (the Valkey CT: one exporter per
+    # app) gets a `port` label per target, or its series would collide under the
+    # one `instance`; a host with one port keeps its labels as they were.
+    service = flatten([for n, h in local.watched : [for p in h.monitoring.metrics : {
+      targets = ["${h.ip}:${p}"]
+      labels  = merge(local.target_labels[n], { service = n }, length(h.monitoring.metrics) > 1 ? { port = tostring(p) } : {})
+    }] if !contains(local.untrusted_vlans, h.vlan)])
+    service_dmz = flatten([for n, h in local.watched : [for p in h.monitoring.metrics : {
+      targets = ["${h.ip}:${p}"]
+      labels  = merge(local.target_labels[n], { service = n }, length(h.monitoring.metrics) > 1 ? { port = tostring(p) } : {})
+    }] if contains(local.untrusted_vlans, h.vlan)])
     # Proxmox nodes: node_exporter (Ansible `monitoring` tag) + the PVE API.
     node = [for n, h in local.watched : {
       targets = ["${h.ip}:9100"]

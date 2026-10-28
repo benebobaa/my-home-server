@@ -327,6 +327,37 @@ resource "routeros_ip_firewall_filter" "forward_k3s_valkey" {
   place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
 }
 
+# larasrouter, a tenant app on Kubeletto (ADR 0022): its pods run on the K3s
+# WORKER, so these two rules come from the worker's address (never the server's
+# pinholes above, never for any other port). What stops every OTHER tenant is the
+# base NetworkPolicy of its namespace (private ranges denied) and, at the data
+# end, pg_hba (its database and role only) plus the Valkey password.
+resource "routeros_ip_firewall_filter" "forward_worker_postgres" {
+  chain         = "forward"
+  action        = "accept"
+  in_interface  = routeros_interface_vlan.dmz.name
+  out_interface = routeros_interface_vlan.servers.name
+  src_address   = local.host["k3s-worker"].ip
+  dst_address   = local.host.postgres.ip
+  protocol      = "tcp"
+  dst_port      = "5432"
+  comment       = "DMZ pinhole: K3s worker to Postgres (larasrouter, ADR 0022)"
+  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
+}
+
+resource "routeros_ip_firewall_filter" "forward_worker_valkey" {
+  chain         = "forward"
+  action        = "accept"
+  in_interface  = routeros_interface_vlan.dmz.name
+  out_interface = routeros_interface_vlan.servers.name
+  src_address   = local.host["k3s-worker"].ip
+  dst_address   = local.host.valkey.ip
+  protocol      = "tcp"
+  dst_port      = "6381" # local.valkey_instances.larasrouter.port (proxmox/opentofu/valkey.tf)
+  comment       = "DMZ pinhole: K3s worker to larasrouter's Valkey instance (ADR 0022)"
+  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
+}
+
 resource "routeros_ip_firewall_filter" "forward_admin_gw" {
   chain            = "forward"
   action           = "accept"

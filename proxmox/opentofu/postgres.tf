@@ -26,13 +26,17 @@ locals {
   postgres_app_cidr = module.lab.vlans[local.host.postgres.vlan].cidr
 
   # Apps with a database: name = database = role ([a-z][a-z0-9_]*).
-  postgres_databases = toset(["kubeletto"])
+  postgres_databases = toset(["kubeletto", "larasrouter"])
 
   # Clients outside the servers VLAN, each to its own database only (pg_hba
   # hostssl line). The hEX pinhole for each is in network/routeros.
   #   kubeletto  its K3s VM in the DMZ (forward_k3s_postgres; ADR 0004, 0010)
+  #   larasrouter  the K3s worker VM in the DMZ, where tenant pods run (the
+  #                tenant's own NetworkPolicy in kl-f42a6fae-f42a6fae lets only
+  #                that namespace send; forward_worker_postgres, ADR 0022)
   postgres_extra_clients = {
-    kubeletto = "${local.host.k3s.ip}/32"
+    kubeletto   = "${local.host.k3s.ip}/32"
+    larasrouter = "${local.host["k3s-worker"].ip}/32"
   }
   postgres_extra_clients_arg = join(",", [for db, cidr in local.postgres_extra_clients : "${db}=${cidr}"])
 }

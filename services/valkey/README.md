@@ -19,6 +19,7 @@ process per app and not one shared keyspace: [ADR 0016](../../docs/decisions/001
 | App | Port | Exporter | maxmemory | Policy |
 | --- | --- | --- | --- | --- |
 | kubeletto | 6380 | 9121 | 96 MB | volatile-lru (its locks and rate limits carry TTLs) |
+| larasrouter | 6381 | 9122 | 64 MB | volatile-lru (session cache, cooldowns and the sweeper lock carry TTLs); a tenant app in the DMZ, reached from the K3s worker through its own pinhole (ADR 0022) |
 
 ## Giving an app an instance
 

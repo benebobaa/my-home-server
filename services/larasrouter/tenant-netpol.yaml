@@ -1,0 +1,21 @@
+# larasrouter's data path (ADR 0022). The tenant's namespace carries Kubeletto's
+# base policy (public internet only, private ranges denied). This ADDS an
+# egress allow to exactly two lab addresses and ports for the pods of this
+# namespace: the shared Postgres (database larasrouter) and its own Valkey
+# instance. Kubeletto's core only manages `kubeletto-base-policy`, so this
+# object is not reconciled away. Every other tenant keeps the base policy.
+# Applied by services/larasrouter/apply-netpol.sh.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: larasrouter-data
+  namespace: kl-f42a6fae-f42a6fae
+  labels: {app.kubernetes.io/part-of: homeserver}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ipBlock: {cidr: 10.10.20.21/32}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: 10.10.20.23/32}}]
+      ports: [{protocol: TCP, port: 6381}]
