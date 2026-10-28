@@ -15,7 +15,7 @@
 # node for the length of the session (root-only host); it is never printed.
 set -euo pipefail
 cd "$(dirname "$0")/../../proxmox/opentofu"
-tf() { echo "$1" | sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tr -d '"\n'; }
+tf() { echo "$1" | sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tail -n1 | tr -d '"\n'; }
 what=${1:-}; shift || true
 args=$(printf ' %q' "$@")
 case "$what" in

@@ -13,7 +13,7 @@
 # Redis client takes no CA bundle (a REDIS_TLS_CA option would pin it, ADR 0017).
 set -euo pipefail
 cd "$(dirname "$0")/../../proxmox/opentofu"
-tf() { echo "$1" | sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tr -d '"\n'; }
+tf() { echo "$1" | sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tail -n1 | tr -d '"\n'; }
 case "${1:-}" in
   database) printf 'postgres://larasrouter:%s@10.10.20.21:5432/larasrouter?sslmode=require' \
     "$(tf 'nonsensitive(random_password.postgres["larasrouter"].result)')" ;;

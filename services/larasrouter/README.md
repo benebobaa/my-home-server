@@ -16,6 +16,7 @@ namespace `kl-f42a6fae-f42a6fae`, services `larasrouter-api` and `larasrouter-mo
 | Egress for the tenant's pods | `tenant-netpol.yaml`, applied by `apply-netpol.sh` |
 | Copy of the production data | `sync-db.sh check|run` |
 | The two connection strings | `urls.sh database|redis`, to the clipboard only |
+| Migrations by hand, before a release | `migrate.sh status|up [--yes]`: through the tunnel, snapshot first, confirmation, the larasrouter checkout's goose (pinned) and seeds |
 | A GUI client on the data | `tunnel.py [db] [redis]`: local ports 15432 / 16381 on 127.0.0.1, relayed through the node into the container; passwords from `urls.sh db-password|redis-password` |
 | A shell on the data (psql / valkey-cli) | `connect.sh db|redis [args]`: the Mac cannot reach the ports directly, the client runs inside the container through the node |
 
@@ -50,3 +51,21 @@ database, remove their values from the account's notes.
 - The production image is behind the repo's newest migration
   (`20261012090000_wallet_overdraft_floor`); the copy keeps the production
   version (`20260925000007`), so ship the image and migration as you would have.
+
+## Migrations (`DB_MIGRATE_ON_START=false`)
+
+`./migrate.sh status` shows applied and pending; `./migrate.sh up` takes a
+`pg_dump` snapshot (`~/Documents/benelabs/larasrouter-db-snapshots/`, 10 newest kept),
+shows what is pending, asks you to type `migrate`, runs `goose up` with the version the
+repo pins and the idempotent seeds, and checks that nothing is pending. Check out the
+commit you are about to release in `~/Documents/benelabs/larasrouter` first.
+Rollback is restoring the snapshot, not `goose down`. Never `make migrate-up`
+(it sources a `.env` that can override `DATABASE_URL`) and never `db:migrate:fresh`
+or `db:rollback` against this database.
+
+Order for a release: `migrate.sh up`, then tag/deploy the new image (its readiness
+fails until the schema is current, the old pods keep serving). After the flip the
+internal database holds production's schema (`sync-db.sh` copies it as it is), so the
+first `migrate.sh up` applies everything the image behind it lacks: on 2026-10-28
+that was **eight** migrations (20261011120000 to 20261028084500), tried on the
+rehearsal copy: all applied, seeds complete.
