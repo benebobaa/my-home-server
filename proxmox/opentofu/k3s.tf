@@ -114,6 +114,21 @@ resource "proxmox_virtual_environment_vm" "k3s" {
     ssd          = true
   }
 
+  # The registry's blobs (ADR 0021): a disk of its own, so a build storm cannot
+  # fill the root disk under K3s. Left out of the PBS backup (the datastore has
+  # no room for it; the trade-off is in the ADR). Formatted and mounted at
+  # /mnt/registry by services/k3s/registry-disk.sh (terraform_data below).
+  disk {
+    datastore_id = "local-lvm"
+    interface    = "scsi1"
+    size         = 40
+    file_format  = "raw"
+    discard      = "on"
+    iothread     = true
+    ssd          = true
+    backup       = false
+  }
+
   network_device {
     bridge   = "vmbr0"
     vlan_id  = local.host.k3s.vlan_id
@@ -292,4 +307,23 @@ resource "terraform_data" "k3s_worker" {
   }
 
   depends_on = [terraform_data.k3s_server]
+}
+
+# The registry disk: blank scsi1 -> ext4 labelled `registry`, mounted at
+# /mnt/registry (fstab by label, nofail), the data under /mnt/registry/data so
+# an unmounted disk fails the registry pod instead of filling the root disk.
+# Idempotent, and it refuses a disk that carries anything else. ADR 0021.
+resource "terraform_data" "k3s_registry_disk" {
+  triggers_replace = [filesha256("${path.module}/../../services/k3s/registry-disk.sh")]
+
+  provisioner "local-exec" {
+    command = join(" ", [
+      "cat ${path.module}/../../services/k3s/registry-disk.sh",
+      "| ${local.node_ssh[local.host.k3s.node]}",
+      "'qm guest exec ${local.host.k3s.vmid} --pass-stdin 1 --timeout 300 -- bash -s'",
+      "| python3 -c \"import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get(chr(111)+\\\"ut-data\\\",\\\"\\\")); sys.stderr.write(d.get(chr(101)+\\\"rr-data\\\",\\\"\\\")); sys.exit(d.get(chr(101)+\\\"xitcode\\\",1))\"",
+    ])
+  }
+
+  depends_on = [proxmox_virtual_environment_vm.k3s]
 }
