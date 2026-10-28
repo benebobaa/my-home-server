@@ -22,7 +22,7 @@
   },
   "panels": [
     {
-      "id": 52,
+      "id": 53,
       "type": "text",
       "title": "",
       "transparent": true,
@@ -38,7 +38,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 54,
       "type": "stat",
       "title": "Unschedulable pods",
       "datasource": {
@@ -97,7 +97,7 @@
       "description": "K8sPodUnschedulable: a tenant cannot start."
     },
     {
-      "id": 54,
+      "id": 55,
       "type": "stat",
       "title": "Nodes under MemoryPressure",
       "datasource": {
@@ -156,7 +156,7 @@
       "description": "The kubelet is evicting pods."
     },
     {
-      "id": 55,
+      "id": 56,
       "type": "stat",
       "title": "Fullest node: memory requests",
       "datasource": {
@@ -216,7 +216,7 @@
       "description": "K8sNodeMemoryRequestsHigh above 90 %."
     },
     {
-      "id": 56,
+      "id": 57,
       "type": "stat",
       "title": "Platform pods not ready",
       "datasource": {
@@ -274,7 +274,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 58,
       "type": "stat",
       "title": "Platform containers waiting",
       "datasource": {
@@ -333,7 +333,7 @@
       "description": "CrashLoopBackOff, ImagePullBackOff and similar."
     },
     {
-      "id": 58,
+      "id": 59,
       "type": "stat",
       "title": "Active series from k3s",
       "datasource": {
@@ -388,7 +388,7 @@
       "description": "Series churn check: pod-level series should stay near the number of live pods."
     },
     {
-      "id": 59,
+      "id": 60,
       "type": "timeseries",
       "title": "Memory requests / allocatable, per node (alert over 90 %)",
       "datasource": {
@@ -457,7 +457,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 61,
       "type": "timeseries",
       "title": "Pods by phase, all namespaces",
       "datasource": {
@@ -518,7 +518,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 62,
       "type": "timeseries",
       "title": "Platform restarts in 30 min (alert over 2)",
       "datasource": {
@@ -586,7 +586,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 63,
       "type": "timeseries",
       "title": "Active series from k3s, by node",
       "datasource": {

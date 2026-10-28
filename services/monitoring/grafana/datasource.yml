@@ -28,3 +28,11 @@ datasources:
     access: proxy
     url: http://logs.home.arpa:9428
     editable: false
+  # The lab trace store (CT 122, services/traces, ADR 0026). Grafana's Jaeger
+  # data source reads VictoriaTraces' Jaeger query API.
+  - name: Traces
+    uid: traces
+    type: jaeger
+    access: proxy
+    url: http://traces.home.arpa:10428/select/jaeger
+    editable: false

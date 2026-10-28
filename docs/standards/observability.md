@@ -43,6 +43,13 @@ Or `monitoring: none`, with the reason in `note`.
 - **Never log secrets** (tokens, passwords, full request bodies). Logs are
   readable by whoever can query the store.
 - **Serve `/healthz`** if it has an HTTP side (see `health` above).
+- **Export traces, if it handles requests.** OTLP/HTTP to
+  `http://traces.home.arpa:10428/insert/opentelemetry/v1/traces`, with
+  `service.name` set to the inventory name (ADR 0026). From MGMT that works as
+  is. From another VLAN, a per-host hEX pinhole comes first; the DMZ does not
+  ship into MGMT, so Kubeletto's traces wait for the operator's decision
+  (ADR 0008, 0026). Sample on the app side; spans carry no secrets, the same
+  rule as logs.
 - **Hostname = inventory name.** `modules/lxc-guest` sets it; don't change it.
   Logs, alerts and the dashboard join on it.
 
@@ -54,6 +61,7 @@ Or `monitoring: none`, with the reason in `note`.
 | `PveGuestDown` if it should run (`start_on_boot`) and doesn't | cluster rules |
 | Scrape of its `/metrics`, labelled `instance`, `service`, `tier` | job `service` |
 | Its logs, 30 days | Grafana → Explore → VictoriaLogs: `_stream:{_HOSTNAME="myapp"}` |
+| Its traces, 30 days, once it sends them | Grafana → Explore → Traces (Jaeger), by `service.name` |
 | The Service dashboard (pick the host) | Grafana → Homelab → Service |
 | The hEX rules for the above, if it lives outside MGMT | generated in `network/routeros/firewall.tf` |
 

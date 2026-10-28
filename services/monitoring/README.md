@@ -123,12 +123,14 @@ Until these are done, alerts are evaluated but routed to `blackhole`
 - **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
   `DASHBOARDS`) for the host views, plus JSON in `grafana/dashboards/`: the
   **Service** view (any host), one per shared app (`app-postgres`,
-  `app-nats`, `app-valkey`) and two platform views (`platform-logs`,
-  `platform-k3s`). Each alert file has a dashboard whose panels follow the
-  alert expressions. UI edits are not saved: build in the UI, export the JSON,
-  commit.
+  `app-nats`, `app-valkey`) and four platform views (`platform-logs`,
+  `platform-k3s`, `platform-traces`, `platform-monitoring`). Each alert file
+  has a dashboard whose panels follow the alert expressions. UI edits are not
+  saved: change the JSON in the repo, then apply.
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
+- **Traces** are in the `traces` data source (Jaeger API of CT 122,
+  `services/traces/`, ADR 0026). The Jaeger query needs a service name.
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
   packages (security updates via apt). Grafana is pinned and held
   (`GRAFANA_VERSION`). pve-exporter is pinned (`PVE_EXPORTER_VERSION`). The
