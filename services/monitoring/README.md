@@ -75,9 +75,8 @@ address existed and used up systemd's 5 quick restarts. It now starts after
 `network-online.target` and retries without limit (Ansible drop-in). A
 second pve2 cold reboot had it listening at 12.9 s on the first try.
 
-Not yet: backups (`pve_not_backed_up_total`, with PBS), the public tunnel
-(an external HTTP check, with Cloudflare Tunnel), hEX remote syslog / logs,
-UPS (NUT), GPU metrics.
+Not yet: a UPS (NUT). Backups (`PveGuestNotBackedUp`), the public endpoints
+(`blackbox_public`), hEX logs and GPU metrics are in place.
 
 ## Operator steps (account-level, once)
 
@@ -122,8 +121,12 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   (Alertmanager datasource), or
   `ssh root@10.10.10.12 'pct exec 120 -- amtool --alertmanager.url=http://127.0.0.1:9093 silence add instance=pve3 --duration 1h --comment reboot'`.
 - **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
-  `DASHBOARDS`), plus JSON in `grafana/dashboards/` (the shared **Service**
-  dashboard; app dashboards as `app-<name>.json`). UI edits are not saved.
+  `DASHBOARDS`) for the host views, plus JSON in `grafana/dashboards/`: the
+  **Service** view (any host), one per shared app (`app-postgres`,
+  `app-nats`, `app-valkey`) and two platform views (`platform-logs`,
+  `platform-k3s`). Each alert file has a dashboard whose panels follow the
+  alert expressions. UI edits are not saved: build in the UI, export the JSON,
+  commit.
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
