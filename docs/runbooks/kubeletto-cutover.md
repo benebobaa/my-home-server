@@ -133,6 +133,18 @@ it signs every user out). Then delete the obsolete OpenObserve buckets in R2,
 `flip.sh back` and the rollback comments in `network/cloudflare/`, and the
 `kubeletto-prod` SSH alias.
 
+**Done 2026-10-28 ~10:10 WIB** (operator: "yes proceed"): the dry run showed K3s with its
+secrets and 28 working files in /root; they were copied first to a local, non-git,
+0700 archive on the operator's Mac (`~/Documents/benelabs/rented-server-archive-2026-10-28`,
+35 MB, without the Go toolchain), then `decommission-rented.sh --apply` ran. The
+first run lost its SSH connection when K3s's uninstall reset the network after the
+Tailscale logout; the script is idempotent, a second run finished (K3s, /opt and
+/root gone, 7.4 GB used, only .ssh .bashrc .profile left). `flip.sh back` now
+refuses. Open: rotate the shared credentials that lived there (R2 keys,
+Cloudflare token, Resend, the GitHub App key, Infisical; the Aiven password too),
+delete the OpenObserve buckets in R2, the `kubeletto-prod` SSH alias, and delete
+Aiven and Upstash (dashboards, operator).
+
 ## After
 
 - **+24 h**: watch `K8sPodUnschedulable`, `K8sNodeMemoryRequestsHigh`, 5xx at

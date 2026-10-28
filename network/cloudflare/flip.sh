@@ -25,6 +25,7 @@ cd "$(dirname "$0")"
 
 DIR=${1:-}; APPLY=${2:-}
 [[ $DIR =~ ^(forward|back)$ ]] && [[ -z $APPLY || $APPLY = --apply ]] || { sed -n 2,24p "$0" >&2; exit 2; }
+[ "$DIR" = back ] && { echo "refusing: the rented server was wiped on 2026-10-28, the rollback is over" >&2; exit 1; }
 
 PROD_IP=103.59.160.198
 ACCOUNT=f650e5eb59b56b70048a841520541189   # not secret (tunnel.tf)
