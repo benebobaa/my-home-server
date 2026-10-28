@@ -16,7 +16,7 @@ never edited — supersede them with a new one.
 | [0009](0009-backups-pbs-on-pve3.md) | Backups: Proxmox Backup Server in a container on pve3, nightly, every guest; the archive's bind mounts not yet covered |
 | [0010](0010-shared-postgres-and-app-standard.md) | One shared PostgreSQL 18 (CT 130) for the lab's apps, a database + role per app; databases get an exporter; the app standard |
 | [0011](0011-kubeletto-on-the-home-cluster.md) | Kubeletto runs on the home K3s cluster: tunnel-only edge, free tier boxed for a household IP, one observability stack, prod-data copies operator-only |
-| [0012](0012-pve1-on-demand-ai-workstation.md) | pve1 is an on-demand AI workstation: the RTX 3060 goes whole to one Ubuntu VM by VFIO; no always-on services; its guests are scripts (the API cannot read an offline node) |
+| [0012](0012-pve1-on-demand-ai-workstation.md) | pve1 is an AI workstation: the RTX 3060 goes whole to one Ubuntu VM by VFIO; its guests are scripts (the API cannot read an offline node). The on-demand and no-always-on parts are superseded by 0023 |
 | [0013](0013-ai-vm-off-the-tailnet.md) | The `ai` VM stays off the tailnet and ships no logs: reached through the admin gateways' route; untrusted-code zones never push into MGMT |
 | [0014](0014-gpu-metrics-and-lab-as-untrusted-zone.md) | GPU metrics from nvidia_gpu_exporter (basic driver readings, no profiling counters); the LAB is an untrusted zone for monitoring like the DMZ |
 | [0015](0015-tenant-capacity-by-measured-reservations.md) | Tenant capacity at home: reservations sized to measured use (40 warm pods on the 4 GB worker), no new hardware, no second worker, no pve1 worker |
@@ -27,3 +27,4 @@ never edited — supersede them with a new one.
 | [0020](0020-ai-vm-without-docker.md) | The `ai` VM runs without Docker or the NVIDIA container toolkit; engines run natively in `uv` venvs (supersedes 0012's Docker line) |
 | [0021](0021-registry-on-the-k3s-servers-own-disk.md) | Kubeletto's registry keeps its blobs on a dedicated disk of the K3s server VM, not in R2; no backup, accepted (supersedes the "registry stays on R2" line of 0004 and 0011) |
 | [0022](0022-a-tenant-app-uses-the-shared-postgres-and-valkey.md) | larasrouter, a Kubeletto tenant app, uses the shared Postgres and Valkey through two worker pinholes and a per-namespace egress policy (amends the DMZ rule for this one app) |
+| [0023](0023-pve1-always-on-ai-vm-on-demand.md) | pve1 is always on, like the other nodes (three votes, tier `standard`); the `ai` VM stays on demand, started by the operator when learning AI (supersedes 0012's on-demand decision) |

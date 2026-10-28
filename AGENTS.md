@@ -40,8 +40,8 @@ routers with the same routes: `admin-gw` (CT 101 on pve3) and `admin-gw2`
 | Target | Address |
 | --- | --- |
 | pve2 / pve3 (SSH `root@`, UI `:8006`) | `10.10.10.12` / `10.10.10.13` |
-| pve1 (on demand: often off; wake it first, `docs/runbooks/node-ops.md`) | `10.10.10.11` |
-| `ai` VM on pve1 (SSH `bene@`, via the admin gateways' route) | `10.10.30.10` |
+| pve1 (always on; `docs/runbooks/node-ops.md`) | `10.10.10.11` |
+| `ai` VM on pve1 (on demand: started by the operator; SSH `bene@`, via the admin gateways' route) | `10.10.30.10` |
 | hEX REST (what Tofu uses) | `https://192.168.99.1/rest/<path>` |
 | hEX SSH / WinBox | `10.10.10.1` (port 22 / 8291) |
 | Switch UI | `http://192.168.99.2` |
@@ -57,7 +57,7 @@ mise install
 make check   # static: tofu fmt/validate, tflint, shellcheck, yamllint,
              # ansible-lint, promtool/amtool, gitleaks — CI runs exactly this
 make drift   # both tofu plans + Ansible --check (needs the age key + lab;
-             # pve1 is often off: wake it, or expect it `unreachable`)
+             # the `ai` VM is off unless it is being used; expect its checks to skip)
 
 # OpenTofu — secrets come from SOPS, decrypted into the process env only
 cd network/routeros   # or network/cloudflare, proxmox/opentofu
@@ -90,8 +90,8 @@ matters.
    management path. ether3 is the fallback if access breaks.
 3. Change the code, review the plan or diff, apply.
 4. **Verify against reality.** Done means `No changes` from both Tofu stacks,
-   `changed=0 failed=0` from a full Ansible `--check` (pve1 included: wake
-   it, or `--limit '!pve1'` and say so), and the live effect
+   `changed=0 failed=0` from a full Ansible `--check` (pve1 included; if a
+   node is down, `--limit '!<node>'` and say so), and the live effect
    observed directly (the effective value, a test run, a real restore).
    Anything that must survive a boot is proven by a **cold reboot**: live
    checks once missed a `/dev/nvidia-uvm` that only existed because a CUDA
@@ -104,20 +104,21 @@ matters.
 
 ## Cluster and node rules
 
-- **Two-node quorum.** With either node down, the cluster is non-quorate:
-  guests keep running, but management actions lock. Reboot one node at a time
-  and wait for `pvecm status` → `Quorate: Yes` before touching the other.
-  Agents may reboot nodes themselves as part of ongoing work, on those terms.
+- **Three-node quorum** (pve1, pve2, pve3). One node down keeps quorum; two
+  down make the cluster non-quorate: guests keep running, but management
+  actions lock. Reboot one node at a time and wait for `pvecm status` →
+  `Quorate: Yes` before touching the next. Agents may reboot nodes themselves
+  as part of ongoing work, on those terms.
 - `admin-gw` (pve3) and `admin-gw2` (pve2) are the remote-access path, one
   per node, so a node reboot never cuts access. Both come back by
   themselves after a reboot; confirm with `pct list`. Rebuild or restart
   them one at a time.
 - **Placement**: stateful guests (databases, monitoring data, PBS primary) go
   on pve2. pve3 has a no-name SSD and gets only stateless or rebuildable
-  guests. pve1 (desktop, RTX 3060) runs on demand (off most days, woken by
-  Wake-on-LAN, `docs/runbooks/node-ops.md`) and never hosts always-on
-  services; its GPU goes whole to the `ai` VM (ADR 0012). The PVE API
-  cannot read pve1 while it is off, so guests there are root scripts
+  guests. pve1 (desktop, RTX 3060) is always on (ADR 0023) and may host
+  always-on guests that fit beside the `ai` VM. Its GPU goes whole to the
+  `ai` VM (ADR 0012), which is on demand. The PVE API cannot read a node or VM
+  while it is off, so guests there are root scripts
   (`services/ai/`), not provider resources.
 - Unattended apt on hosts: pass `-o Dpkg::Options::=--force-confold`. Some
   conffiles carry local config (`/etc/dkms/framework.conf`), and a conffile

@@ -31,12 +31,12 @@ timeouts — a busy guest can add up to a couple of minutes).
   the power returns, with the clock reset to an old date until chrony syncs
   (about 30 s; [2026-10-16](../incidents/2026-10-16-power-cut-pve1-stuck-off.md)).
 
-## Wake pve1
+## pve1 and the ai VM
 
-pve1 is off by design when not in use (ADR 0012) and wakes on a magic
-packet: BIOS ErP off + Power On By PCI-E on, NIC armed at every boot
-(Ansible `wake_on_lan`, `Wake-on: g`). Send it from another node, which sits
-on VLAN 10 with it:
+pve1 is always on (ADR 0023). Wake-on-LAN stays armed (BIOS ErP off + Power On
+By PCI-E on, NIC armed at every boot by Ansible `wake_on_lan`, `Wake-on: g`) as
+the recovery path after a power cut. If it ever needs waking, send the packet
+from another node, which sits on VLAN 10 with it:
 
 - **UI:** log in on pve2 or pve3 (`:8006`), select **pve1** (grey, offline) →
   **Wake-on-LAN** (top-right toolbar). The button is greyed out while pve1 is
@@ -49,17 +49,30 @@ ssh root@10.10.10.13 wakeonlan -i 10.10.10.255 58:11:22:db:ea:e8   # or 10.10.10
 ssh root@10.10.10.13 pvesh create /nodes/pve1/wakeonlan             # what the button calls
 ```
 
-It answers SSH ~1 min later; the cluster goes from 2 to 3 votes. Shut it
-down from the UI or `ssh root@10.10.10.11 poweroff` when done: it stops its
-guests cleanly first. Monitoring sends one silent note while it is off
-(`PveNodeDown`, info); everything else about pve1, `ai` and `hermes` (ping,
-UI probe, scrapes, the GPU exporter) is suppressed. Both guests start with
-pve1 (`onboot`): the personal agent's Telegram bot is online about a minute
-after the wake ([services/hermes](../../services/hermes/README.md)). Observed 2026-10-13 after a real
-shutdown: exactly that, cluster quorate on 2 of 3 votes.
+Do not shut pve1 down for routine work. If it does need to be off, its guests
+stop cleanly first (`poweroff` from the UI or `ssh root@10.10.10.11 poweroff`),
+and the cluster drops to 2 of 3 votes. Monitoring treats pve1 as a standard
+node: if it goes down, `PveNodeDown` is critical. The personal agent (`hermes`,
+CT 141) starts with pve1 (`onboot`) and is online around the clock
+([services/hermes](../../services/hermes/README.md)).
 
-After a power cut it stays off unless it was running (BIOS: Restore AC Power
-Loss = Last State). If a wake does nothing:
+### The ai VM (on demand)
+
+`ai` (VM 140) does not start with pve1 (`onboot 0`, ADR 0023). Start it when
+learning AI, and shut it down cleanly when done:
+
+```bash
+ssh root@10.10.10.11 qm start 140       # or Start in the pve1 UI
+ssh root@10.10.10.11 qm shutdown 140    # clean shutdown through the guest agent
+```
+
+While it runs it holds the RTX 3060 and 24 GB of pve1's memory, so the host
+has about 8 GB for CT 141 and anything else.
+
+After a power cut pve1 returns by itself only if the BIOS restores power on AC
+loss (Restore AC Power Loss = Last State, with ErP off and Power On By PCI-E).
+The OS cannot read these settings, so check them in the BIOS. If pve1 does
+not come back:
 
 1. Press pve1's power button. If it boots, the NIC was not armed: it is armed
    by the OS, so it needs one clean shutdown after a power cut. Also check
