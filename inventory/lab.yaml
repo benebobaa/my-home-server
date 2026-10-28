@@ -155,6 +155,15 @@ hosts:
     note: Proxmox Backup Server — nightly backups of every guest; on pve3, apart from the stateful guests (ADR 0009, services/pbs)
     monitoring: { tier: standard, health: "https://{ip}:8007/", health_module: http_any, logs: true }
 
+  pbs-replica:
+    kind: lxc
+    vmid: 112
+    node: pve1 # always on (ADR 0023); NVMe, not pve2's SSD (ADR 0025)
+    vlan: mgmt
+    ip: 10.10.10.19
+    note: second Proxmox Backup Server — the copy of VM 300 with the registry's blobs, on pve1 (ADR 0025, services/pbs with PBS_STORE=replica)
+    monitoring: { tier: standard, health: "https://{ip}:8007/", health_module: http_any, logs: true }
+
   k3s:
     kind: vm
     vmid: 300

@@ -17,11 +17,20 @@ set -euo pipefail
 
 CT=${1:?usage: pbs-link.sh <vmid> <ip>}
 IP=${2:?usage: pbs-link.sh <vmid> <ip>}
-STORE=main
+# One server per call (ADR 0025 adds the replica on pve1). The defaults are the
+# main server's; the replica sets PBS_STORE, PBS_STORAGE, PBS_JOB, PBS_SCHEDULE
+# and PBS_VMIDS (its own job takes only the listed guests).
+STORE=${PBS_STORE:-main}
 PVE_USER=pve@pbs
 TOKEN=cluster
-STORAGE=pbs
-JOB=nightly
+STORAGE=${PBS_STORAGE:-pbs}
+JOB=${PBS_JOB:-nightly}
+SCHEDULE=${PBS_SCHEDULE:-02:30}
+# Guests the job skips. Always this CT; the main server also skips the replica
+# (its datastore is the replica CT's root disk) and VM 300 (its registry disk
+# does not fit the main datastore).
+EXCLUDE=${PBS_EXCLUDE:-$CT}
+VMIDS=${PBS_VMIDS:-}
 
 pbm() { pct exec "$CT" -- proxmox-backup-manager "$@"; }
 
@@ -59,12 +68,17 @@ pvesm status --storage "$STORAGE" | grep -q " active " \
   || { echo "pbs-link: storage ${STORAGE} is not active" >&2; exit 1; }
 
 # --- the nightly backup job ---------------------------------------------------------
-job=(--schedule '02:30' --storage "$STORAGE" --all 1 --exclude "$CT" --mode snapshot
+job=(--schedule "$SCHEDULE" --storage "$STORAGE" --mode snapshot
      --enabled 1 --notification-mode notification-system --notes-template '{{guestname}}'
-     --comment "every guest except PBS itself (managed by OpenTofu: proxmox/opentofu/pbs.tf)")
+     --comment "managed by OpenTofu (proxmox/opentofu/pbs.tf, pbs-replica.tf)")
+if [ -n "$VMIDS" ]; then
+  job+=(--vmid "$VMIDS")
+else
+  job+=(--all 1 --exclude "$EXCLUDE")
+fi
 if pvesh get "/cluster/backup/${JOB}" >/dev/null 2>&1; then
   pvesh set "/cluster/backup/${JOB}" "${job[@]}"
 else
   pvesh create /cluster/backup --id "$JOB" "${job[@]}"
 fi
-echo "pbs-link: backup job ${JOB} (02:30, all guests except ${CT})"
+echo "pbs-link: backup job ${JOB} (${SCHEDULE}, store ${STORE}, guests: ${VMIDS:-all except ${EXCLUDE}})"

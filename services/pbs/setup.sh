@@ -18,8 +18,9 @@ KEYRING=/usr/share/keyrings/proxmox-archive-keyring.gpg
 KEYRING_URL=https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg
 KEYRING_SHA256=136673be77aba35dcce385b28737689ad64fd785a797e57897589aed08db6e45
 
-STORE=main
-STORE_PATH=/var/lib/proxmox-backup/datastore/main
+# PBS_STORE names the datastore (default main; the replica on pve1 uses replica).
+STORE=${PBS_STORE:-main}
+STORE_PATH=/var/lib/proxmox-backup/datastore/${STORE}
 # Retention: 7 daily, 4 weekly, 6 monthly. PBS prunes; PVE keeps all
 # (pbs-link.sh sets keep-all on the storage) so there is one source of truth.
 KEEP=(--keep-daily 7 --keep-weekly 4 --keep-monthly 6)

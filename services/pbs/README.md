@@ -7,6 +7,7 @@ VLAN 10), Proxmox Backup Server 4 on Debian 13. Why here and how:
 
 | | |
 | --- | --- |
+| Replica | CT 112 `pbs-replica` on pve1 (`10.10.10.19`): the same code with `PBS_STORE=replica`, datastore `replica`, job `replica-registry` (VM 300 incl. the registry disk, 03:30). ADR 0025. |
 | UI | `https://10.10.10.14:8007` (no login set up: use the PVE UI → storage `pbs`, or `proxmox-backup-manager` in the CT) |
 | Datastore | `main` at `/var/lib/proxmox-backup/datastore/main`, on the CT's 30 GB root disk (pve3's SSD) |
 | Job | `nightly` (cluster backup job): 02:30 WIB, every guest except CT 111, snapshot mode |

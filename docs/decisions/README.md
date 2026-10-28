@@ -29,3 +29,4 @@ never edited — supersede them with a new one.
 | [0022](0022-a-tenant-app-uses-the-shared-postgres-and-valkey.md) | larasrouter, a Kubeletto tenant app, uses the shared Postgres and Valkey through two worker pinholes and a per-namespace egress policy (amends the DMZ rule for this one app) |
 | [0023](0023-pve1-always-on-ai-vm-on-demand.md) | pve1 is always on, like the other nodes (three votes, tier `standard`); the `ai` VM stays on demand, started by the operator when learning AI (supersedes 0012's on-demand decision) |
 | [0024](0024-retire-the-personal-agent.md) | The personal agent (Hermes, CT 141) is retired and removed; its bot and API keys are revoked at their providers (supersedes 0018) |
+| [0025](0025-replica-backup-of-vm-300-on-pve1.md) | A second PBS server on pve1 (`pbs-replica`, CT 112) holds VM 300 incl. the registry disk; the main nightly job excludes it. Same site, not off-site (amends 0021's no-backup line) |

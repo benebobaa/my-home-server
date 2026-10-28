@@ -59,8 +59,10 @@ resource "terraform_data" "pbs_link" {
     module.pbs.generation,
   ]
 
+  # The main job skips the replica (its datastore is that CT's root disk) and
+  # VM 300 (its registry disk does not fit this datastore; pbs-replica.tf).
   provisioner "local-exec" {
-    command = "${local.pbs_ssh} 'bash -s -- ${module.pbs.vmid} ${local.host.pbs.ip}' < ${path.module}/files/pbs-link.sh"
+    command = "${local.pbs_ssh} 'PBS_EXCLUDE=${module.pbs.vmid},${local.host["pbs-replica"].vmid},${local.host.k3s.vmid} bash -s -- ${module.pbs.vmid} ${local.host.pbs.ip}' < ${path.module}/files/pbs-link.sh"
   }
 
   depends_on = [terraform_data.pbs_setup]

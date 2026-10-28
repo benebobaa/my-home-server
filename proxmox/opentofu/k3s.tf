@@ -115,9 +115,9 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   }
 
   # The registry's blobs (ADR 0021): a disk of its own, so a build storm cannot
-  # fill the root disk under K3s. Left out of the PBS backup (the datastore has
-  # no room for it; the trade-off is in the ADR). Formatted and mounted at
-  # /mnt/registry by services/k3s/registry-disk.sh (terraform_data below).
+  # fill the root disk under K3s. Backed up by the replica on pve1, not by the
+  # main PBS (ADR 0025: the main datastore has no room for it). Formatted and
+  # mounted at /mnt/registry by services/k3s/registry-disk.sh (terraform_data below).
   disk {
     datastore_id = "local-lvm"
     interface    = "scsi1"
@@ -126,7 +126,7 @@ resource "proxmox_virtual_environment_vm" "k3s" {
     discard      = "on"
     iothread     = true
     ssd          = true
-    backup       = false
+    backup       = true
   }
 
   network_device {
