@@ -34,10 +34,12 @@ The admin API (`/v1/admin/*`) ran inside the customer-facing core server, on `ap
 ## Verification
 
 - Kubeletto repo, branch `admin-service` (`c73bb5a8`): `go build`, `go vet`, the new tests (admin-only route set, probes, the admin gate, the disabled flag, the monolith keeping its admin routes, the run-mode parse). The full core run has only the known payments failure. The admin app: typecheck and 157 tests pass. The home overlay renders.
-- Not yet: the pod in the cluster, the admin host through Cloudflare, and the flip on the customer core.
+- Cluster, 2026-10-28 (core image `c73bb5a8`, merged to `home-migration`): the `platform-admin` pod runs on the server node, `run_mode=admin`, `worker_enabled=false`, the schema guard passes at 102, and no worker starts. Through a port-forward: `/healthz` 200, `/readyz` 200, `/v1/admin/stats` 401 with no session, `/v1/projects` 404, `/v1/logs` 404. The customer core is still up.
+- Not yet: the admin host through Cloudflare (gated by `admin_api_public`, operator's Access step first), the admin app deploy, and the flip of `ADMIN_API_ENABLED` on the customer core.
 
 ## Follow-ups
 
 - A least-privilege database role for the admin plane (read and admin writes only, no worker tables).
 - Access policy as code, once the Cloudflare token has the Access permission.
 - Tailnet-only access, if the operator wants zero public surface. This changes only the ingress for `admin-api`.
+- Defence in depth: the admin plane checks Cloudflare Access's `Cf-Access-Jwt-Assertion` header, so a request that bypasses Access is refused by the app too. This is the review's suggestion, and it is worth doing before the host is published.
