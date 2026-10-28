@@ -52,9 +52,7 @@ ssh root@10.10.10.13 pvesh create /nodes/pve1/wakeonlan             # what the b
 Do not shut pve1 down for routine work. If it does need to be off, its guests
 stop cleanly first (`poweroff` from the UI or `ssh root@10.10.10.11 poweroff`),
 and the cluster drops to 2 of 3 votes. Monitoring treats pve1 as a standard
-node: if it goes down, `PveNodeDown` is critical. The personal agent (`hermes`,
-CT 141) starts with pve1 (`onboot`) and is online around the clock
-([services/hermes](../../services/hermes/README.md)).
+node: if it goes down, `PveNodeDown` is critical.
 
 ### The ai VM (on demand)
 

@@ -199,17 +199,6 @@ hosts:
     # engine under test (vLLM/SGLang /metrics; down while none runs or
     # Ollama runs: TargetDown is info for best-effort, a silent record).
     monitoring: { tier: best-effort, logs: false, metrics: [9835, 9100, 8000] }
-  hermes:
-    kind: lxc
-    vmid: 141
-    node: pve1 # on demand like ai: the bot is online while pve1 is up (ADR 0018)
-    vlan: lab # internet only: the agent runs shell commands chosen by a model
-    ip: 10.10.30.11
-    note: personal agent — Hermes Agent, Telegram gateway (services/hermes/)
-    # best-effort: off whenever pve1 is. No logs: untrusted zone (ADR 0013).
-    # No health URL or metrics: Telegram polling opens no port.
-    monitoring: { tier: best-effort, logs: false }
-
   llm-bench:
     kind: lxc
     vmid: 201
