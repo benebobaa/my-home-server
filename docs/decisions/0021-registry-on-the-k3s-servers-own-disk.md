@@ -50,3 +50,14 @@ changes no external path (no tunnel, no 50 Mbps DMZ cap).
 - The registry no longer needs R2 credentials. `kubeletto-registry` is
   deleted after the rollback week; `kubeletto-builds` and `kubeletto-releases`
   stay on R2.
+
+## Verification (2026-10-28)
+
+Copy: 6,842 objects / 7.694 GiB equal on both sides. A pull (image removed from
+the worker, an idle tenant app woken: pulled, 200 in 9.4 s) and a push (blob
+201, read back 200, file on the disk). Cold reboot of VM 300 at 12:49 WIB:
+the guest was back in under a minute with `/mnt/registry` mounted from fstab by
+label, the registry pod Running on the same 7.8 GB, the API answering again
+after about 1.5 minutes and a tenant app after about 2.5 (Knative's gateway
+restarting); no errors in core's log. Still to see: a GitHub-built deploy end to
+end (the operator's own test).
