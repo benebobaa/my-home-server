@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# traces in-guest setup: VictoriaTraces, the lab's trace store (ADR 0026).
+# traces in-guest setup: VictoriaTraces, the lab's trace store (ADR 0028).
 # Idempotent.
 #
 # Run by OpenTofu (terraform_data.traces_setup in
@@ -8,7 +8,7 @@
 # SSH to the node + `pct exec`, then this script runs from there.
 #
 # Receives:
-#   OTLP/HTTP  :10428 /insert/opentelemetry/v1/traces   senders in MGMT (ADR 0026)
+#   OTLP/HTTP  :10428 /insert/opentelemetry/v1/traces   senders in MGMT (ADR 0028)
 # Serves:
 #   :10428 /select/jaeger   Grafana's Jaeger data source (platform-traces)
 #   :10428 /select/vmui     the built-in UI

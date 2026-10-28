@@ -130,7 +130,7 @@ Until these are done, alerts are evaluated but routed to `blackhole`
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
 - **Traces** are in the `traces` data source (Jaeger API of CT 122,
-  `services/traces/`, ADR 0026). The Jaeger query needs a service name.
+  `services/traces/`, ADR 0028). The Jaeger query needs a service name.
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
   packages (security updates via apt). Grafana is pinned and held
   (`GRAFANA_VERSION`). pve-exporter is pinned (`PVE_EXPORTER_VERSION`). The

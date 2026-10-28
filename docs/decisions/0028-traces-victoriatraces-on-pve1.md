@@ -1,4 +1,4 @@
-# 0026 — Traces: VictoriaTraces in CT 122 on pve1, beside the log store's design
+# 0028 — Traces: VictoriaTraces in CT 122 on pve1, beside the log store's design
 
 **Status:** accepted (2026-10-28). Decides the tracing item that [ADR 0008](0008-observability-standard.md) deferred ("tracing, when an app needs it"). ADR 0008 stands otherwise; it is not edited.
 

@@ -1,7 +1,7 @@
 {
   "uid": "homelab-platform-traces",
   "title": "Trace store (VictoriaTraces)",
-  "description": "The lab's trace store in CT 122: health, disk against the cap, ingest, drops and errors, and a trace search by service through Grafana's Jaeger data source (ADR 0026).",
+  "description": "The lab's trace store in CT 122: health, disk against the cap, ingest, drops and errors, and a trace search by service through Grafana's Jaeger data source (ADR 0028).",
   "tags": [
     "homelab",
     "platform"
@@ -47,7 +47,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "VictoriaTraces, CT 122 `traces` (`10.10.10.20`): OTLP/HTTP in on 10428, Jaeger query for Grafana. The store's own health first, then a trace search by service. No app sends yet (ADR 0026): the search fills when the first sender exists. Retention 30 days, capped at 16 GiB."
+        "content": "VictoriaTraces, CT 122 `traces` (`10.10.10.20`): OTLP/HTTP in on 10428, Jaeger query for Grafana. The store's own health first, then a trace search by service. No app sends yet (ADR 0028): the search fills when the first sender exists. Retention 30 days, capped at 16 GiB."
       }
     },
     {

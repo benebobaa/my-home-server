@@ -1,7 +1,7 @@
 # traces — VictoriaTraces, the lab's trace store
 
 Spans from the lab's apps, in CT 122 `traces` on pve1 (`10.10.10.20`, VLAN 10).
-Why this product, this node and these ports: [ADR 0026](../../docs/decisions/0026-traces-victoriatraces-on-pve1.md).
+Why this product, this node and these ports: [ADR 0028](../../docs/decisions/0028-traces-victoriatraces-on-pve1.md).
 How an app sends traces: [docs/standards/observability.md](../../docs/standards/observability.md), §2.
 
 | | |
@@ -57,4 +57,4 @@ seconds after it returns 200 (`vt_pending_rows`).
 
 - **Any file here** → `tofu apply` in `proxmox/opentofu` (the targeted plan for `terraform_data.traces_setup`): it re-streams this directory and runs `setup.sh`. The binary is replaced only when its sha256 differs from the pinned one.
 - **Upgrade:** bump `TRACES_VERSION`, `TRACES_TARBALL_SHA256` and `TRACES_BIN_SHA256` together, from the release's `_checksums.txt`. Check `/health` and the smoke test after.
-- **Tier:** `standard` until an app depends on it; then `critical` in `lab.yaml`, as the shared services were (ADR 0026).
+- **Tier:** `standard` until an app depends on it; then `critical` in `lab.yaml`, as the shared services were (ADR 0028).

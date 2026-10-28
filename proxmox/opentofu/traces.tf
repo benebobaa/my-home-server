@@ -1,11 +1,11 @@
-# traces — VictoriaTraces, the lab's trace store (ADR 0026). Service notes:
+# traces — VictoriaTraces, the lab's trace store (ADR 0028). Service notes:
 # services/traces/README.md
 #
 # CT 122 on pve1: always on with the NVMe disk (ADR 0023), and stateful data
 # belongs there beside pbs-replica (ADR 0025). MGMT, beside monitoring and the
 # log store, so Grafana reads it without a router rule. Its shipping is
 # generic (logs.tf: log_shipping). Senders outside MGMT need one pinhole per
-# host on 10428 (ADR 0026); the DMZ never ships into MGMT.
+# host on 10428 (ADR 0028); the DMZ never ships into MGMT.
 
 locals {
   traces_dir = "${path.module}/../../services/traces"
@@ -20,7 +20,7 @@ module "traces" {
   source = "./modules/lxc-guest"
 
   host        = local.host.traces
-  description = "traces — VictoriaTraces, the lab trace store (10.10.10.20, ADR 0026). Managed by OpenTofu: proxmox/opentofu."
+  description = "traces — VictoriaTraces, the lab trace store (10.10.10.20, ADR 0028). Managed by OpenTofu: proxmox/opentofu."
   tags        = ["traces", "tofu"]
   # The same template pve1 already holds (pbs-replica.tf).
   template_file_id = "local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst"

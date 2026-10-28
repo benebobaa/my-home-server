@@ -45,10 +45,10 @@ Or `monitoring: none`, with the reason in `note`.
 - **Serve `/healthz`** if it has an HTTP side (see `health` above).
 - **Export traces, if it handles requests.** OTLP/HTTP to
   `http://traces.home.arpa:10428/insert/opentelemetry/v1/traces`, with
-  `service.name` set to the inventory name (ADR 0026). From MGMT that works as
+  `service.name` set to the inventory name (ADR 0028). From MGMT that works as
   is. From another VLAN, a per-host hEX pinhole comes first; the DMZ does not
   ship into MGMT, so Kubeletto's traces wait for the operator's decision
-  (ADR 0008, 0026). Sample on the app side; spans carry no secrets, the same
+  (ADR 0008, 0028). Sample on the app side; spans carry no secrets, the same
   rule as logs.
 - **Hostname = inventory name.** `modules/lxc-guest` sets it; don't change it.
   Logs, alerts and the dashboard join on it.
