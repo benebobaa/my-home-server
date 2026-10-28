@@ -54,6 +54,26 @@ resource "cloudflare_dns_record" "com_api_a" {
   proxied = true
 }
 
+# The admin plane (ADR 0026). Off until a Cloudflare Access application covers
+# admin-api.kubeletto.com: an open hostname would be the admin login exposed to
+# the internet. Set admin_api_public = true only after the operator confirms
+# Access is enforcing for it, and then apply.
+variable "admin_api_public" {
+  description = "Publish admin-api.kubeletto.com. Keep false until a Cloudflare Access policy covers it (ADR 0026)."
+  type        = bool
+  default     = false
+}
+
+resource "cloudflare_dns_record" "com_admin_api_cname" {
+  count   = var.admin_api_public ? 1 : 0
+  zone_id = local.zone_id.com
+  name    = "admin-api.kubeletto.com"
+  type    = "CNAME"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.kubeletto.id}.cfargotunnel.com"
+  ttl     = 1
+  proxied = true
+}
+
 resource "cloudflare_dns_record" "com_cd_spike_cname" {
   zone_id = local.zone_id.com
   name    = "cd-spike.kubeletto.com"
