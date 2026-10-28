@@ -117,9 +117,9 @@ pg_dump --format=custom --no-owner --no-acl "$AIVEN_DIRECT_URL" > kubeletto.dump
 pg_restore --no-owner --role=kubeletto -d kubeletto kubeletto.dump   # inside CT 130, as postgres
 ```
 
-`pgcrypto` is a trusted extension: the database owner may create it. When
-Kubeletto depends on this instance, its tier in `lab.yaml` goes to
-`critical`.
+`pgcrypto` is a trusted extension: the database owner may create it. Kubeletto
+and larasrouter depend on this instance, so its tier in `lab.yaml` is
+`critical` (since 2026-10-28, ADR 0010).
 
 ## Upgrades
 
