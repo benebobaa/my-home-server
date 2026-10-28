@@ -47,4 +47,10 @@ Then, in the homeserver repo:
 ## Verification
 
 - Kubeletto repo, `admin-tailnet` (`b792dd8e`): the overlay renders. The admin app typechecks and passes its 157 tests. The admin UI image builds from the committed tree. Run locally, it serves the console (200), falls back to the app for unknown paths, proxies `/v1/` (502 with no API present, as expected), sets the security headers, and runs as uid 101.
-- Not yet: the tailnet join, the `tailscale serve` publish, the ACL and the HTTPS certificate (operator steps 1–3), and the flip on the customer core.
+- Cluster, 2026-10-28: the pod runs 3/3. The tailscale container joins as an ephemeral `tag:admin` node, publishes https on the tailnet, and gets a Let's Encrypt certificate from Tailscale. From a tailnet device: the console loads (200), `/v1/admin/stats` returns 401 with no session, and the customer route `/v1/projects` returns 404. The tailnet name and the old public hostname are not in public DNS.
+- The node name changes when a new node registers while the previous one is still listed (`kubeletto-admin-1`, `-2`, `-3` so far). Remove stale machines in the Tailscale admin console to reclaim the name.
+- Not yet: the admin login through the tailnet console (the operator checks it), and the flip of `ADMIN_API_ENABLED` on the customer core.
+
+## Finding: the customer core can read every Secret
+
+A review flagged that node state kept in a Secret would be readable by less-privileged accounts. That is true, and it is wider than this pod: `platform-core` holds cluster-wide `secrets get` (`infra/k8s/platform/manifests/platform-core.yaml`). So it could read the admin plane's auth key and any node state. The admin node therefore keeps its identity in memory (ephemeral), and the auth key is the only tailnet credential. The fix is to narrow the customer core's secret reads to the namespaces it needs, through per-namespace bindings. That is a separate change and a follow-up. Until it lands, treat the tailnet auth key as exposed to the customer core.
