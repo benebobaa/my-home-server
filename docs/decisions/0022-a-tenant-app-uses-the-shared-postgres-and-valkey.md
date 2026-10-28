@@ -1,6 +1,6 @@
 # 0022 — larasrouter, a Kubeletto tenant app, uses the shared Postgres and Valkey
 
-**Status:** accepted in principle (2026-10-28), **blocked**: the pinholes were applied and removed again the same hour (see Follow-up). Asked for by the operator:
+**Status:** accepted (2026-10-28); the pinholes are live since 15:48 WIB with the residual below accepted by the operator. Asked for by the operator:
 larasrouter (its own project, running as a tenant on Kubeletto under its own
 account) should use the lab's Postgres and Valkey instead of its own Aiven and
 Upstash services. Amends the DMZ rule of [ADR 0004](0004-public-ingress-cloudflare-tunnel.md)
@@ -79,3 +79,18 @@ What this means for the rules:
   is acceptable; the alternative is a data store inside the DMZ.
 - Separately, the same window is a pre-existing property of the platform, not
   introduced here.
+
+## Acceptance and the proper probe (2026-10-28 15:48)
+
+The operator read the residual (a few seconds per pod start in which a new
+tenant pod is not yet restricted) and applied the two rules again. Probe with a
+25 s wait: from larasrouter's namespace 10.10.20.21:5432 and 10.10.20.23:6381 are
+open and :22 and :6380 are blocked; from the canary tenant all four are blocked;
+`tofu plan` says No changes; `redis_up` is 1 for both exporters (9121, 9122).
+
+The residual is explicit, not hidden. Ways to remove it, in the order the
+operator may want them: a host-level default-deny on the worker for the lab
+ranges from the pod CIDR that applies from the first packet (larasrouter's pods
+admitted by namespace or address); a dedicated worker or fixed egress address for
+larasrouter so the router rule names the tenant instead of the node; a data store
+inside the DMZ; a per-tenant proxy in front of Postgres and Valkey.
