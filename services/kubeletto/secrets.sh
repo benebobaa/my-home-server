@@ -9,7 +9,9 @@
 #
 # platform-core-env, from prod with:
 #   DATABASE_URL, DATABASE_URL_DIRECT -> the home database in CT 130
-#   REDIS_URL -> in-cluster Valkey; NATS_URL -> home NATS by DNS
+#   REDIS_URL -> its instance on the lab's shared Valkey (ADR 0016), TLS
+#     verified against REDIS_TLS_CA (output valkey_tls_cert, ADR 0017);
+#     NATS_URL -> the in-cluster NATS, a leaf of the lab's shared hub
 #   NATS_USER/NATS_PASSWORD (platform) + NATS_BUILD_USER (wave 2 NATS auth)
 #   TENANT_EGRESS_DENY_CIDRS -> CGNAT + the home public IPv4 (not in git)
 #   DOMAINS_EDGE_IPS -> Cloudflare's addresses for kubeletto.app;
@@ -24,6 +26,9 @@
 #
 # Generated at home: nats/nats-auth (platform/vector/build passwords),
 # logs/vector-nats-auth, kubeletto-builds/build-nats-auth.
+# From proxmox/opentofu (ADR 0016): nats/nats-hub (url: the hub with account
+# kubeletto's password), ConfigMap nats/nats-hub-ca (the hub's certificate,
+# pinned by the leaf), and the Valkey instance's password in REDIS_URL.
 # Mirrored into kubeletto-builds: ghcr-pull only (not core's internal secret).
 #
 # Where the prod-origin values come from (prod disappears on 2026-11-05):
@@ -74,7 +79,7 @@ vm() {
 # Keys of platform-core-env that home sets itself: never read from prod's
 # values, never stored in the snapshot (Aiven, Upstash, prod's NATS and the
 # rented server's addresses are not needed after the move).
-export HOME_OVERRIDE_KEYS="DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,NATS_URL,NATS_USER,NATS_PASSWORD,NATS_BUILD_USER,TENANT_EGRESS_DENY_CIDRS,DOMAINS_EDGE_IPS,DOMAINS_PROBE_ADDR,PLATFORM_API_URL,SESSION_COOKIE_DOMAIN,CLOUDFLARE_SAAS_TOKEN"
+export HOME_OVERRIDE_KEYS="DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,REDIS_TLS_CA,NATS_URL,NATS_USER,NATS_PASSWORD,NATS_BUILD_USER,TENANT_EGRESS_DENY_CIDRS,DOMAINS_EDGE_IPS,DOMAINS_PROBE_ADDR,PLATFORM_API_URL,SESSION_COOKIE_DOMAIN,CLOUDFLARE_SAAS_TOKEN"
 
 remote="echo '{\"kind\":\"List\",\"apiVersion\":\"v1\",\"items\":['; sep=''; for s in $(tr '\n' ' ' <<<"$PROD_SECRETS"); do printf '%s' \"\$sep\"; kubectl -n \${s%%/*} get secret \${s#*/} -o json; sep=','; done; echo ']}'"
 
@@ -150,6 +155,19 @@ HOME_PG_PASSWORD=$(cd "$REPO/proxmox/opentofu" &&
   sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tr -d '"')
 [ ${#HOME_PG_PASSWORD} -ge 20 ] || { echo "secrets: no kubeletto DB password from tofu" >&2; exit 1; }
 HOME_PG_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["postgres"]["ip"])' "$REPO/inventory/lab.yaml")
+# The shared NATS hub and Valkey (ADR 0016): passwords from the state, the
+# hub's certificate from its output, addresses from lab.yaml (the DMZ does not
+# resolve home.arpa).
+tf() { (cd "$REPO/proxmox/opentofu" && echo "$1" | sops exec-env secrets.sops.env 'tofu console' 2>/dev/null | tr -d '"'); }
+HUB_PASSWORD=$(tf 'nonsensitive(random_password.nats["kubeletto"].result)')
+VALKEY_PASSWORD=$(tf 'nonsensitive(random_password.valkey["kubeletto"].result)')
+[ ${#HUB_PASSWORD} -ge 20 ] && [ ${#VALKEY_PASSWORD} -ge 20 ] || { echo "secrets: no NATS/Valkey password from tofu" >&2; exit 1; }
+HUB_CA=$(cd "$REPO/proxmox/opentofu" && sops exec-env secrets.sops.env 'tofu output -raw nats_tls_cert')
+VALKEY_CA=$(cd "$REPO/proxmox/opentofu" && sops exec-env secrets.sops.env 'tofu output -raw valkey_tls_cert')
+[[ $HUB_CA == *"BEGIN CERTIFICATE"* && $VALKEY_CA == *"BEGIN CERTIFICATE"* ]] || { echo "secrets: no nats_tls_cert/valkey_tls_cert output" >&2; exit 1; }
+HUB_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["nats"]["ip"])' "$REPO/inventory/lab.yaml")
+VALKEY_HOST=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["hosts"]["valkey"]["ip"])' "$REPO/inventory/lab.yaml")
+VALKEY_PORT=6380   # local.valkey_instances.kubeletto.port in proxmox/opentofu/valkey.tf
 HOME_IPV4=$(ssh -o BatchMode=yes "$NODE" 'curl -s4 --max-time 5 https://api.ipify.org')
 [[ $HOME_IPV4 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "secrets: no home public IPv4" >&2; exit 1; }
 EDGE_IPS=$(dig +short probe-rehearsal.kubeletto.app A | grep -E '^[0-9.]+$' | sort | paste -sd, -)
@@ -160,6 +178,7 @@ CLOUDFLARE_SAAS_TOKEN=$(sops exec-env secrets.sops.env 'printf %s "$CLOUDFLARE_S
 # Existing home NATS passwords, so a re-run never rotates them under running pods.
 EXISTING_NATS=$(echo 'k3s kubectl -n nats get secret nats-auth -o json 2>/dev/null || echo "{}"' | vm)
 export HOME_PG_PASSWORD HOME_PG_HOST HOME_IPV4 EDGE_IPS EXISTING_NATS CLOUDFLARE_SAAS_TOKEN
+export HUB_PASSWORD VALKEY_PASSWORD HUB_CA VALKEY_CA HUB_HOST VALKEY_HOST VALKEY_PORT
 
 prod_items | python3 -c '
 import base64, json, os, secrets, sys, urllib.parse as u
@@ -186,6 +205,10 @@ nats = {k: keep(old.get(k)) or b64("k" + secrets.token_hex(24))
 out.append(secret("nats", "nats-auth", nats))
 out.append(secret("logs", "vector-nats-auth", {"password": nats["vector-password"]}))
 out.append(secret("kubeletto-builds", "build-nats-auth", {"password": nats["build-password"]}))
+# How the leaf reaches the hub. The URL is env-substituted whole into nats.conf
+# (a tls:// string parses safely whatever the password starts with; tested).
+out.append(secret("nats", "nats-hub", {"url": b64("tls://kubeletto:%s@%s:7422" % (
+    u.quote(os.environ["HUB_PASSWORD"], safe=""), os.environ["HUB_HOST"]))}))
 # Build pods run untrusted Dockerfile steps: they get the image-pull secret
 # only. The platform-wide INTERNAL_AUTH_SECRET of core is NOT mirrored; builds
 # authenticate with per-build tokens (BUILD_LEGACY_INTERNAL_AUTH=false, wave 2).
@@ -197,7 +220,9 @@ dsn = "postgresql://kubeletto:%s@%s:5432/kubeletto?sslmode=require" % (
     u.quote(os.environ["HOME_PG_PASSWORD"], safe=""), os.environ["HOME_PG_HOST"])
 env.update({
     "DATABASE_URL": b64(dsn), "DATABASE_URL_DIRECT": b64(dsn),
-    "REDIS_URL": b64("redis://valkey.platform.svc.cluster.local:6379"),
+    "REDIS_URL": b64("rediss://:%s@%s:%s/0" % (
+        u.quote(os.environ["VALKEY_PASSWORD"], safe=""), os.environ["VALKEY_HOST"], os.environ["VALKEY_PORT"])),
+    "REDIS_TLS_CA": b64(os.environ["VALKEY_CA"]),
     "NATS_URL": b64("nats://nats.nats.svc.cluster.local:4222"),
     "NATS_USER": b64("platform"), "NATS_PASSWORD": nats["platform-password"],
     "NATS_BUILD_USER": b64("build"),
@@ -218,7 +243,11 @@ for s in out:
 for ns in sorted({s["metadata"]["namespace"] for s in out}):
     print("k3s kubectl create namespace %s --dry-run=client -o yaml | k3s kubectl apply -f - >/dev/null" % ns)
 print("k3s kubectl -n kubeletto-builds delete secret platform-core-internal-auth --ignore-not-found >/dev/null")
+ca = {"apiVersion": "v1", "kind": "ConfigMap",
+      "metadata": {"name": "nats-hub-ca", "namespace": "nats",
+                   "labels": {"app.kubernetes.io/managed-by": "homeserver-repo"}},
+      "data": {"ca.pem": os.environ["HUB_CA"].rstrip("\n") + "\n"}}
 print("k3s kubectl apply -f - <<'"'"'SECRETS_EOF'"'"'")
-print(json.dumps({"apiVersion": "v1", "kind": "List", "items": out}))
+print(json.dumps({"apiVersion": "v1", "kind": "List", "items": out + [ca]}))
 print("SECRETS_EOF")
 ' | vm 120

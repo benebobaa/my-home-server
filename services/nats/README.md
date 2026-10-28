@@ -56,28 +56,37 @@ consumed; then the probe streams were deleted.
 
 ## Kubeletto's switch (after the cutover's 24-hour check)
 
-Not done yet. In order, during a quiet hour:
+Prepared 2026-10-15 on branches `shared-nats-valkey` in both repos (homeserver:
+the two hEX rules and `services/kubeletto/secrets.sh`; Kubeletto: the leaf
+`infra/k8s/home/nats.yaml`). In a quiet hour:
 
-1. Router (snapshot before and after): in `network/routeros/firewall.tf`,
-   next to `forward_k3s_postgres`, a rule from `local.host.k3s.ip` (the
-   server VM, **never** the worker) to `local.host.nats.ip` tcp 7422, and one
-   to `local.host.valkey.ip` tcp 6380 (Valkey, `services/valkey`). The
-   classifier has blocked agent applies of firewall rules before: hand the
-   operator a saved plan (`tofu plan -out=…`, then `! sops exec-env
-   secrets.sops.env 'tofu apply <plan>'`).
-2. Kubeletto repo, home overlay: the in-cluster NATS (`infra/k8s/home/nats.yaml`)
-   loses `jetstream {}` and its volume, gains the leaf remote and the mapping
-   above; its users (platform, vector, build) stay as they are. The hub's
-   certificate goes in a ConfigMap (`ca_file`; not secret). The leaf's
-   password and `REDIS_URL` (`rediss://:<pw>@10.10.20.23:6380/0?skip_verify=true`,
-   an IP: the DMZ does not resolve `home.arpa`) go into the cluster's
-   secrets by `services/kubeletto/secrets.sh`, never in git.
-3. Apply, restart core: it recreates its 12 streams on the hub at startup
-   (`CreateOrUpdateStream`); in-flight events are in Postgres's outbox. Check
-   `jsz` on the hub (12 streams + DLQs in account `kubeletto`), one real
-   deploy, the build path.
-4. Rollback: the previous overlay (the in-cluster NATS with JetStream; its
-   volume is kept until the switch has run a week).
+1. **Before:** in-cluster JetStream has nothing pending
+   (`k3s kubectl -n nats exec deploy/nats -- wget -qO- 'http://127.0.0.1:8222/jsz?consumers=true'`:
+   every consumer's `num_pending` 0), and both stacks say No changes.
+2. **Router** (snapshot before/after): `git switch shared-nats-valkey`, then in
+   `network/routeros` `tofu plan -out` + apply: exactly two rules,
+   `forward_k3s_nats` (10.10.25.20 → 10.10.20.22:7422) and `forward_k3s_valkey`
+   (→ 10.10.20.23:6380). If the agent's apply is refused, the operator runs the
+   saved plan with `!`. Check from VM 300: both ports open; from the worker
+   (VM 301): both closed.
+3. **Secrets:** `services/kubeletto/secrets.sh --live` (**`--live`**, or mail and
+   checkout keys are dropped): creates `nats/nats-hub`, ConfigMap
+   `nats/nats-hub-ca`, the new `REDIS_URL` and `REDIS_TLS_CA` (Valkey's
+   certificate, pinned; needs core abb13d63 or later).
+4. **Overlay:** in the Kubeletto worktree merge `shared-nats-valkey` into
+   `home-migration`, then `services/kubeletto/apply.sh platform`. The NATS pod
+   restarts as a leaf; then `k3s kubectl -n platform rollout restart deploy/platform-core`
+   (it reads `REDIS_URL` at start and recreates its streams on the hub).
+5. **Check:** on the hub, account `kubeletto` has core's streams and consumers
+   (`curl -s 'http://10.10.20.22:8222/jsz?accounts=true'` from the monitoring
+   CT); core logs no NATS or Redis errors; the leaf shows a connection to the
+   hub; one deploy (canary) end to end; a build's live log; Valkey instance
+   `redis_connected_clients` > 0.
+6. **Rollback:** revert the merge in the Kubeletto worktree and `apply.sh
+   platform` (the old JetStream volume is still there), `secrets.sh --live`
+   from `main` (old `REDIS_URL`), restart core. The router rules can stay.
+7. **After a week:** delete the PVC `nats/nats-data` and the in-cluster Valkey
+   (`infra/k8s/home/valkey.yaml`).
 
 ## Operations
 
