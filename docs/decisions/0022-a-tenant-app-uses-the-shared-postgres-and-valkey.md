@@ -1,6 +1,6 @@
 # 0022 — larasrouter, a Kubeletto tenant app, uses the shared Postgres and Valkey
 
-**Status:** accepted (2026-10-28), for this one app. Asked for by the operator:
+**Status:** accepted in principle (2026-10-28), **blocked**: the pinholes were applied and removed again the same hour (see Follow-up). Asked for by the operator:
 larasrouter (its own project, running as a tenant on Kubeletto under its own
 account) should use the lab's Postgres and Valkey instead of its own Aiven and
 Upstash services. Amends the DMZ rule of [ADR 0004](0004-public-ingress-cloudflare-tunnel.md)
@@ -27,9 +27,9 @@ runs there.
   `10.10.20.23:6381`, nothing else (`forward_worker_postgres`,
   `forward_worker_valkey`). At the data end: a `pg_hba` hostssl line for this
   database and role from `10.10.25.21/32` only, and the Valkey password.
-- **What keeps other tenants out is the tenant's own egress policy.** Every
-  tenant namespace carries Kubeletto's base NetworkPolicy (private ranges
-  denied). larasrouter's namespace gets one additional policy,
+- **What was meant to keep other tenants out is the tenant's own egress policy.**
+  Every tenant namespace carries Kubeletto's base NetworkPolicy (believed to
+  deny private ranges; it does not, see Follow-up). larasrouter's namespace gets one additional policy,
   `larasrouter-data` (`services/larasrouter/tenant-netpol.yaml`), allowing
   egress to exactly those two addresses and ports. Core reconciles only
   `kubeletto-base-policy`, so the extra object stays.
@@ -52,3 +52,25 @@ runs there.
 - Postgres and Valkey now serve a tenant: the database is in the nightly dump
   and the PBS backup of CT 130; Valkey keeps nothing (no persistence).
 - Aiven and Upstash can be deleted a week after the flip.
+
+## Follow-up (2026-10-28 15:37): the premise was wrong
+
+The two pinholes were applied at 15:35 and probed from a pod in larasrouter's
+namespace (5432 and 6381 open, 22 and 6380 closed: as intended) **and from a pod
+in another tenant's namespace (5432 and 6381 open too)**. Kubeletto's
+base NetworkPolicy denies only CGNAT (`TENANT_EGRESS_DENY_CIDRS`) and the home
+public IP, not the lab ranges; until now the router was the only thing between a
+tenant pod and the lab, and a rule that matches the worker's address cannot
+tell pods apart. Every tenant could have tried the larasrouter role's
+password against Postgres and Valkey. The rules were removed (plan 0 to add,
+0 to change, 2 to destroy). Nothing was flipped: larasrouter still uses Aiven and
+Upstash. The database, role, `pg_hba` line, Valkey instance and the additive
+`larasrouter-data` policy stay (inert without a path).
+
+To go on, first deny every tenant the lab: add `10.10.0.0/16`, `192.168.0.0/16`
+and `172.16.0.0/12` to `TENANT_EGRESS_DENY_CIDRS` (the cluster's own
+`10.42.0.0/16` and `10.43.0.0/16` are untouched), re-ensure the base policy in
+the existing tenant namespaces (core applies it at deploy), prove with the same
+probe that a second tenant is blocked everywhere, and only then reopen the two
+rules. That changes egress for all tenants, so it is its own change with its
+own check.

@@ -1,5 +1,9 @@
 # larasrouter on the shared Postgres and Valkey
 
+> **Blocked, do not flip yet.** The hEX pinholes were applied and removed again:
+> other tenants' pods could reach the two ports too (ADR 0022, Follow-up).
+> Tenants must be denied the lab ranges first.
+
 [ADR 0022](../../docs/decisions/0022-a-tenant-app-uses-the-shared-postgres-and-valkey.md).
 larasrouter runs on Kubeletto as tenant `f42a6fae` (account `larasrouter@gmail.com`,
 namespace `kl-f42a6fae-f42a6fae`, services `larasrouter-api` and `larasrouter-mock-llm`).
