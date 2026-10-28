@@ -31,3 +31,4 @@ never edited — supersede them with a new one.
 | [0024](0024-retire-the-personal-agent.md) | The personal agent (Hermes, CT 141) is retired and removed; its bot and API keys are revoked at their providers (supersedes 0018) |
 | [0025](0025-replica-backup-of-vm-300-on-pve1.md) | A second PBS server on pve1 (`pbs-replica`, CT 112) holds VM 300 incl. the registry disk; the main nightly job excludes it. Same site, not off-site (amends 0021's no-backup line) |
 | [0026](0026-admin-plane-separate-from-the-customer-api.md) | The admin API is a separate plane (RUN_MODE=admin, platform-admin, admin-api.kubeletto.com), off the customer host once the admin host is live; Access in front of it |
+| [0027](0027-admin-plane-on-the-tailnet.md) | The admin plane is on the operator's tailnet only (tag:admin, ephemeral node, tailscale serve); no public hostname, no Cloudflare Access (supersedes 0026's public hostname) |
