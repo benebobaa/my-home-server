@@ -16,6 +16,7 @@ namespace `kl-f42a6fae-f42a6fae`, services `larasrouter-api` and `larasrouter-mo
 | Egress for the tenant's pods | `tenant-netpol.yaml`, applied by `apply-netpol.sh` |
 | Copy of the production data | `sync-db.sh check|run` |
 | The two connection strings | `urls.sh database|redis`, to the clipboard only |
+| A GUI client on the data | `tunnel.py [db] [redis]`: local ports 15432 / 16381 on 127.0.0.1, relayed through the node into the container; passwords from `urls.sh db-password|redis-password` |
 | A shell on the data (psql / valkey-cli) | `connect.sh db|redis [args]`: the Mac cannot reach the ports directly, the client runs inside the container through the node |
 
 ## The flip (the operator, about five minutes)

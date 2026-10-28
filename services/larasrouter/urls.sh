@@ -5,6 +5,8 @@
 #
 #   ./urls.sh database | pbcopy     # DATABASE_URL
 #   ./urls.sh redis | pbcopy        # REDIS_URL
+#   ./urls.sh db-password | pbcopy      # just the password, for a GUI client (tunnel.py)
+#   ./urls.sh redis-password | pbcopy
 #
 # Addresses, not names: the DMZ does not resolve home.arpa. sslmode=require and
 # skip_verify encrypt but do not verify the server's certificate; larasrouter's
@@ -17,5 +19,7 @@ case "${1:-}" in
     "$(tf 'nonsensitive(random_password.postgres["larasrouter"].result)')" ;;
   redis) printf 'rediss://:%s@10.10.20.23:6381/0?skip_verify=true' \
     "$(tf 'nonsensitive(random_password.valkey["larasrouter"].result)')" ;;
-  *) echo "usage: $0 database|redis (pipe to pbcopy)" >&2; exit 2 ;;
+  db-password) printf '%s' "$(tf 'nonsensitive(random_password.postgres["larasrouter"].result)')" ;;
+  redis-password) printf '%s' "$(tf 'nonsensitive(random_password.valkey["larasrouter"].result)')" ;;
+  *) echo "usage: $0 database|redis|db-password|redis-password (pipe to pbcopy)" >&2; exit 2 ;;
 esac
