@@ -47,7 +47,9 @@ in `network/cloudflare/tunnel.tf`.
 
 ## State
 
-Stateless except NATS JetStream (`nats-data`, events in flight),
+Stateless except the registry's blobs (VM 300's second disk mounted at
+`/mnt/registry`, no backup, [ADR 0021](../../docs/decisions/0021-registry-on-the-k3s-servers-own-disk.md);
+`registry-copy.sh` copies a bucket onto it), NATS JetStream (now on the shared hub),
 VictoriaLogs (`logs`, 7 days of tenant logs) and the Docker Hub mirror cache
 (rebuildable). The database is CT 130's (nightly dump + PBS). A rebuild is
 VM 300/301 from `proxmox/opentofu`, then Converge.

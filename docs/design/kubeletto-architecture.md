@@ -53,8 +53,8 @@ flowchart LR
 | Data plane: CT 130 (pve2, VLAN 20) | Postgres, the one durable store | lab standard (ADR 0010): outside the DMZ, backed up, monitored |
 | Ops plane: CT 120/121 (VLAN 10) | Prometheus, Grafana, logs | pulls only; the DMZ never pushes into MGMT |
 
-Durable state is only: Postgres (PBS nightly, restore tested 29 s), the registry
-bucket (R2, outside the lab), the SOPS secrets, and the Infisical project (tenant
+Durable state is only: Postgres (PBS nightly, restore tested 29 s), the registry's
+blobs (a dedicated disk of VM 300, no backup: ADR 0021), the SOPS secrets, and the Infisical project (tenant
 env keys, SaaS). NATS and Valkey are not durable state: NATS is a transport (the
 outbox lives in Postgres), Valkey holds locks, rate limits and caches.
 
@@ -117,7 +117,7 @@ justifies a cluster rebuild, B not unless NATS or Valkey ever becomes durable.
 A push to a connected GitHub repo queues a build; core's scheduler runs at
 most 3 at once and 1 per service, each as a Job in `kubeletto-builds` on the
 worker: rootless BuildKit (no privileges) clones, builds and pushes to the
-in-cluster registry (R2 behind it). Docker Hub base images come through the
+in-cluster registry (its blobs on VM 300's own disk, ADR 0021). Docker Hub base images come through the
 pull-through mirror on the server (20 Gi local volume). Build pods reach only
 DNS, the internet on 80/443, the registry, NATS and core's internal API
 (`allow-build-egress`), never the lab.

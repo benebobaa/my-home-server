@@ -2,7 +2,11 @@
 
 Every guest is backed up nightly at 02:30 to PBS (CT 111 on pve3, storage
 `pbs`). Why and what is not covered (bind mounts — the family archive):
-[ADR 0009](../decisions/0009-backups-pbs-on-pve3.md). Service:
+[ADR 0009](../decisions/0009-backups-pbs-on-pve3.md). Also not covered: the
+registry's blobs, VM 300's second disk (`scsi1`, mounted at `/mnt/registry`,
+`backup=0`; [ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md)).
+After a restore of VM 300 that disk comes back empty or not at all: built
+images are gone until their owners redeploy. Service:
 [`services/pbs/`](../../services/pbs/README.md).
 
 Run commands on a node as root (`ssh root@10.10.10.12` or `.13`).
