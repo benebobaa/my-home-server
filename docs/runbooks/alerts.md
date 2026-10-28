@@ -263,6 +263,13 @@ liveness probe.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.
 **Fix:** clear the cause (old kernels: `apt autoremove`; logs:
 `journalctl --vacuum-size=200M`).
+**VM 300 `/mnt/registry`:** those fixes do not apply. It holds the registry's
+only copy of its blobs and has no backup ([ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md)),
+so never delete files there by hand. Garbage collection needs the registry
+read-only or stopped, and retention is off; plan it as in the
+[retention dry run](../experiments/2026-10-15-registry-retention-dry-run.md).
+Until then, the fix is to grow `scsi1` in `proxmox/opentofu/k3s.tf` and extend
+the ext4 filesystem.
 
 ### ThinPoolFilling
 **Meaning:** the guest thin pool (`pve/data`) is over 85 % allocated. It
