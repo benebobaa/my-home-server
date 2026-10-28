@@ -64,13 +64,14 @@ if ! qm status "$VMID" >/dev/null 2>&1; then
   qm disk resize "$VMID" scsi0 "$DISK"
 fi
 
-# Converged on every run (cheap, idempotent).
+# Converged on every run (cheap, idempotent). The VM is on demand (ADR 0023):
+# onboot 0, so it does not start with pve1. Running this script starts it.
 qm set "$VMID" \
   --cpu host \
   --cores "$CORES" \
   --memory "$MEMORY" \
   --balloon 0 \
-  --onboot 1 \
+  --onboot 0 \
   --agent enabled=1 \
   --hostpci0 "${GPU},pcie=1" \
   --ipconfig0 "ip=${CIDR},gw=${GATEWAY}" \
@@ -78,9 +79,10 @@ qm set "$VMID" \
   --searchdomain home.arpa \
   --cicustom "user=local:snippets/${NAME}-user-data.yaml"
 
+# On demand (ADR 0023): this script never starts the VM. The operator starts it
+# with `qm start` when learning AI.
 if [ "$(qm status "$VMID" | awk '{print $2}')" != running ]; then
-  echo "ai: starting VM ${VMID}"
-  qm start "$VMID"
+  echo "ai: VM ${VMID} is stopped (on demand); start it with: qm start ${VMID}"
 elif qm pending "$VMID" | grep -qE '^(new|del) '; then
   echo "ai: VM ${VMID} is running with pending changes; they apply at its next restart:"
   qm pending "$VMID" | grep -v '^cur' || true

@@ -58,9 +58,9 @@ hosts:
     vlan: mgmt
     ip: 10.10.10.11
     cluster_ip: 10.10.60.11
-    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060; on demand, off by design (ADR 0012)
-    # best-effort: powered off most of the time, so being down is info only.
-    monitoring: { tier: best-effort, health: "https://{ip}:8006/", health_module: http_any, logs: true }
+    note: desktop, Ryzen 5 5600, 32 GB, RTX 3060; always on (ADR 0023)
+    # standard: always on like the other nodes, so being down is critical.
+    monitoring: { tier: standard, health: "https://{ip}:8006/", health_module: http_any, logs: true }
   pve2:
     kind: node
     vlan: mgmt
@@ -186,7 +186,7 @@ hosts:
   ai:
     kind: vm
     vmid: 140
-    node: pve1 # the GPU node, on demand: off whenever pve1 is (ADR 0012)
+    node: pve1 # the GPU node; on demand, started by the operator (ADR 0023, 0012)
     vlan: lab # internet only: runs code from pip, model hubs and GitHub
     ip: 10.10.30.10
     note: AI workstation — Ubuntu 24.04, RTX 3060 by passthrough; reached via the admin gateways' route (services/ai/)

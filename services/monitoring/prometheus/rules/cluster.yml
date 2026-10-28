@@ -15,8 +15,9 @@ groups:
 
       # Severity from the node's tier, read off its node_exporter target:
       # `up` exists while the node is off (value 0), unlike any node_* series.
-      # An on-demand node (pve1, best-effort: ADR 0012) is off by design, so
-      # it gets one silent message; a node without a target stays critical.
+      # A best-effort node is off by design, so it gets one silent message.
+      # pve1 is standard since ADR 0023 (always on): when it is down, critical.
+      # A node without a target stays critical.
       - alert: PveNodeDown
         expr: |
           (label_replace(pve_up{id=~"node/.*"}, "node", "$1", "id", "node/(.*)") == 0)
