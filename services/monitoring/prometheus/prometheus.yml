@@ -81,6 +81,14 @@ scrape_configs:
     label_value_length_limit: 256
     file_sd_configs:
       - files: [/etc/prometheus/targets/service_dmz.json]
+    # 2026-10-28: pod-level series are born and die with every build and cold
+    # start. Seven kube-state families that no rule reads were about 65 % of
+    # the pod series seen in 2 h, so they are dropped at ingest. The families
+    # k8s.yml and its tests read stay.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: kube_pod_(status_(reason|ready|scheduled|qos_class)|container_info|tolerations|container_resource_limits)
+        action: drop
 
   # hEX router: SNMPv3 (read-only, monitoring IP only).
   # 60 s: the hEX is a small MIPS box; SNMP walks cost it CPU.
