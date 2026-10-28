@@ -142,8 +142,12 @@ Tailscale logout; the script is idempotent, a second run finished (K3s, /opt and
 /root gone, 7.4 GB used, only .ssh .bashrc .profile left). `flip.sh back` now
 refuses. Open: rotate the shared credentials that lived there (R2 keys,
 Cloudflare token, Resend, the GitHub App key, Infisical; the Aiven password too),
-delete the OpenObserve buckets in R2, the `kubeletto-prod` SSH alias, and delete
-Aiven and Upstash (dashboards, operator).
+the `kubeletto-prod` SSH alias, and delete Aiven and Upstash (dashboards,
+operator). OpenObserve's R2 bucket `kubeletto-openobserve` (2.07 GB, 118k objects,
+no home reference) got a lifecycle rule `expire-all-obsolete` (all objects after
+1 day) on 2026-10-28 through the operator's wrangler login; `wrangler r2 bucket
+delete kubeletto-openobserve` once it reports 0 objects (R2 refuses a non-empty
+bucket). The empty `kubeletto-obs-dev` and `kubeletto-logs-dev` are not part of it.
 
 ## After
 
