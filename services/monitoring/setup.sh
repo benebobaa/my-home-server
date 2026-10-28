@@ -108,7 +108,9 @@ EOF
 # Exporters: localhost only (Prometheus is the only client).
 cat > /etc/default/prometheus-blackbox-exporter <<'EOF'
 # managed by services/monitoring/setup.sh
-ARGS="--config.file=/etc/prometheus/blackbox.yml --web.listen-address=127.0.0.1:9115"
+# --log.level=warn: at info, every probe logs two lines (~780k a day, most of
+# the log store). Probe outcomes are metrics (probe_success), not log lines.
+ARGS="--config.file=/etc/prometheus/blackbox.yml --web.listen-address=127.0.0.1:9115 --log.level=warn"
 EOF
 # SNMP: upstream's generated modules + the v3 credentials (secrets.sh).
 # ICMP probes: unprivileged ping sockets for the `prometheus` group (the
