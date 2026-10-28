@@ -64,9 +64,10 @@ verified first: 0 of 64 values differ). Seen: both ports open from VM 300 and
 timed out from the worker; the leaf connected to the hub (JetStream domain
 `hub`); core ensured its streams and DLQs and subscribed its consumers; Redis
 deploy lock initialised against the shared Valkey (one connection on :6380); no
-errors in core's log. Not done: step 1's pending-events check (in-flight events
-are in Postgres's outbox) and the end-to-end canary deploy and build log of
-step 5. In a quiet hour:
+errors in core's log. Step 5's deploy proof ran 09:14 WIB: a canary redeploy (internal tenant, image
+service) went queued to active in under 10 s, revision Ready, URL 200 (temporary
+deploy-only API key, revoked). Not done: step 1's pending-events check (in-flight
+events are in Postgres's outbox) and a build's live log. In a quiet hour:
 
 1. **Before:** in-cluster JetStream has nothing pending
    (`k3s kubectl -n nats exec deploy/nats -- wget -qO- 'http://127.0.0.1:8222/jsz?consumers=true'`:
