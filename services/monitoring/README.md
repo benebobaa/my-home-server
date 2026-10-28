@@ -36,7 +36,7 @@ targets and the two internet probes.
 | `snmp_hex` | hEX `10.10.10.1` | snmp_exporter, SNMPv3 authPriv (SHA/AES), modules `system if_mib hrDevice hrStorage mikrotik`. A walk takes ~2.5 s every 60 s, about 1 % CPU on the hEX |
 | `blackbox_icmp` | every live host with a monitoring block, 1.1.1.1, 8.8.8.8 | ping |
 | `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`; untrusted-zone hosts (DMZ, LAB): `http_dmz`, which never follows a redirect into MGMT) | HTTP |
-| `service` | every `metrics:` port (today: the log store, CT 121) | `/metrics` |
+| `service` | every `metrics:` port (today: the log store, the trace store, and the shared Postgres, NATS and Valkey exporters) | `/metrics` |
 | `service_dmz` | `metrics:` ports of hosts in the untrusted zones, DMZ and LAB (the Kubeletto cluster; `ai`'s nvidia_gpu_exporter `:9835`, ADR 0014): no redirects and sample/label/body limits; a breach fails the scrape (`TargetDown`) | `/metrics` |
 | `blackbox_dns` | hEX resolver | resolves `cloudflare.com` |
 
