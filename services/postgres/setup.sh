@@ -107,12 +107,15 @@ log_lock_waits = on
 log_temp_files = 64MB
 
 # Per-statement timings, to find slow queries without statement logging
-# (README). Statements are stored normalised: constants become \$1, \$2, so
-# no app values land here. top = the statements apps send, not those inside
-# functions. Loading the module needs a server restart, which this script
-# does below.
+# (README). Queries are stored normalised: constants become \$1, \$2.
+# Utility statements are not normalised, so they are not tracked at all:
+# roles.sh sends ALTER ROLE ... PASSWORD '<literal>' on every run, and with
+# track_utility on that text would sit in the view. top = the statements
+# apps send, not those inside functions. Loading the module needs a server
+# restart, which this script does below.
 shared_preload_libraries = 'pg_stat_statements'
 pg_stat_statements.track = top
+pg_stat_statements.track_utility = off
 pg_stat_statements.max = 5000
 EOF
 
