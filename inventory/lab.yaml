@@ -177,9 +177,10 @@ hosts:
     # serves core's /readyz and nothing else; 30910 is Traefik's metrics;
     # 9100 node_exporter (node-exporter.yaml, hostNetwork; tenant egress
     # denies node IPs); 30931 kube-state-metrics (kube-state-metrics.yaml:
-    # unschedulable pods, memory requests, MemoryPressure). All admit only
-    # the monitoring host.
-    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 30931, 9100] }
+    # unschedulable pods, memory requests, MemoryPressure); 30598 Vector's own
+    # metrics (monitoring.yaml: throttle discards, sink drops), one per node.
+    # All admit only the monitoring host.
+    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 30931, 9100, 30598] }
   k3s-worker:
     kind: vm
     vmid: 301
@@ -190,8 +191,9 @@ hosts:
     note: Kubeletto tenant cluster — K3s agent (worker) VM for tenant workloads and builds
     # best-effort: a worker can go (its pods reschedule onto k3s). 9100 is
     # node_exporter, for its memory: tenant requests are overcommitted
-    # (Kubeletto docs/migration D9).
-    monitoring: { tier: best-effort, metrics: [9100] }
+    # (Kubeletto docs/migration D9). 30598 is Vector on this node (tenant logs
+    # are collected here: tenant pods run on the worker).
+    monitoring: { tier: best-effort, metrics: [9100, 30598] }
   ai:
     kind: vm
     vmid: 140

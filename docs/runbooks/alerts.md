@@ -258,6 +258,27 @@ liveness probe.
 `logs --previous`.
 **Fix:** the cause; a memory limit in the Kubeletto home overlay if it is OOM.
 
+### K8sTenantLogsThrottled
+**Meaning:** Vector's per-tenant cap (Kubeletto `infra/k8s/home/vector.toml`,
+`kubeletto_throttle_runtime`: 6000 events per 10 s per tenant per node)
+dropped runtime log lines on that node. The tenant's `kubeletto logs` has
+holes for that window; its app is unaffected.
+**Check:** which tenant: `vector_component_discarded_events_total{component_id="kubeletto_throttle_runtime"}`
+by its per-key label in Prometheus; then that tenant's log rate in
+VictoriaLogs (`tenant_id:<id> | stats count()` over 1 min).
+**Fix:** a runaway logger is the tenant's to fix (tell them); a legitimate
+volume is a reason to raise `threshold` in `vector.toml` and re-apply
+`services/kubeletto/apply.sh platform`.
+
+### K8sLogsDropped
+**Meaning:** Vector lost log events by failure (`intentional="false"`), not by
+a filter or the throttle: usually the VictoriaLogs sink rejecting or timing
+out.
+**Check:** `kubectl -n logs logs <vector pod> | grep -E 'ERROR|WARN'`, and
+whether `victorialogs-0` in `logs` is running and has disk.
+**Fix:** the sink's cause (VictoriaLogs down or full); the lost lines do not
+come back.
+
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.

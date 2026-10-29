@@ -81,6 +81,20 @@ scrape_configs:
     label_value_length_limit: 256
     file_sd_configs:
       - files: [/etc/prometheus/targets/service_dmz.json]
+    # Vector (K3s :30598, 2026-10-29) serves ~2,000 series per node, ~390 KB;
+    # keep the few the logs alerts read (rules/k8s.yml) and drop the rest
+    # (histogram buckets per component). RE2 has no negative match, hence
+    # the temporary label.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: vector_(component_discarded_events_total|component_errors_total|started_total)
+        target_label: __tmp_keep
+        replacement: "1"
+      - source_labels: [__name__, __tmp_keep]
+        regex: "vector_.*;"
+        action: drop
+      - regex: __tmp_keep
+        action: labeldrop
 
   # hEX router: SNMPv3 (read-only, monitoring IP only).
   # 60 s: the hEX is a small MIPS box; SNMP walks cost it CPU.

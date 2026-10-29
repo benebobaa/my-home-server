@@ -1,0 +1,40 @@
+# promtool unit tests for the k8s-logs group in rules/k8s.yml (make check).
+# Filters drop events all the time (intentional="true", e.g. build logs);
+# only the throttle's discards and unintentional ones may alert.
+rule_files:
+  - ../rules/k8s.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The worker's Vector: a filter discards steadily (normal), the throttle
+  # starts dropping at 20 min, and the VictoriaLogs sink loses events at 40.
+  - interval: 1m
+    input_series:
+      - series: 'vector_component_discarded_events_total{job="service_dmz",instance="k3s-worker",component_id="kubeletto_filter_build_logs",intentional="true"}'
+        values: '0+100x60'
+      - series: 'vector_component_discarded_events_total{job="service_dmz",instance="k3s-worker",component_id="kubeletto_throttle_runtime",intentional="true"}'
+        values: '0x20 0+50x40'
+      - series: 'vector_component_discarded_events_total{job="service_dmz",instance="k3s-worker",component_id="victorialogs",intentional="false"}'
+        values: '0x40 0+10x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: K8sTenantLogsThrottled
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: K8sLogsDropped
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: K8sTenantLogsThrottled
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, component_id: kubeletto_throttle_runtime, intentional: "true" }
+            exp_annotations:
+              summary: "k3s-worker: Vector's per-tenant throttle dropped 450 log events in 15 min"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantlogsthrottled
+      - eval_time: 50m
+        alertname: K8sLogsDropped
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, component_id: victorialogs, intentional: "false" }
+            exp_annotations:
+              summary: "k3s-worker: Vector lost 90 log events in victorialogs in 15 min"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8slogsdropped

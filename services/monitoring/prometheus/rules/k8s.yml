@@ -95,3 +95,29 @@ groups:
         annotations:
           summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted {{ $value | humanize }} times in 30 min"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodrestarting
+
+  # Tenant logs that never reached VictoriaLogs, from Vector's own metrics
+  # (K3s :30598, one target per node; prometheus.yml keeps only these
+  # series). Nothing watched them after the move home: on 2026-10-29 a
+  # report claimed the throttle had dropped a tenant's 429 lines, and no
+  # metric could say yes or no (it had not: the lines were all stored).
+  - name: k8s-logs
+    rules:
+      # The per-tenant cap (Kubeletto infra/k8s/home/vector.toml,
+      # kubeletto_throttle_runtime: 6000 events per 10 s per tenant per node)
+      # dropped events, so that tenant's `kubeletto logs` has holes.
+      - alert: K8sTenantLogsThrottled
+        expr: increase(vector_component_discarded_events_total{job="service_dmz", component_id="kubeletto_throttle_runtime"}[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: Vector's per-tenant throttle dropped {{ $value | humanize }} log events in 15 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantlogsthrottled
+
+      # Events lost by failure, not by a filter or the throttle (those are
+      # intentional="true"): a sink rejected or dropped them.
+      - alert: K8sLogsDropped
+        expr: increase(vector_component_discarded_events_total{job="service_dmz", intentional="false"}[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.instance }}: Vector lost {{ $value | humanize }} log events in {{ $labels.component_id }} in 15 min"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8slogsdropped
