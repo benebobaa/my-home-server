@@ -76,7 +76,13 @@ fix is a lab CA and `sslmode=verify-full`.
 **What the log can still contain:** an error's own message may quote a value
 (`invalid input syntax for type integer: "…"`, a unique-violation's key). The
 statement and its parameters never are logged; find slow queries with
-`pg_stat_statements` when an app needs it, not with statement logging.
+`pg_stat_statements` (loaded since 2026-10-29, view in the `postgres`
+database, statements normalised to `$1`), not with statement logging:
+
+```bash
+pct exec 130 -- runuser -u postgres -- psql -X -c "SELECT d.datname, round(s.total_exec_time) AS ms, s.calls, round(s.mean_exec_time::numeric, 2) AS mean_ms, left(s.query, 80) FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER BY s.total_exec_time DESC LIMIT 20"
+pct exec 130 -- runuser -u postgres -- psql -X -c "SELECT pg_stat_statements_reset()"   # before a load test
+```
 
 ## Backups and restore
 

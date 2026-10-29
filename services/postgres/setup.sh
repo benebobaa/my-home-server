@@ -105,6 +105,15 @@ log_parameter_max_length = 0
 log_parameter_max_length_on_error = 0
 log_lock_waits = on
 log_temp_files = 64MB
+
+# Per-statement timings, to find slow queries without statement logging
+# (README). Statements are stored normalised: constants become \$1, \$2, so
+# no app values land here. top = the statements apps send, not those inside
+# functions. Loading the module needs a server restart, which this script
+# does below.
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = top
+pg_stat_statements.max = 5000
 EOF
 
 # Who may connect, from where. Apps: from the servers VLAN only, over TLS, with
@@ -157,6 +166,9 @@ runuser -u postgres -- pg_isready -q
 runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'CREATE ROLE prometheus LOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'prometheus') \gexec
 GRANT pg_monitor TO prometheus;
+-- The view lives in the database it was created in and shows every
+-- database's statements to superusers and pg_read_all_stats (pg_monitor).
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 SQL
 cat > /etc/default/prometheus-postgres-exporter <<'EOF'
 # managed by services/postgres/setup.sh
@@ -217,12 +229,15 @@ systemctl enable -q --now pg-dump-all.timer
 
 # --- checks ----------------------------------------------------------------------
 # The exporter reconnects on its own schedule after the server restart above.
+# The metrics are read whole before matching: `curl | grep -q` under pipefail
+# fails at random, because grep exits at the first match and curl then dies
+# of a closed pipe (exit 23). That failed the 2026-10-29 apply with pg_up 1.
+pg_up() { local m; m=$(curl -fsS http://127.0.0.1:9187/metrics 2>/dev/null) && grep -q '^pg_up 1' <<<"$m"; }
 for _ in $(seq 1 30); do
-  curl -fsS http://127.0.0.1:9187/metrics 2>/dev/null | grep -q '^pg_up 1' && break
+  pg_up && break
   sleep 1
 done
-curl -fsS http://127.0.0.1:9187/metrics | grep -q '^pg_up 1' \
-  || { echo "postgres: exporter does not report pg_up 1" >&2; exit 1; }
+pg_up || { echo "postgres: exporter does not report pg_up 1" >&2; exit 1; }
 enc=$(runuser -u postgres -- psql -XAtc "SELECT pg_encoding_to_char(encoding) || ' ' || datlocprovider::text || ' ' || coalesce(datlocale, datcollate) FROM pg_database WHERE datname = 'template1'")
 [ "$enc" = "UTF8 b C.UTF-8" ] || { echo "postgres: cluster is '${enc}', expected 'UTF8 b C.UTF-8' (rebuild the CT: README)" >&2; exit 1; }
 echo "postgres setup complete ($(runuser -u postgres -- psql -XAtc 'SHOW server_version'), ${enc})"
