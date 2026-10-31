@@ -1,0 +1,62 @@
+# promtool unit tests for the k8s-usage group in rules/k8s.yml (make check).
+# processed_until is a Unix time; the test clock starts at 0, so a checkpoint
+# value is "seconds since the test began".
+rule_files:
+  - ../rules/k8s.yml
+
+evaluation_interval: 1m
+
+tests:
+  # http_requests keeps up (10 min behind, advancing 5 min every 5 min);
+  # log_bytes stops at t=10m and is 30 min behind from t=40m.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_usage_meter_processed_until_seconds{job="service_dmz",instance="k3s",port="30080",meter="http_requests"}'
+        values: '0x10 0x4 300x4 600x4 900x4 1200x4 1500x4 1800x4 2100x4 2400x4 2700x4 3000x4'
+      - series: 'kubeletto_usage_meter_processed_until_seconds{job="service_dmz",instance="k3s",port="30080",meter="log_bytes"}'
+        values: '0x10 0x60'
+      - series: 'up{job="service_dmz",instance="k3s",port="30080"}'
+        values: '1x70'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: KubelettoUsageMeterStale
+        exp_alerts: []
+      - eval_time: 36m
+        alertname: KubelettoUsageMeterStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, instance: k3s, port: "30080", meter: log_bytes }
+            exp_annotations:
+              summary: "Kubeletto's log_bytes meter is 36m 0s behind"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+      - eval_time: 60m
+        alertname: KubelettoUsageMeterMissing
+        exp_alerts: []
+
+  # The endpoint answers but has no log_bytes checkpoint for 30 min.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_usage_meter_processed_until_seconds{job="service_dmz",instance="k3s",port="30080",meter="http_requests"}'
+        values: '0+60x45'
+      - series: 'up{job="service_dmz",instance="k3s",port="30080"}'
+        values: '1x45'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KubelettoUsageMeterMissing
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: KubelettoUsageMeterMissing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, meter: log_bytes }
+            exp_annotations:
+              summary: "Kubeletto's log_bytes meter reports no checkpoint"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+
+  # The endpoint is down: TargetDown covers it, Missing stays quiet.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="service_dmz",instance="k3s",port="30080"}'
+        values: '0x45'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: KubelettoUsageMeterMissing
+        exp_alerts: []

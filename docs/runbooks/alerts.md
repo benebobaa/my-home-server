@@ -279,6 +279,25 @@ whether `victorialogs-0` in `logs` is running and has disk.
 **Fix:** the sink's cause (VictoriaLogs down or full); the lost lines do not
 come back.
 
+### KubelettoUsageMeterStale
+Also **KubelettoUsageMeterMissing** (same runbook).
+**Meaning:** a Kubeletto usage meter (`http_requests`, `log_bytes`; Kubeletto
+D11) has not recorded a window for 30 min. Healthy lag is 7-13 min (5-minute
+windows, read 2 min after they close). Until it catches up, the request and
+log caps and the tenants' usage page stand still. *Missing*: core's `/metrics`
+answers but has no checkpoint for a meter (deployed without
+`VICTORIALOGS_URL`, or the meter never started).
+**Check:** core's log for `usage meter` lines (`kubectl -n platform logs
+deploy/platform-core | grep 'usage meter'`): a failing collect names
+VictoriaLogs, a failing commit names Postgres. Then `victorialogs-0` in `logs`
+and CT 130. The position: `SELECT * FROM usage_meter_checkpoints;` in the
+`kubeletto` database. Only the worker leader runs the meters: check that one
+holds the lock (core logs `leader-only background loops started`).
+**Fix:** the cause; the meter then catches up by itself from its checkpoint,
+up to 24 h back (VictoriaLogs keeps 7 days). A gap older than 24 h is skipped
+and logged, never invented. Never edit the checkpoint by hand to "skip
+ahead" unless you mean to leave that window unmetered.
+
 ### HostFilesystemFull
 **Meaning:** under 15 % free on a filesystem for 15 min.
 **Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.

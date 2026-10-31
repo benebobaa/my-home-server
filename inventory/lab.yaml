@@ -174,13 +174,16 @@ hosts:
     note: Kubeletto tenant cluster — K3s VM (tenants run arbitrary code, so a VM, not an LXC; ADR 0004)
     # DMZ: no log shipping into MGMT. Kubeletto's monitoring NodePorts
     # (Kubeletto repo infra/k8s/home/monitoring.yaml): 30080 is a proxy that
-    # serves core's /readyz and nothing else; 30910 is Traefik's metrics;
+    # serves core's /readyz and /metrics (the usage meters' checkpoints,
+    # Kubeletto D11) and nothing else; 30910 is Traefik's metrics;
     # 9100 node_exporter (node-exporter.yaml, hostNetwork; tenant egress
     # denies node IPs); 30931 kube-state-metrics (kube-state-metrics.yaml:
     # unschedulable pods, memory requests, MemoryPressure); 30598 Vector's own
     # metrics (monitoring.yaml: throttle discards, sink drops), one per node.
-    # All admit only the monitoring host.
-    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 30931, 9100, 30598] }
+    # All admit only the monitoring host. 30080 is last in `metrics` so the
+    # hEX rule's port list (metrics, then the health port, deduplicated)
+    # stays the same.
+    monitoring: { tier: standard, health: "http://{ip}:30080/readyz", metrics: [30910, 30931, 9100, 30598, 30080] }
   k3s-worker:
     kind: vm
     vmid: 301

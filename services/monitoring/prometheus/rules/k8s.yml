@@ -121,3 +121,36 @@ groups:
         annotations:
           summary: "{{ $labels.instance }}: Vector lost {{ $value | humanize }} log events in {{ $labels.component_id }} in 15 min"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8slogsdropped
+
+  # Kubeletto's usage meters (Kubeletto D11): core turns the access logs and
+  # tenant logs in its VictoriaLogs into usage_samples, 5-minute windows read
+  # 2 min after they close, and serves each meter's checkpoint on :30080
+  # /metrics. After the move home the old meters wrote nothing for 17 days and
+  # nobody could see it: the request caps and usage page silently stopped.
+  - name: k8s-usage
+    rules:
+      # Healthy lag is 7-13 min. 30 min is about four windows behind: the
+      # meter is failing (VictoriaLogs or Postgres) or no leader runs it.
+      - alert: KubelettoUsageMeterStale
+        expr: time() - kubeletto_usage_meter_processed_until_seconds{job="service_dmz"} > 1800
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kubeletto's {{ $labels.meter }} meter is {{ $value | humanizeDuration }} behind"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+
+      # The endpoint answers but a meter has no checkpoint: core was deployed
+      # without VICTORIALOGS_URL, or the meter never started. (When the
+      # endpoint itself is down, TargetDown says so instead.)
+      - alert: KubelettoUsageMeterMissing
+        expr: |
+          (
+            absent(kubeletto_usage_meter_processed_until_seconds{job="service_dmz", meter="http_requests"})
+            or absent(kubeletto_usage_meter_processed_until_seconds{job="service_dmz", meter="log_bytes"})
+          )
+          and on() up{job="service_dmz", instance="k3s", port="30080"} == 1
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kubeletto's {{ $labels.meter }} meter reports no checkpoint"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
