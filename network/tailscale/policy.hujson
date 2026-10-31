@@ -36,6 +36,17 @@
 		{"src": ["group:larasrouter-readers"], "dst": ["valkey"], "ip": ["tcp:6381"]},
 	],
 
+	// Tailscale SSH, kept from the default policy: each user into their own
+	// devices, in check mode. The lab itself uses OpenSSH with keys.
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
 	"tests": [
 		{
 			"src":    "${OPERATOR_LOGIN}",

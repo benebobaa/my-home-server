@@ -52,9 +52,11 @@ Removing someone: take them out of `people`, `valkey_readers` and
 `readers.sh` turns their Postgres login off and ends their sessions;
 `instances.sh` deletes their Valkey user, which closes its connections.
 
-## Not carried over from the default policy
+## What the default policy had (2026-10-31)
 
-The default policy also had an `ssh` block (Tailscale SSH to one's own
-devices) and a `nodeAttrs` entry allowing Funnel. Neither is used here: SSH is
-OpenSSH with keys, `archive` uses `tailscale serve`, not Funnel. Add them
-back if that changes.
+The policy this replaced was Tailscale's default (`*` → `*`, which is also
+what let Irene's shared-in account reach `archive`), `tag:admin` owned by
+`autogroup:admin` with a grant to it on 443 (ADR 0027; moot under `*` → `*`),
+and the default `ssh` block, kept here unchanged. No `nodeAttrs`, `hosts`,
+`autoApprovers` or postures. Rolling back is pasting that default from the
+admin console's template with those two `tag:admin` lines.
