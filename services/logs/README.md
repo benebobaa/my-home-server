@@ -49,7 +49,7 @@ sets the hostname). The hEX reports its identity, `hex-lab`, not `hex`.
 _stream:{_HOSTNAME="pve2"}                         # one host
 _stream:{_HOSTNAME="archive", _SYSTEMD_UNIT="filebrowser.service"}
 _stream:{hostname="hex-lab"} error                 # router, word "error"
-_time:1h level:err                                 # every error in the last hour
+_time:1h level:(error or critical)                 # every error or critical in the last hour
 * | stats by (_HOSTNAME) count() hits | sort by (hits desc)   # who logs most
 "exact phrase"                                     # quote anything with - or :
 ```

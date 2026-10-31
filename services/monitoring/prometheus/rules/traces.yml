@@ -1,0 +1,16 @@
+# The lab trace store — VictoriaTraces in CT 122 `traces` (services/traces,
+# ADR 0028), scraped through the `service` job (metrics: [10428] in lab.yaml).
+# Down is TargetDown/HttpProbeFailed; this catches it running with its disk
+# near the 16 GiB cap, where the oldest days are dropped before the 30-day
+# retention. The same mechanism as the log store's LogsNearDiskCap.
+groups:
+  - name: traces
+    rules:
+      # 14.5 GiB, about 90 % of the cap (services/traces/setup.sh).
+      - alert: TracesNearDiskCap
+        expr: sum(vt_data_size_bytes{job="service", instance="traces"}) > 15569256448
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "traces: {{ $value | humanize1024 }}B stored, near the 16 GiB cap — retention is being cut short"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tracesneardiskcap

@@ -1,0 +1,33 @@
+# promtool unit tests for the trace store's near-cap rule (make check): the
+# metric is the store's own vt_data_size_bytes (VictoriaTraces v0.12.1).
+rule_files:
+  - ../rules/traces.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # 15.5 GiB stored: over the 14.5 GiB line, for 90 minutes.
+      - series: 'vt_data_size_bytes{job="service",instance="traces",type="storage"}'
+        values: '16642998272x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: TracesNearDiskCap
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: TracesNearDiskCap
+        exp_alerts:
+          - exp_labels: { severity: info }
+            exp_annotations:
+              summary: "traces: 15.5GiB stored, near the 16 GiB cap — retention is being cut short"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tracesneardiskcap
+  - interval: 1m
+    input_series:
+      # 14 GiB stored: under the line, for the whole test.
+      - series: 'vt_data_size_bytes{job="service",instance="traces",type="storage"}'
+        values: '15032385536x90'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: TracesNearDiskCap
+        exp_alerts: []

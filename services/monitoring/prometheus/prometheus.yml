@@ -81,11 +81,18 @@ scrape_configs:
     label_value_length_limit: 256
     file_sd_configs:
       - files: [/etc/prometheus/targets/service_dmz.json]
+    # 2026-10-28: pod-level series are born and die with every build and cold
+    # start. Seven kube-state families that no rule reads were about 65 % of
+    # the pod series seen in 2 h, so they are dropped at ingest. The families
+    # k8s.yml and its tests read stay.
     # Vector (K3s :30598, 2026-10-29) serves ~2,000 series per node, ~390 KB;
     # keep the few the logs alerts read (rules/k8s.yml) and drop the rest
     # (histogram buckets per component). RE2 has no negative match, hence
     # the temporary label.
     metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: kube_pod_(status_(reason|ready|scheduled|qos_class)|container_info|tolerations|container_resource_limits)
+        action: drop
       - source_labels: [__name__]
         regex: vector_(component_discarded_events_total|component_errors_total|started_total)
         target_label: __tmp_keep

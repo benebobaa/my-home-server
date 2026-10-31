@@ -15,7 +15,9 @@ export DEBIAN_FRONTEND=noninteractive
 PVE_EXPORTER_VERSION=3.10.1
 GRAFANA_VERSION=13.2.3
 # Grafana plugin for the log store (services/logs): signed, from grafana.com.
-VLOGS_PLUGIN_VERSION=0.32.0
+# 0.33.0 added the Drilldown button in Explore (Code mode): explore logs
+# without writing LogsQL. Needs VictoriaLogs 1.21 or newer.
+VLOGS_PLUGIN_VERSION=0.33.1
 GRAFANA_KEY_FPR=B53AE77BADB630A683046005963FA27710458545  # gitleaks:allow (public key fingerprint)
 # Debian cannot ship a generated snmp.yml (MIB licensing): use upstream's, for
 # the same release as the packaged exporter. Kept beside, not over, Debian's
@@ -108,7 +110,9 @@ EOF
 # Exporters: localhost only (Prometheus is the only client).
 cat > /etc/default/prometheus-blackbox-exporter <<'EOF'
 # managed by services/monitoring/setup.sh
-ARGS="--config.file=/etc/prometheus/blackbox.yml --web.listen-address=127.0.0.1:9115"
+# --log.level=warn: at info, every probe logs two lines (~780k a day, most of
+# the log store). Probe outcomes are metrics (probe_success), not log lines.
+ARGS="--config.file=/etc/prometheus/blackbox.yml --web.listen-address=127.0.0.1:9115 --log.level=warn"
 EOF
 # SNMP: upstream's generated modules + the v3 credentials (secrets.sh).
 # ICMP probes: unprivileged ping sockets for the `prometheus` group (the

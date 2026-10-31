@@ -118,6 +118,15 @@ hosts:
     ip: 10.10.10.18
     note: VictoriaLogs — journald + hEX syslog for the whole lab (services/logs)
     monitoring: { tier: standard, health: "http://{ip}:9428/health", metrics: [9428], logs: true }
+  traces:
+    kind: lxc
+    vmid: 122
+    node: pve1 # always on, NVMe; stateful like pbs-replica beside it (ADR 0023, 0025, 0028)
+    vlan: mgmt
+    ip: 10.10.10.20
+    note: VictoriaTraces — the lab's trace store, OTLP in on 10428, Grafana's Tempo data source (services/traces, ADR 0028)
+    # Standard until an app depends on it, then critical (ADR 0028, as 0010 and 0016).
+    monitoring: { tier: standard, health: "http://{ip}:10428/health", metrics: [10428], logs: true }
   postgres:
     kind: lxc
     vmid: 130
@@ -125,7 +134,7 @@ hosts:
     vlan: servers
     ip: 10.10.20.21
     note: the lab's shared PostgreSQL 18, one database + role per app (ADR 0010, services/postgres)
-    monitoring: { tier: standard, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical once an app depends on it
+    monitoring: { tier: critical, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical: kubeletto and larasrouter depend on it (ADR 0010)
   nats:
     kind: lxc
     vmid: 131
@@ -135,7 +144,7 @@ hosts:
     note: the lab's shared NATS with JetStream, one account per app; apps outside VLAN 20 attach a leaf node (ADR 0016, services/nats)
     # 8222 is NATS's own monitoring port (healthz fails without JetStream);
     # 7777 is prometheus-nats-exporter reading it (app-nats.yml).
-    monitoring: { tier: standard, health: "http://{ip}:8222/healthz?js-enabled-only=true", metrics: [7777], logs: true }
+    monitoring: { tier: critical, health: "http://{ip}:8222/healthz?js-enabled-only=true", metrics: [7777], logs: true } # critical: kubeletto depends on it (ADR 0016)
   valkey:
     kind: lxc
     vmid: 132
@@ -145,7 +154,7 @@ hosts:
     note: the lab's shared Valkey, one instance (process, port, password) per app, TLS only, no persistence (ADR 0016, services/valkey)
     # no HTTP side: one redis_exporter per instance, 9121 upward, redis_up is
     # the health check (app-valkey.yml)
-    monitoring: { tier: standard, metrics: [9121, 9122], logs: true }
+    monitoring: { tier: critical, metrics: [9121, 9122], logs: true } # critical: kubeletto and larasrouter depend on it (ADR 0016)
   pbs:
     kind: lxc
     vmid: 111

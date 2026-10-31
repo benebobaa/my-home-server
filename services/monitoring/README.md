@@ -36,7 +36,7 @@ targets and the two internet probes.
 | `snmp_hex` | hEX `10.10.10.1` | snmp_exporter, SNMPv3 authPriv (SHA/AES), modules `system if_mib hrDevice hrStorage mikrotik`. A walk takes ~2.5 s every 60 s, about 1 % CPU on the hEX |
 | `blackbox_icmp` | every live host with a monitoring block, 1.1.1.1, 8.8.8.8 | ping |
 | `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`; untrusted-zone hosts (DMZ, LAB): `http_dmz`, which never follows a redirect into MGMT) | HTTP |
-| `service` | every `metrics:` port (today: the log store, CT 121) | `/metrics` |
+| `service` | every `metrics:` port (today: the log store, the trace store, and the shared Postgres, NATS and Valkey exporters) | `/metrics` |
 | `service_dmz` | `metrics:` ports of hosts in the untrusted zones, DMZ and LAB (the Kubeletto cluster; `ai`'s nvidia_gpu_exporter `:9835`, ADR 0014): no redirects and sample/label/body limits; a breach fails the scrape (`TargetDown`) | `/metrics` |
 | `blackbox_dns` | hEX resolver | resolves `cloudflare.com` |
 
@@ -75,9 +75,8 @@ address existed and used up systemd's 5 quick restarts. It now starts after
 `network-online.target` and retries without limit (Ansible drop-in). A
 second pve2 cold reboot had it listening at 12.9 s on the first try.
 
-Not yet: backups (`pve_not_backed_up_total`, with PBS), the public tunnel
-(an external HTTP check, with Cloudflare Tunnel), hEX remote syslog / logs,
-UPS (NUT), GPU metrics.
+Not yet: a UPS (NUT). Backups (`PveGuestNotBackedUp`), the public endpoints
+(`blackbox_public`), hEX logs and GPU metrics are in place.
 
 ## Operator steps (account-level, once)
 
@@ -122,10 +121,17 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   (Alertmanager datasource), or
   `ssh root@10.10.10.12 'pct exec 120 -- amtool --alertmanager.url=http://127.0.0.1:9093 silence add instance=pve3 --duration 1h --comment reboot'`.
 - **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
-  `DASHBOARDS`), plus JSON in `grafana/dashboards/` (the shared **Service**
-  dashboard; app dashboards as `app-<name>.json`). UI edits are not saved.
+  `DASHBOARDS`) for the host views, plus JSON in `grafana/dashboards/`: the
+  **Service** view (any host), one per shared app (`app-postgres`,
+  `app-nats`, `app-valkey`) and four platform views (`platform-logs`,
+  `platform-k3s`, `platform-traces`, `platform-monitoring`). Each alert file
+  has a dashboard whose panels follow the alert expressions. UI edits are not
+  saved: change the JSON in the repo, then apply.
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
+- **Traces** are in the `traces` data source (Tempo API of CT 122,
+  `services/traces/`, ADR 0028), which Grafana's Traces Drilldown reads. A
+  TraceQL search needs a service name.
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
   packages (security updates via apt). Grafana is pinned and held
   (`GRAFANA_VERSION`). pve-exporter is pinned (`PVE_EXPORTER_VERSION`). The

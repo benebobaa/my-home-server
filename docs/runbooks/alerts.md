@@ -454,6 +454,17 @@ before the 30-day retention. Info only.
 **Fix:** quiet the noisy service, or raise the cap and CT 121's disk together
 (`services/logs/setup.sh`, `proxmox/opentofu/logs.tf`).
 
+## Trace store (CT 122)
+
+### TracesNearDiskCap
+**Meaning:** the trace store holds about 14.5 GiB of its 16 GiB cap for an
+hour: the oldest days are dropped before the 30-day retention. Info only.
+**Check:** the dashboard *Trace store (VictoriaTraces)*: the stored share of
+the cap, and the rows dropped by reason.
+**Fix:** a sender that writes too much (sample on the app side), or raise the
+cap and CT 122's disk together (`services/traces/setup.sh`,
+`proxmox/opentofu/traces.tf`).
+
 ## PostgreSQL (CT 130)
 
 ### PostgresDown
