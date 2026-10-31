@@ -280,24 +280,6 @@ resource "routeros_ip_firewall_filter" "forward_k3s_postgres" {
   place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
 }
 
-# LLM serving bench lab (ADR 0019, temporary): the bench client (VLAN 20)
-# -> the engine under test on `ai` (LAB VLAN), its OpenAI-compatible API
-# only. One way: `ai` gets no rule towards any lab VLAN (default deny), and
-# replies ride forward_established. Monitoring's scrapes of ai are the
-# generated forward_monitoring_scrape rule (ports from lab.yaml).
-resource "routeros_ip_firewall_filter" "forward_bench_ai" {
-  chain         = "forward"
-  action        = "accept"
-  in_interface  = routeros_interface_vlan.servers.name
-  out_interface = routeros_interface_vlan.lab.name
-  src_address   = local.host["llm-bench"].ip
-  dst_address   = local.host.ai.ip
-  protocol      = "tcp"
-  dst_port      = "8000"
-  comment       = "bench lab: llm-bench to ai engine API"
-  place_before  = routeros_ip_firewall_filter.forward_admin_gw.id
-}
-
 # Kubeletto's leaf node to the shared NATS hub, and its core to its Valkey
 # instance (ADR 0016; services/nats/README.md "Kubeletto's switch"). From the
 # K3s server VM only, never the worker: tenant and build code runs there.
@@ -454,25 +436,6 @@ resource "routeros_ip_firewall_filter" "forward_drop_inter_vlan" {
   out_interface_list = routeros_interface_list.lan.name
   comment            = "default deny between lab VLANs"
   depends_on         = [routeros_ip_firewall_filter.forward_no_biznet]
-}
-
-# LLM serving bench lab (ADR 0019, temporary): cuts `ai`'s internet during a
-# measured run (no pulls or updates competing for the GPU, CPU or disk).
-# Created disabled; the operator flips it by hand, so `disabled` is ignored
-# (a toggle is not drift). Flows already running are fasttracked past it
-# until they end. Commands: services/llm-bench/README.md.
-resource "routeros_ip_firewall_filter" "forward_ai_no_internet" {
-  chain              = "forward"
-  action             = "drop"
-  src_address        = local.host.ai.ip
-  out_interface_list = routeros_interface_list.wan.name
-  disabled           = true
-  comment            = "block ai internet during runs"
-  place_before       = routeros_ip_firewall_filter.forward_lan_wan.id
-
-  lifecycle {
-    ignore_changes = [disabled]
-  }
 }
 
 resource "routeros_ip_firewall_filter" "forward_lan_wan" {

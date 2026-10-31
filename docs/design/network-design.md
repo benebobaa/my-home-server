@@ -196,12 +196,6 @@ public IP. So, beyond the table above:
   `10.10.20.21:5432` (Postgres live since 2026-10-10, ADR 0010; the K3s VM — VM 300 — since 2026-10-11, verified from inside: only this pinhole and public egress). The earlier generic
   `dmz-backends` list rule (443/8080) is gone.
 
-- **SERVERS → LAB, temporary (ADR 0019).** One exact pinhole for the LLM
-  bench lab: `llm-bench` `10.10.20.40` → `ai` `10.10.30.10:8000` (rule
-  `bench lab: llm-bench to ai engine API`). Nothing in the LAB opens the
-  other way. `ai` also has a disabled kill switch to the WAN (`block ai
-  internet during runs`, flipped by hand). Both go at the lab's teardown.
-
 - **Anti-spoofing.** Allow rules trust source addresses, so the hEX runs
   strict reverse-path filtering (`/ip settings rp-filter=strict`): a packet
   whose source is not routed back out its arrival interface is dropped. The
