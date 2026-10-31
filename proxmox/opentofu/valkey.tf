@@ -26,6 +26,18 @@ locals {
     kubeletto   = { port = 6380, exporter_port = 9121, maxmemory = "96mb", policy = "volatile-lru" }
     larasrouter = { port = 6381, exporter_port = 9122, maxmemory = "64mb", policy = "volatile-lru" }
   }
+
+  # People with read-only access to an app's instance (ADR 0029): an ACL user
+  # `<app>_<handle>` each, read commands only (instances.sh). Same handles as
+  # postgres_readers; who is who sits in network/tailscale/identities.sops.env.
+  # The app's own password never goes to a person: whoever holds it can write.
+  valkey_readers = {
+    larasrouter = ["reader1"]
+  }
+  valkey_reader_logins = {
+    for pair in flatten([for app, people in local.valkey_readers : [for p in people : { login = "${app}_${p}", app = app }]]) :
+    pair.login => pair.app
+  }
 }
 
 module "valkey" {
@@ -117,9 +129,20 @@ resource "random_password" "valkey" {
   special = false
 }
 
+# One password per reader. It reaches the person through the operator
+# (services/larasrouter/urls.sh redis-reader <login>); the instance keeps only
+# its sha256. Rotate: tofu apply -replace='random_password.valkey_reader["<login>"]'.
+resource "random_password" "valkey_reader" {
+  for_each = local.valkey_reader_logins
+
+  length  = 32
+  special = false
+}
+
 resource "terraform_data" "valkey_instances" {
   triggers_replace = [
     sha256(join("\n", [for n in sort(keys(local.valkey_instances)) : "${n} ${jsonencode(local.valkey_instances[n])} ${random_password.valkey[n].result}"])),
+    sha256(join("\n", [for l in sort(keys(local.valkey_reader_logins)) : "${l}=${random_password.valkey_reader[l].result}"])),
     filesha256("${local.valkey_dir}/instances.sh"),
     local.host.valkey.ip,
   ]
@@ -137,7 +160,7 @@ resource "terraform_data" "valkey_instances" {
     command = "printf '%s\\n' \"$INSTANCES\" | ${local.valkey_ssh} 'pct exec ${module.valkey.vmid} -- bash /root/valkey/instances.sh ${local.host.valkey.ip}'"
 
     environment = {
-      INSTANCES = join("\n", [for n in sort(keys(local.valkey_instances)) : "${n} ${local.valkey_instances[n].port} ${local.valkey_instances[n].exporter_port} ${local.valkey_instances[n].maxmemory} ${local.valkey_instances[n].policy} ${random_password.valkey[n].result}"])
+      INSTANCES = join("\n", [for n in sort(keys(local.valkey_instances)) : trimspace("${n} ${local.valkey_instances[n].port} ${local.valkey_instances[n].exporter_port} ${local.valkey_instances[n].maxmemory} ${local.valkey_instances[n].policy} ${random_password.valkey[n].result} ${join(" ", [for l, a in local.valkey_reader_logins : "${l}=${random_password.valkey_reader[l].result}" if a == n])}")])
     }
   }
 

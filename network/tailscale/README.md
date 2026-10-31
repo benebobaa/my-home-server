@@ -17,7 +17,7 @@ What it grants:
 | --- | --- |
 | `group:operator` | everything (as before) |
 | `autogroup:shared` (Irene, through the `archive` share) | the shared machine on 443 |
-| `group:larasrouter-readers` | `10.10.20.21:5432` only, through the admin gateways' route; Postgres then admits only their read-only role ([services/postgres](../../services/postgres/README.md#read-only-access-for-a-person)) |
+| `group:larasrouter-readers` | `10.10.20.21:5432` and `10.10.20.23:6381` only, through the admin gateways' routes; Postgres and Valkey then admit only their read-only logins ([services/postgres](../../services/postgres/README.md#read-only-access-for-a-person), [services/valkey](../../services/valkey/README.md#read-only-access-for-a-person)) |
 | tagged nodes (`tag:admin`) | nothing; they are only reached |
 
 ## Changing it
@@ -33,21 +33,24 @@ What it grants:
 
 ## Adding a person who reads larasrouter's database
 
-1. `postgres.tf`: add a handle to `postgres_readers.larasrouter.people`
-   (`reader2`, not a name), `tofu apply` (targeted at `terraform_data.postgres_readers`
-   while the stack has unrelated drift).
+1. Add a handle (`reader2`, not a name) to `postgres_readers.larasrouter.people`
+   in `postgres.tf` and to `valkey_readers.larasrouter` in `valkey.tf`, then
+   `tofu apply` (targeted at `terraform_data.postgres_readers` and
+   `terraform_data.valkey_instances` while the stack has unrelated drift).
 2. `sops network/tailscale/identities.sops.env`: append `,reader2=<their Tailscale login>`
    to `LARASROUTER_READERS`, then render and paste (above).
 3. Admin console → Users → Invite users, with that login. They install Tailscale
    and sign in; "Use Tailscale subnets" must be on (macOS and Windows: on by
    default; Linux: `tailscale up --accept-routes`). Leave key expiry on.
-4. Give them `services/larasrouter/urls.sh reader larasrouter_reader2` over a
-   private channel. From their machine: `SELECT` works, and the Proxmox UI
+4. Give them `services/larasrouter/urls.sh reader larasrouter_reader2` and
+   `urls.sh redis-reader larasrouter_reader2` over a private channel. From their
+   machine: `SELECT` and a Valkey `SCAN` work, and the Proxmox UI
    (`https://10.10.10.12:8006`) times out.
 
-Removing someone: take them out of `people` and `LARASROUTER_READERS`, apply and
-paste, remove the user in the admin console. `readers.sh` turns their login off
-and ends their sessions.
+Removing someone: take them out of `people`, `valkey_readers` and
+`LARASROUTER_READERS`, apply and paste, remove the user in the admin console.
+`readers.sh` turns their Postgres login off and ends their sessions;
+`instances.sh` deletes their Valkey user, which closes its connections.
 
 ## Not carried over from the default policy
 

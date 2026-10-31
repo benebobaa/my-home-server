@@ -19,7 +19,7 @@ namespace `kl-f42a6fae-f42a6fae`, services `larasrouter-api` and `larasrouter-mo
 | Migrations by hand, before a release | `migrate.sh status|up [--yes]`: through the tunnel, snapshot first, confirmation, the larasrouter checkout's goose (pinned) and seeds |
 | A GUI client on the data | `tunnel.py [db] [redis]`: local ports 15432 / 16381 on 127.0.0.1, relayed through the node into the container; passwords from `urls.sh db-password|redis-password` |
 | A shell on the data (psql / valkey-cli) | `connect.sh db|redis [args]`: the Mac cannot reach the ports directly, the client runs inside the container through the node |
-| Read-only access for a teammate | ADR 0029: a login `larasrouter_<handle>` (`postgres_readers` in `postgres.tf`), over the tailnet; `urls.sh reader <login>`. Steps in `network/tailscale/README.md`. No Valkey access for people |
+| Read-only access for a teammate | ADR 0029: a login `larasrouter_<handle>` on the database (`postgres_readers` in `postgres.tf`) and on the Valkey instance (`valkey_readers` in `valkey.tf`), over the tailnet; `urls.sh reader <login>`, `urls.sh redis-reader <login>`. Steps in `network/tailscale/README.md` |
 
 ## The flip (the operator, about five minutes)
 
