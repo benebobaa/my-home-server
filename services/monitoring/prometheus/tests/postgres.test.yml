@@ -1,0 +1,50 @@
+# promtool unit tests for the shared Postgres size rules (make check). The
+# labels are the live exporter's (2026-10-31): a rename in an exporter
+# upgrade breaks these tests, not silently the alerts.
+rule_files:
+  - ../rules/app-postgres.yml
+
+evaluation_interval: 1m
+
+tests:
+  # larasrouter at 6 GB fires PostgresDatabaseLarge after an hour; kubeletto at
+  # 850 MB and the system databases never do.
+  - interval: 1m
+    input_series:
+      - series: 'pg_database_size_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="standard",datname="larasrouter"}'
+        values: '6000000000x90'
+      - series: 'pg_database_size_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="standard",datname="kubeletto"}'
+        values: '850000000x90'
+      - series: 'pg_database_size_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="standard",datname="template1"}'
+        values: '6000000000x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PostgresDatabaseLarge
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: PostgresDatabaseLarge
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: standard, datname: larasrouter }
+            exp_annotations:
+              summary: "postgres: database larasrouter is 5.588GiB"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabaselarge
+
+  # larasrouter growing 2 MB a minute (~2.9 GB a day) fires
+  # PostgresDatabaseGrowingFast; kubeletto growing 100 KB a minute does not.
+  - interval: 1m
+    input_series:
+      - series: 'pg_database_size_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="standard",datname="larasrouter"}'
+        values: '14000000+2000000x1500'
+      - series: 'pg_database_size_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="standard",datname="kubeletto"}'
+        values: '850000000+100000x1500'
+    alert_rule_test:
+      - eval_time: 300m
+        alertname: PostgresDatabaseGrowingFast
+        exp_alerts: []
+      - eval_time: 1500m
+        alertname: PostgresDatabaseGrowingFast
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: standard, datname: larasrouter }
+            exp_annotations:
+              summary: "postgres: database larasrouter grew 2.682GiB in 24 h"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabasegrowingfast

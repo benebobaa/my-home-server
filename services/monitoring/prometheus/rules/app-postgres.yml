@@ -36,3 +36,26 @@ groups:
         annotations:
           summary: "{{ $labels.instance }}: {{ $value | humanizePercentage }} of max_connections in use"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresconnectionshigh
+
+      # One app's database is big enough to plan for: 5 GB is half the size at
+      # which a high-volume app's tables become worth partitioning (larasrouter:
+      # ~5 KB per inference request, ~1M requests), and a quarter of CT 130's
+      # disk. A planning signal weeks ahead, not an outage.
+      - alert: PostgresDatabaseLarge
+        expr: pg_database_size_bytes{job="service", datname!~"postgres|template.*"} > 5e9
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: database {{ $labels.datname }} is {{ $value | humanize1024 }}B"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabaselarge
+
+      # A database grew more than 1 GB in a day (larasrouter: ~200k requests a
+      # day): at that rate CT 130's free disk lasts weeks, and this fires long
+      # before PostgresDiskFilling (80 %).
+      - alert: PostgresDatabaseGrowingFast
+        expr: delta(pg_database_size_bytes{job="service", datname!~"postgres|template.*"}[1d]) > 1e9
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: database {{ $labels.datname }} grew {{ $value | humanize1024 }}B in 24 h"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabasegrowingfast

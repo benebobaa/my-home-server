@@ -466,6 +466,31 @@ New connections are refused soon.
 app's pool size. Raise `max_connections` (`setup.sh`) only with memory to
 match.
 
+### PostgresDatabaseLarge
+**Meaning:** one app's database passed 5 GB (`pg_database_size_bytes`). Nothing
+is broken: it is the point to plan growth. For larasrouter that is about a
+million inference requests (~5 KB each, most of it ledger postings, which are
+kept forever), half the size at which its high-volume tables are worth
+partitioning.
+**Check:** which tables: in the CT, as `postgres`, in that database:
+`SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 10`;
+the disk: `df -h /` (20 GB, shared with every app).
+**Fix:** grow the disk (`disk_gb` in `proxmox/opentofu/postgres.tf`, online) or
+give the app its own Postgres, so it cannot fill the others' disk. For
+larasrouter: decide the retention of raw usage and plan monthly partitions of
+`inference_requests`, `usage_events`, `usage_settlements`, `ledger_transactions`
+and `ledger_postings` by id range (row ids are UUIDv7 since larasrouter PR #131).
+
+### PostgresDatabaseGrowingFast
+**Meaning:** a database grew more than 1 GB in the last 24 hours. For
+larasrouter that is roughly 200k requests a day; at that rate CT 130's free
+disk lasts weeks, and this fires long before `PostgresDiskFilling`.
+**Check:** is it real traffic or a runaway (a retry loop, a test against
+production)? larasrouter: `SELECT date_trunc('hour', dispatch_intent_at), count(*) FROM inference_requests WHERE dispatch_intent_at > now() - interval '1 day' GROUP BY 1 ORDER BY 1`;
+which tables grew: the `PostgresDatabaseLarge` query above.
+**Fix:** a runaway: stop its source. Real growth: as `PostgresDatabaseLarge`,
+sooner.
+
 ## NATS (CT 131)
 
 NATS itself down, or up without JetStream, is `HttpProbeFailed` on
