@@ -16,6 +16,7 @@ Read `docs/design/network-design.md` before changing anything network-facing.
 | Proxmox firewall (datacenter switch, per-VM ipfilter) | OpenTofu + a root script | `proxmox/opentofu/firewall.tf` |
 | Proxmox hosts (pve2, pve3) | Ansible, one playbook, tagged | `ansible/proxmox-nodes.yml` |
 | Switch | no provider — config backup + runbook | `network/switch/` |
+| Tailnet policy (who reaches what over Tailscale) | policy template + SOPS logins, pasted in the admin console | `network/tailscale/` |
 | In-guest setup | scripts run by Tofu provisioners | `services/<name>/` |
 | Observability (targets, log shipping, alert routing) | generated from each host's `monitoring:` block | `inventory/lab.yaml` → `services/monitoring/`, `services/logs/` |
 

@@ -18,7 +18,7 @@ because both ends sit behind CGNAT — that is by design (zero inbound).
 | HA | Both advertise the same routes. Clients use one (the primary) and Tailscale moves them to the other when it goes offline. Measured 2026-10-09: about a 55–75 s gap, then the other gateway serves at the same latency. The primary is sticky: it stays where it failed over to. Since 2026-10-09 ([RCA](../../docs/incidents/2026-10-09-remote-access-degraded.md)) |
 | Device | `/dev/net/tun` passed through (Tailscale needs it) |
 | Boot | `onboot` — comes back automatically with the node |
-| Routes | advertises `10.10.10.0/24` (nodes + hEX), `192.168.99.0/29` (switch + recovery), `10.10.30.10/32` (`ai`, the AI workstation VM: off the tailnet by design, ADR 0012). Set by `provision.sh` (`tailscale set --advertise-routes`); a new route needs approving once in the admin console |
+| Routes | advertises `10.10.10.0/24` (nodes + hEX), `192.168.99.0/29` (switch + recovery), `10.10.30.10/32` (`ai`, the AI workstation VM: off the tailnet by design, ADR 0012), `10.10.20.21/32` (the shared Postgres, for people with read-only access, ADR 0029). Set by `provision.sh` (`tailscale set --advertise-routes`); a new route needs approving once in the admin console |
 
 The hEX firewall trusts both IPs (address-list `admin-gw`) for management
 access to the router, the switch UI and all lab VLANs.
@@ -83,8 +83,10 @@ port (hEX + switch only).
 
 ## Security notes
 
-- Tailnet default ACL allows all your own devices — tighten later if the
-  tailnet grows (design § Remote admin).
+- The tailnet policy is `network/tailscale/` (ADR 0029): the operator reaches
+  everything through these gateways; a teammate reads one Postgres port and
+  nothing else, which the gateways enforce (Tailscale filters subnet traffic at
+  the router).
 - This CT is the single management door; it runs exactly one service, on
   MGMT VLAN 10, unprivileged.
 - No single point of failure for remote access: one gateway per node. A

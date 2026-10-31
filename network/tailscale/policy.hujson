@@ -1,0 +1,44 @@
+// The tailnet policy (ADR 0029). Logins are not in this file (the repo is
+// public): render-policy.sh fills ${...} in from identities.sops.env, and the
+// operator pastes the result into the admin console (Access controls → JSON
+// editor). The console refuses to save a policy whose `tests` fail.
+{
+	"hosts": {
+		// The shared Postgres (inventory/lab.yaml), routed by both admin gateways.
+		"postgres": "10.10.20.21",
+		// The family archive's tailnet address (ADR 0005), shared with Irene.
+		"archive": "100.93.77.50",
+	},
+
+	"groups": {
+		"group:operator": ["${OPERATOR_LOGIN}"],
+		// Read-only on larasrouter's database (postgres_readers in
+		// proxmox/opentofu/postgres.tf; their Postgres login is separate).
+		"group:larasrouter-readers": [${LARASROUTER_READERS}],
+	},
+
+	"tagOwners": {
+		// Kubeletto's admin plane (ADR 0027).
+		"tag:admin": ["group:operator"],
+	},
+
+	"grants": [
+		// The operator: everything, as under the default policy.
+		{"src": ["group:operator"], "dst": ["*"], "ip": ["*"]},
+		// People a machine is shared with see only that machine (today
+		// `archive`, tailscale serve on 443).
+		{"src": ["autogroup:shared"], "dst": ["*"], "ip": ["tcp:443"]},
+		// larasrouter readers: the shared Postgres, nothing else. pg_hba and
+		// their read-only role decide the rest.
+		{"src": ["group:larasrouter-readers"], "dst": ["postgres"], "ip": ["tcp:5432"]},
+	],
+
+	"tests": [
+		{
+			"src":    "${OPERATOR_LOGIN}",
+			"accept": ["10.10.10.12:8006", "10.10.10.1:22", "192.168.99.2:80", "10.10.30.10:22", "postgres:5432", "archive:443", "tag:admin:443"],
+		},
+		// One per reader (render-policy.sh repeats this line for each).
+		{"src": "${READER}", "accept": ["postgres:5432"], "deny": ["postgres:22", "10.10.10.11:8006", "10.10.10.12:8006", "10.10.10.13:22", "10.10.10.1:8291", "10.10.10.1:443", "192.168.99.2:80", "192.168.99.1:443", "10.10.30.10:22", "archive:443", "tag:admin:443"]},
+	],
+}

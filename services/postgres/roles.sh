@@ -36,10 +36,13 @@ SQL
   declared+=("$name")
 done
 
-# Report (never drop) app roles that are no longer declared.
+# Report (never drop) app roles that are no longer declared. People's
+# read-only logins (members of a `*_read` group) are readers.sh's.
 extra=$(runuser -u postgres -- psql -XAtc \
-  "SELECT string_agg(rolname, ' ' ORDER BY rolname) FROM pg_roles
+  "SELECT string_agg(rolname, ' ' ORDER BY rolname) FROM pg_roles r
     WHERE rolcanlogin AND rolname NOT IN ('postgres', 'prometheus')
-      AND rolname <> ALL (string_to_array('${declared[*]}', ' '))")
+      AND rolname <> ALL (string_to_array('${declared[*]}', ' '))
+      AND NOT EXISTS (SELECT FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
+                       WHERE m.member = r.oid AND g.rolname LIKE '%\_read')")
 [ -z "$extra" ] || echo "roles: present but not declared in postgres.tf (left alone): ${extra}"
 echo "roles: ${#declared[@]} app database(s) converged${declared[*]:+: ${declared[*]}}"

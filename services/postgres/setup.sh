@@ -12,7 +12,9 @@
 # Arguments (from inventory/lab.yaml): this host's IP, the CIDR apps
 # connect from, the monitoring host's IP (the only one that may scrape), and
 # optionally clients outside that CIDR as `db=cidr,db=cidr` (each may reach
-# only its own database, e.g. Kubeletto's K3s VM in the DMZ).
+# only its own database, e.g. Kubeletto's K3s VM in the DMZ), and where
+# people with read-only access come from, also `db=cidr,...` (the group
+# `<db>_read` to that database only: the admin gateways; readers.sh).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -20,11 +22,12 @@ export DEBIAN_FRONTEND=noninteractive
 # en_US.UTF-8, which the container does not have) must not leak in.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-usage="usage: setup.sh <listen-ip> <app-cidr> <monitoring-ip> [db=cidr,...]"
+usage="usage: setup.sh <listen-ip> <app-cidr> <monitoring-ip> [db=cidr,...] [reader db=cidr,...]"
 LISTEN_IP=${1:?$usage}
 APP_CIDR=${2:?$usage}
 MONITORING_IP=${3:?$usage}
 EXTRA_CLIENTS=${4:-}
+READER_CLIENTS=${5:-}
 
 # The major version is the pin; minor releases come from the repo (apt
 # upgrade: README). A new major is a pg_upgradecluster, never a re-run.
@@ -73,6 +76,13 @@ EOF
 apt-get install -y -qq "postgresql-${PG_MAJOR}" prometheus-postgres-exporter
 
 # --- server config -----------------------------------------------------------------
+# What the server reads only when it starts. If none of it changes, the run
+# reloads instead of restarting (below), so pg_hba changes drop no session.
+start_inputs() {
+  cat "$CONF/conf.d/homelab.conf" "/etc/systemd/system/postgresql@${PG_MAJOR}-main.service.d/wait-for-address.conf" 2>/dev/null | sha256sum
+}
+start_inputs_before=$(start_inputs)
+
 # conf.d is read last, so this overrides the packaged postgresql.conf.
 # Sized for the container: 2 GB (proxmox/opentofu/postgres.tf).
 cat > "$CONF/conf.d/homelab.conf" <<EOF
@@ -137,6 +147,15 @@ for e in "${extra[@]}"; do
   [[ $db =~ ^[a-z][a-z0-9_]{0,62}$ && $cidr =~ ^[0-9./]+$ ]] || { echo "postgres: bad extra client '${e}'" >&2; exit 1; }
   printf 'hostssl   %s  %s  %s  scram-sha-256\n' "$db" "$db" "$cidr" >> "$CONF/pg_hba.conf"
 done
+# People with read-only access (readers.sh, ADR 0029): members of `<db>_read`,
+# to that database only, from the admin gateways. Who gets as far as the
+# gateways is the tailnet policy's call (network/tailscale/).
+IFS=',' read -ra readers <<< "$READER_CLIENTS"
+for e in "${readers[@]}"; do
+  db=${e%%=*} cidr=${e#*=}
+  [[ $db =~ ^[a-z][a-z0-9_]{0,62}$ && $cidr =~ ^[0-9./]+$ ]] || { echo "postgres: bad reader client '${e}'" >&2; exit 1; }
+  printf 'hostssl   %s  +%s_read  %s  scram-sha-256\n' "$db" "$db" "$cidr" >> "$CONF/pg_hba.conf"
+done
 chown postgres:postgres "$CONF/conf.d/homelab.conf" "$CONF/pg_hba.conf"
 chmod 0640 "$CONF/pg_hba.conf"
 
@@ -158,12 +177,20 @@ EOF
 systemctl daemon-reload
 
 systemctl enable -q "postgresql@${PG_MAJOR}-main"
-systemctl restart "postgresql@${PG_MAJOR}-main"
+if systemctl is-active -q "postgresql@${PG_MAJOR}-main" && [ "$(start_inputs)" = "$start_inputs_before" ]; then
+  systemctl reload "postgresql@${PG_MAJOR}-main"
+else
+  systemctl restart "postgresql@${PG_MAJOR}-main"
+fi
 for _ in $(seq 1 30); do
   runuser -u postgres -- pg_isready -q && break
   sleep 1
 done
 runuser -u postgres -- pg_isready -q
+# A pg_hba.conf that does not parse is not applied: the server keeps the old
+# rules and only logs it. Fail the run instead.
+bad=$(runuser -u postgres -- psql -XAtc "SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL")
+[ "$bad" = 0 ] || { echo "postgres: pg_hba.conf has ${bad} bad line(s), see pg_hba_file_rules; the old rules stay in force" >&2; exit 1; }
 
 # --- exporter: role `prometheus` over the unix socket, peer auth, no password ------
 runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 <<'SQL'

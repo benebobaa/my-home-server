@@ -39,6 +39,37 @@ locals {
     larasrouter = "${local.host["k3s-worker"].ip}/32"
   }
   postgres_extra_clients_arg = join(",", [for db, cidr in local.postgres_extra_clients : "${db}=${cidr}"])
+
+  # People with read-only access to an app's database (ADR 0029). Each gets a
+  # login role `<db>_<handle>` in the group `<db>_read` (readers.sh). Handles
+  # are not names (this repo is public); who is who sits next to their
+  # Tailscale login in network/tailscale/identities.sops.env. They come in
+  # only through the admin gateways, so pg_hba admits the group from those two
+  # addresses, and the tailnet policy decides who reaches the gateways' route.
+  # `hidden` columns are never readable: credentials, hashes of them, and
+  # larasrouter's email outbox payload, which carries the raw password-reset
+  # and verification links.
+  postgres_readers = {
+    larasrouter = {
+      people = ["reader1"]
+      hidden = [
+        "users.password_hash",
+        "email_outbox.payload",
+        "sessions.token_hash",
+        "api_keys.key_hash",
+        "password_reset_tokens.token_hash",
+        "email_verification_tokens.token_hash",
+      ]
+    }
+  }
+  postgres_reader_logins = {
+    for pair in flatten([for db, r in local.postgres_readers : [for p in r.people : { login = "${db}_${p}", db = db }]]) :
+    pair.login => pair.db
+  }
+  postgres_readers_hba_arg = join(",", flatten([
+    for db in keys(local.postgres_readers) : [for gw in ["admin-gw", "admin-gw2"] : "${db}=${local.host[gw].ip}/32"]
+  ]))
+  postgres_readers_args = join(" ", [for db, r in local.postgres_readers : "${db}=${join(",", r.hidden)}"])
 }
 
 module "postgres" {
@@ -65,6 +96,7 @@ resource "terraform_data" "postgres_setup" {
     local.postgres_app_cidr,
     local.host.monitoring.ip,
     local.postgres_extra_clients_arg,
+    local.postgres_readers_hba_arg,
   ]
 
   provisioner "local-exec" {
@@ -72,7 +104,7 @@ resource "terraform_data" "postgres_setup" {
       set -eu
       COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.postgres_dir} -cf - . \
         | ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- sh -c "rm -rf /root/postgres && mkdir -p /root/postgres && tar -xf - -C /root/postgres"'
-      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr} ${local.host.monitoring.ip} ${local.postgres_extra_clients_arg}'
+      ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/setup.sh ${local.host.postgres.ip} ${local.postgres_app_cidr} ${local.host.monitoring.ip} ${local.postgres_extra_clients_arg} ${local.postgres_readers_hba_arg}'
     EOT
   }
 }
@@ -106,4 +138,36 @@ resource "terraform_data" "postgres_roles" {
   }
 
   depends_on = [terraform_data.postgres_setup]
+}
+
+# One password per reader, like the apps'. It reaches the person through the
+# operator (services/larasrouter/urls.sh reader <login>), never the repo.
+# Rotate: tofu apply -replace='random_password.postgres_reader["<login>"]'.
+resource "random_password" "postgres_reader" {
+  for_each = local.postgres_reader_logins
+
+  length  = 32
+  special = false
+}
+
+resource "terraform_data" "postgres_readers" {
+  triggers_replace = [
+    sha256(join("\n", [for l in sort(keys(local.postgres_reader_logins)) : "${l}=${random_password.postgres_reader[l].result}"])),
+    local.postgres_readers_args,
+    filesha256("${local.postgres_dir}/readers.sh"),
+  ]
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.postgres_roles]
+  }
+
+  provisioner "local-exec" {
+    command = "printf '%s\\n' \"$READERS\" | ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/readers.sh ${local.postgres_readers_args}'"
+
+    environment = {
+      READERS = join("\n", [for l, db in local.postgres_reader_logins : "${db} ${l} ${random_password.postgres_reader[l].result}"])
+    }
+  }
+
+  depends_on = [terraform_data.postgres_roles]
 }

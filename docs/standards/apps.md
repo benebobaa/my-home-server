@@ -75,6 +75,7 @@ Shared, like the database ([ADR 0016](../decisions/0016-shared-nats-and-valkey.m
 | Audience | How |
 | --- | --- |
 | The operator, family | Tailscale (the admin gateways route VLAN 20). Default for every app |
+| A teammate of one app | Tailscale under the tailnet policy (`network/tailscale/`): one address and port each, and a read-only role ([ADR 0029](../decisions/0029-teammates-read-only-on-the-tailnet.md)). Never an app's own credentials |
 | The public | Only through Cloudflare Tunnel (ADR 0004), per hostname, as its own change |
 | Other apps | Same VLAN directly; across VLANs only by an exact hEX rule (source, destination, port) |
 

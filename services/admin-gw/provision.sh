@@ -31,8 +31,11 @@ sysctl --system >/dev/null 2>&1 || true
 # The routes this gateway advertises (both gateways the same). New ones need
 # approving once in the Tailscale admin console. 10.10.30.10/32 is `ai`
 # (inventory/lab.yaml): the operator's only way in, since that VM runs
-# untrusted code and stays off the tailnet (ADR 0012).
-ROUTES=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32
+# untrusted code and stays off the tailnet (ADR 0012). 10.10.20.21/32 is the
+# shared Postgres, for people with read-only access to an app's database
+# (ADR 0029): the tailnet policy (network/tailscale/) lets each of them reach
+# that one port and nothing else; the operator reaches it like everything.
+ROUTES=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32,10.10.20.21/32
 
 if tailscale status >/dev/null 2>&1; then
   tailscale set --advertise-routes="$ROUTES"
@@ -43,7 +46,7 @@ else
 admin-gw bootstrap complete. One interactive step remains (account-level):
 
   tailscale up --hostname=admin-gw --accept-dns=false \
-    --advertise-routes=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32
+    --advertise-routes=10.10.10.0/24,192.168.99.0/29,10.10.30.10/32,10.10.20.21/32
 
 Then approve the subnet routes in the Tailscale admin console and
 disable key expiry for the device. Details: services/admin-gw/README.md

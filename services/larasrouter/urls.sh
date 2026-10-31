@@ -7,6 +7,7 @@
 #   ./urls.sh redis | pbcopy        # REDIS_URL
 #   ./urls.sh db-password | pbcopy      # just the password, for a GUI client (tunnel.py)
 #   ./urls.sh redis-password | pbcopy
+#   ./urls.sh reader larasrouter_reader1 | pbcopy   # a person's read-only login (ADR 0029)
 #
 # Addresses, not names: the DMZ does not resolve home.arpa. sslmode=require and
 # skip_verify encrypt but do not verify the server's certificate; larasrouter's
@@ -21,5 +22,9 @@ case "${1:-}" in
     "$(tf 'nonsensitive(random_password.valkey["larasrouter"].result)')" ;;
   db-password) printf '%s' "$(tf 'nonsensitive(random_password.postgres["larasrouter"].result)')" ;;
   redis-password) printf '%s' "$(tf 'nonsensitive(random_password.valkey["larasrouter"].result)')" ;;
-  *) echo "usage: $0 database|redis|db-password|redis-password (pipe to pbcopy)" >&2; exit 2 ;;
+  reader)
+    [[ ${2:-} =~ ^larasrouter_[a-z0-9_]+$ ]] || { echo "usage: $0 reader larasrouter_<handle>" >&2; exit 2; }
+    printf 'postgres://%s:%s@10.10.20.21:5432/larasrouter?sslmode=require' "$2" \
+      "$(tf "nonsensitive(random_password.postgres_reader[\"$2\"].result)")" ;;
+  *) echo "usage: $0 database|redis|db-password|redis-password|reader <login> (pipe to pbcopy)" >&2; exit 2 ;;
 esac

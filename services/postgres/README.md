@@ -15,7 +15,7 @@ What an app must do to use it: [docs/standards/apps.md](../../docs/standards/app
 | Metrics | `postgres_exporter` on `:9187` (Debian package), role `prometheus` over the unix socket, no password; reachable from the monitoring host only (nftables in the CT). Alerts: `app-postgres.yml` |
 | Logs | journal (`log_destination = syslog`, ident `postgres`) → VictoriaLogs: `_stream:{_HOSTNAME="postgres"} SYSLOG_IDENTIFIER:=postgres`. No statement text or parameters, not even for slow or failing statements (below) |
 | Backups | nightly PBS snapshot (02:30) **and** a logical dump at 01:30 WIB to `/var/backups/postgres/<UTC date>/`, last 3 kept there; PBS keeps the history |
-| Built by | `proxmox/opentofu/postgres.tf` → `setup.sh`, `dump.sh` (installed as `pg-dump-all`), `roles.sh` |
+| Built by | `proxmox/opentofu/postgres.tf` → `setup.sh`, `dump.sh` (installed as `pg-dump-all`), `roles.sh`, `readers.sh` |
 
 ## Giving an app a database
 
@@ -50,6 +50,7 @@ declared"). Destructive, so a deliberate step: take a dump first
 | inside the CT, unix socket | anything | peer (OS user = role) |
 | VLAN 20 (`10.10.20.0/24`) | only the database named after the role | TLS + scram-sha-256 |
 | clients outside VLAN 20 (`postgres_extra_clients` in `postgres.tf`) | only their own database | TLS + scram-sha-256, one exact `/32` each |
+| the two admin gateways (`10.10.10.15`, `.17`) | only members of `<db>_read`, to that database (people, below) | TLS + scram-sha-256 |
 | anywhere else | — | refused |
 
 Today the one outside client is **Kubeletto's K3s VM** (`10.10.25.20`, DMZ) →
@@ -57,7 +58,7 @@ database `kubeletto`. Its pods leave the VM masqueraded to the node IP
 (K3s default flannel), so the `/32` matches.
 
 On top, the hEX lets nothing reach VLAN 20 except TRUSTED devices and the
-admin gateways (which `pg_hba` then refuses), the monitoring scrape on 9187,
+admin gateways (which `pg_hba` then refuses, except for a reader), the monitoring scrape on 9187,
 and the K3s pinhole on 5432 (its `pg_hba` line is in place; the VM exists,
 K3s is not installed yet). Inside the CT, nftables (`/etc/nftables.conf`, from
 `setup.sh`) drops 9187 from everyone but the monitoring host: the exporter
@@ -84,6 +85,39 @@ database, queries normalised to `$1`, utility statements such as
 pct exec 130 -- runuser -u postgres -- psql -X -c "SELECT d.datname, round(s.total_exec_time) AS ms, s.calls, round(s.mean_exec_time::numeric, 2) AS mean_ms, left(s.query, 80) FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid ORDER BY s.total_exec_time DESC LIMIT 20"
 pct exec 130 -- runuser -u postgres -- psql -X -c "SELECT pg_stat_statements_reset()"   # before a load test
 ```
+
+## Read-only access for a person
+
+[ADR 0029](../../docs/decisions/0029-teammates-read-only-on-the-tailnet.md). For a
+teammate who needs to look at an app's data, never for an app.
+
+- `postgres_readers` in `postgres.tf`: per database, the `people` (handles, not
+  names: the repo is public) and the `hidden` columns. `readers.sh` makes a
+  NOLOGIN group `<db>_read` (SELECT on every column but the hidden ones,
+  granted column by column) and a login `<db>_<handle>` per person in it.
+- **The grants are the control.** The login's settings (read-only transactions,
+  `statement_timeout` and `idle_in_transaction_session_timeout` 60 s,
+  `CONNECTION LIMIT 5`) are a seatbelt the person could `SET` away; they keep
+  a forgotten GUI session from holding back vacuum or stalling a migration's
+  `ALTER TABLE` on this shared server.
+- **It fails closed:** tables and columns a migration adds later are
+  unreadable until `readers.sh` runs again. After such a release, check the
+  new columns for secrets, add any to `hidden`, then
+  `tofu apply -replace=terraform_data.postgres_readers -target=terraform_data.postgres_readers`
+  (`migrate.sh` prints this).
+- `SELECT *` fails on a table with hidden columns, or with columns not yet
+  granted (GUI table browsers do that): name the columns.
+- Reaching it: the admin gateways route `10.10.20.21/32` and `pg_hba` admits
+  `+<db>_read` from their two addresses; the tailnet policy decides who gets
+  to the gateways (`network/tailscale/`). The connection string:
+  `services/larasrouter/urls.sh reader <login>`.
+- Removing a person from `people` turns their login off and ends their
+  sessions; nothing is dropped. Logins are not logged (`log_connections` is
+  off).
+
+Check a reader on the CT's loopback (the password from `tofu console`,
+`random_password.postgres_reader["<login>"]`):
+`PGPASSWORD=… psql 'host=127.0.0.1 dbname=<db> user=<login> sslmode=require'`.
 
 ## Backups and restore
 
@@ -131,8 +165,10 @@ Kubeletto depends on this instance, its tier in `lab.yaml` goes to
 ## Upgrades
 
 - **Minor (18.x):** every run of `setup.sh` (any change in this directory,
-  then `tofu apply`) installs the newest 18.x from PGDG and restarts the
-  server: a few seconds of refused connections. Between changes, by hand:
+  then `tofu apply`) installs the newest 18.x from PGDG; a new minor restarts
+  the server (the package does it): a few seconds of refused connections.
+  `apt-cache policy postgresql-18` in the CT says beforehand whether one is
+  waiting. Between changes, by hand:
   `pct exec 130 -- apt-get update && apt-get install --only-upgrade postgresql-18`;
   record that in a commit body, since the repo pins only the major.
 - **Major (19):** `pg_upgradecluster`, rehearsed first on a CT restored from
@@ -140,8 +176,11 @@ Kubeletto depends on this instance, its tier in `lab.yaml` goes to
 
 ## Changing things
 
-- **Config, access rules, dump schedule:** `setup.sh`, then `tofu apply`
-  (restarts Postgres).
+- **Config, access rules, dump schedule:** `setup.sh`, then `tofu apply`.
+  It restarts Postgres only when what the server reads at start changed
+  (`homelab.conf`, the unit drop-in) or it was not running; otherwise it
+  reloads, so a `pg_hba` change drops no session. It fails if `pg_hba.conf`
+  does not parse (the server would keep the old rules silently).
 - **Size:** `cores` / `memory_mb` / `disk_gb` in `postgres.tf` (in place); keep
   `shared_buffers` at about a quarter of memory.
 
