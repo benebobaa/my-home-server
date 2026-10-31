@@ -18,6 +18,7 @@ What it grants:
 | `group:operator` | everything (as before) |
 | `autogroup:shared` (Irene, through the `archive` share) | the shared machine on 443 |
 | `group:larasrouter-readers` | `10.10.20.21:5432` and `10.10.20.23:6381` only, through the admin gateways' routes; Postgres and Valkey then admit only their read-only logins ([services/postgres](../../services/postgres/README.md#read-only-access-for-a-person), [services/valkey](../../services/valkey/README.md#read-only-access-for-a-person)) |
+| `autogroup:admin` | `tag:admin` on 443 (ADR 0027; unchanged, and `tag:admin` is still owned by `autogroup:admin`) |
 | tagged nodes (`tag:admin`) | nothing; they are only reached |
 
 ## Changing it

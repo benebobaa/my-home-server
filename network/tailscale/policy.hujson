@@ -20,13 +20,16 @@
 	},
 
 	"tagOwners": {
-		// Kubeletto's admin plane (ADR 0027).
-		"tag:admin": ["group:operator"],
+		// Kubeletto's admin plane (ADR 0027), as it was before this policy.
+		"tag:admin": ["autogroup:admin"],
 	},
 
 	"grants": [
 		// The operator: everything, as under the default policy.
 		{"src": ["group:operator"], "dst": ["*"], "ip": ["*"]},
+		// The admin plane for the tailnet's admins (ADR 0027), kept as it was:
+		// it still holds if the operator's rule above is ever narrowed.
+		{"src": ["autogroup:admin"], "dst": ["tag:admin"], "ip": ["tcp:443"]},
 		// People a machine is shared with see only that machine (today
 		// `archive`, tailscale serve on 443).
 		{"src": ["autogroup:shared"], "dst": ["*"], "ip": ["tcp:443"]},
