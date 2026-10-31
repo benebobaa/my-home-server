@@ -1,0 +1,61 @@
+// The tailnet policy (ADR 0029). Logins are not in this file (the repo is
+// public): render-policy.sh fills ${...} in from identities.sops.env, and the
+// operator pastes the result into the admin console (Access controls → JSON
+// editor). The console refuses to save a policy whose `tests` fail.
+{
+	"hosts": {
+		// The shared Postgres and Valkey (inventory/lab.yaml), routed by both
+		// admin gateways.
+		"postgres": "10.10.20.21",
+		"valkey":   "10.10.20.23",
+		// The family archive's tailnet address (ADR 0005), shared with Irene.
+		"archive": "100.93.77.50",
+	},
+
+	"groups": {
+		"group:operator": ["${OPERATOR_LOGIN}"],
+		// Read-only on larasrouter's database and cache (postgres_readers,
+		// valkey_readers in proxmox/opentofu/; their logins there are separate).
+		"group:larasrouter-readers": [${LARASROUTER_READERS}],
+	},
+
+	"tagOwners": {
+		// Kubeletto's admin plane (ADR 0027), as it was before this policy.
+		"tag:admin": ["autogroup:admin"],
+	},
+
+	"grants": [
+		// The operator: everything, as under the default policy.
+		{"src": ["group:operator"], "dst": ["*"], "ip": ["*"]},
+		// The admin plane for the tailnet's admins (ADR 0027), kept as it was:
+		// it still holds if the operator's rule above is ever narrowed.
+		{"src": ["autogroup:admin"], "dst": ["tag:admin"], "ip": ["tcp:443"]},
+		// People a machine is shared with see only that machine (today
+		// `archive`, tailscale serve on 443).
+		{"src": ["autogroup:shared"], "dst": ["*"], "ip": ["tcp:443"]},
+		// larasrouter readers: the shared Postgres and larasrouter's Valkey
+		// instance, nothing else. Their read-only roles decide the rest.
+		{"src": ["group:larasrouter-readers"], "dst": ["postgres"], "ip": ["tcp:5432"]},
+		{"src": ["group:larasrouter-readers"], "dst": ["valkey"], "ip": ["tcp:6381"]},
+	],
+
+	// Tailscale SSH, kept from the default policy: each user into their own
+	// devices, in check mode. The lab itself uses OpenSSH with keys.
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	"tests": [
+		{
+			"src":    "${OPERATOR_LOGIN}",
+			"accept": ["10.10.10.12:8006", "10.10.10.1:22", "192.168.99.2:80", "10.10.30.10:22", "postgres:5432", "valkey:6381", "valkey:6380", "archive:443", "tag:admin:443"],
+		},
+		// One per reader (render-policy.sh repeats this line for each).
+		{"src": "${READER}", "accept": ["postgres:5432", "valkey:6381"], "deny": ["postgres:22", "valkey:6380", "valkey:9122", "10.10.10.11:8006", "10.10.10.12:8006", "10.10.10.13:22", "10.10.10.1:8291", "10.10.10.1:443", "192.168.99.2:80", "192.168.99.1:443", "10.10.30.10:22", "archive:443", "tag:admin:443"]},
+	],
+}

@@ -38,6 +38,17 @@ VM 300's guest agent (stdin capped at 1 MiB, hence the chunked apply).
 Not in git, added at apply time: the home public IPv4 (tenant and build
 egress deny lists) and the operator's IPv6 /64 (the `home-api` allowlist).
 
+## Database from the Mac (GUI)
+
+```bash
+python3 ../larasrouter/tunnel.py db     # keep running; Ctrl-C stops it
+./db-password.sh | pbcopy               # the kubeletto role's password, clipboard only
+```
+
+GUI client: host `127.0.0.1`, port `15432`, database and user `kubeletto`,
+password from the clipboard, `sslmode=require`. Verified 2026-10-28: TLS 1.3
+through the tunnel and a login as `kubeletto` (56 tables, goose 101).
+
 ## Rehearsal names
 
 `home-api.kubeletto.com` (operator IPv6 /64 only: it serves a copy of

@@ -77,3 +77,4 @@ goose status 2>&1 | grep -v -E '^\s*$' | tail -4
 left=$(goose status 2>&1 | grep -c 'Pending' || true)
 if [ "$left" = 0 ]; then echo "schema current"; else echo "STILL PENDING: $left" >&2; exit 1; fi
 echo "readiness (the live app, informational): $(curl -s -m 10 https://api.larasrouter.com/health/ready | head -c 120)"
+[ "$pending" = 0 ] || echo "readers (ADR 0029): new tables and columns stay unreadable to people until you check them for secrets, add any to postgres_readers.hidden, and run tofu apply -replace=terraform_data.postgres_readers -target=terraform_data.postgres_readers"

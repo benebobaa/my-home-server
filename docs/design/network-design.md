@@ -354,7 +354,7 @@ backend home_https
 
 - Biznet LAN subnet: verify no overlap and set the `biznet-lan` entry.
 - Own-device Wi-Fi for the lab later (optional AP on P6); until then use the wired workstation on P7.
-- Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy as code still to do.
+- Remote admin: Tailscale chosen; HA pair `admin-gw` (pve3) + `admin-gw2` (pve2) live since 2026-10-09. Tailnet policy in the repo since 2026-10-31 (`network/tailscale/`, ADR 0029), pasted in the admin console.
 - Public exposure: decided (ADR 0004) — Kubeletto over Cloudflare Tunnel; VPS only on a trigger.
 - Role of the 8GB laptop (pve3: full member vs quorum-only). PBS now runs there (ADR 0009); a disk in its empty bay would give the datastore room to grow.
 - ~~Wake-on-LAN for `pve1`.~~ Done 2026-10-13: magic packet from any node on VLAN 10 (`docs/runbooks/node-ops.md`, ADR 0012).

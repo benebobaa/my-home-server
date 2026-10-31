@@ -42,6 +42,27 @@ the certificate OpenTofu generated (`tofu output -raw valkey_tls_cert` in
 Proven 2026-10-15 from VLAN 20 with go-redis (Kubeletto's client): pinned
 SET/GET/SETNX over TLS, unpinned refused.
 
+## Read-only access for a person
+
+[ADR 0029](../../docs/decisions/0029-teammates-read-only-on-the-tailnet.md). For a
+teammate who needs to look at an app's cache; the app's own password never
+goes to a person (it can write, and larasrouter trusts its cached sessions).
+
+- `valkey_readers` in `valkey.tf`: per app, the handles. `instances.sh` adds an
+  ACL user `<app>_<handle>` to that instance's config (password as sha256) with
+  `resetkeys %R~* resetchannels -@all +@read +@connection -@dangerous +info`:
+  reads (`GET`, `SCAN`, `TYPE`, `TTL`, `DBSIZE`, `INFO`) yes; writes, `KEYS`,
+  `FLUSHALL`, `MONITOR`, `CONFIG`, `ACL`, pub/sub no. It checks each reader with
+  `ACL DRYRUN` (`GET` allowed, `SET` refused) on every run.
+- A change to the readers alone is applied to the running instance
+  (`ACL SETUSER` / `ACL DELUSER`), not by a restart, so the cache survives.
+- They come in through the admin gateways (route `10.10.20.23/32`); the
+  tailnet policy (`network/tailscale/`) lets each reach their app's port only.
+  Connection string: `services/larasrouter/urls.sh redis-reader <login>`; TLS
+  without verification, or pin `tofu output -raw valkey_tls_cert`.
+- No per-user limits exist in Valkey: a reader's commands share the instance's
+  one thread with the app.
+
 Kubeletto uses its instance only after its switch (`services/nats/README.md`,
 "Kubeletto's switch"); until then its core uses the in-cluster Valkey.
 
