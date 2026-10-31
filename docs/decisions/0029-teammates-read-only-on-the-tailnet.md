@@ -138,7 +138,17 @@ access over the tailnet unchanged. Valkey, as `larasrouter_reader1` over TLS on
 6381: `PING`, `DBSIZE`, `SCAN`, `INFO`, `GET` work; `SET`, `DEL`, `FLUSHALL`,
 `KEYS`, `CONFIG GET`, `MONITOR`, `SUBSCRIBE`, `ACL LIST` are refused (NOPERM);
 the same login on Kubeletto's 6380 is refused; both instances' start times
-unchanged. A reader login over that path is first
-tried from the teammate's device (step 6): the loopback test above went
-through the existing `127.0.0.1` line, not the new ones. The policy template renders and parses with sample
-logins; Tailscale has not checked it yet (step 3).
+unchanged. The loopback test above went through the existing `127.0.0.1`
+line, not the new ones; the tailnet test below covers those.
+
+2026-10-31 ~16:50 WIB, after the operator approved the routes and saved the
+policy (the admin console ran its tests and accepted it), from the
+operator's Mac over the tailnet: `larasrouter_reader1` connects to Postgres
+(seen from `10.10.10.15`, the gateway), reads, and is refused
+`users.password_hash`; the app's own role is refused from the gateway (`no
+pg_hba.conf entry`); the Valkey reader reads (`PING`, `SCAN`) and is refused
+`SET` and `FLUSHALL`, and is refused on 6380. The operator's access is
+unchanged: Proxmox UI and SSH on all three nodes, hEX SSH and WinBox, the
+switch UI, `archive` and the Kubeletto admin console. The teammate is invited
+as a Member (not an admin, so not `tag:admin`). Still to see: Irene opening
+the archive, and the teammate's first login from his own device (step 6).
