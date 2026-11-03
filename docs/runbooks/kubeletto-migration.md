@@ -284,6 +284,29 @@ fewer apps warm, cap warm free-tier apps, and lower the 512 Mi build
 reservation. Never raise the request shares back: past the real RAM (about 3.5
 GB of the 3.9 GB VM) the kubelet evicts instead of the scheduler refusing.
 
+## VM 300's guest agent stops answering
+
+The guest agent is the only way into VM 300 (no SSH, and the serial console
+has no login: the VM holds no password or key, tenant code runs there).
+`apply.sh`, `kubectl` and every `qm guest exec` check depend on it. If
+`qm guest cmd 300 ping` says "QEMU guest agent is not running" while the API
+and the Prometheus targets are fine (2026-11-03, ~16:47 UTC, cause unknown):
+
+1. Confirm the platform is healthy without it: `https://api.kubeletto.com/readyz`,
+   the k3s targets in Prometheus, no firing `Kubeletto*`/`K8s*` alerts. Note
+   the ready-container count (`count(kube_pod_container_status_ready == 1)`).
+2. Restart the VM, with the operator's yes (every app and the API are down
+   for about 1.5 min): `ssh root@10.10.10.12 qm reboot 300 --timeout 240`.
+   It falls back to ACPI when the agent is down and took 20 s to stop.
+3. Wait for `qm guest cmd 300 ping`, then check `kubectl get nodes`, pods not
+   ready (compare with Prometheus history before blaming the restart),
+   `mountpoint /mnt/registry`, and core's log for errors. On 2026-11-03 the
+   agent answered at once, the API was ready ~80 s after the reboot, and all
+   60 containers were ready again.
+
+Until it is back, the nightly PBS backup of VM 300 runs without a filesystem
+freeze (crash-consistent).
+
 ## Tenant isolation
 
 `kubeletto-base-policy` is generated per tenant namespace by core
