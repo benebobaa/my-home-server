@@ -91,6 +91,6 @@ The reset at 12:44 is different. The lookup had succeeded and the connection ope
 
 ## Unrelated findings
 
-- **Tenant quota.** One tenant namespace has its `kubeletto-quota` ephemeral-storage limit (4 Gi) full, and several of its old Knative revisions keep failing to create pods (`FailedCreate: exceeded quota`). The k3s restart made the ReplicaSet controller retry them, so the error count jumped at 15:08. Not related to DNS. Needs a look at that tenant's revisions.
+- **Tenant service down (not a platform fault).** One tenant service has never been ready on the home cluster: all 18 of its revisions, from 2026-10-15, are not ready. Its revisions crash on start (`DJANGO_SECRET_KEY` is not set), and the platform holds no environment variables for that service. Its crash-looping pods hold the namespace's ephemeral-storage quota (4 Gi), so the newest revision cannot create pods (`FailedCreate: exceeded quota`). The failures predate this incident, and the k3s restart only raised the error count. Not related to DNS. Needs the owner's configuration, and an operator decision on the crash-looping pods.
 - **DMZ queue drops.** The hEX's DMZ queue dropped 3–12 million packets a day from 2026-10-14 to 2026-11-01, then stopped on 11-02. Unexplained. Needs its own look.
 - **Tenant traffic.** Pods resolved names belonging to bandwidth-reselling software and a monitoring agent. Worth an abuse review.
