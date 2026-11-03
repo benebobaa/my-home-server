@@ -105,6 +105,19 @@ cannot reach the gateway (100 % loss, the ipfilter DROP counter rises) while
 its real address can; nodes, pods, Postgres from the server and the icmp
 probes unaffected.
 
+## DNS (ADR 0031, incident 2026-11-03)
+
+- Pods and CoreDNS's forwarder read `/etc/rancher/k3s/resolv.conf`: nameservers
+  only, no search list. The node's `home.arpa` search domain is not
+  resolvable from the DMZ, so pods no longer inherit it.
+- CoreDNS answers `home.arpa` locally with NXDOMAIN: the server writes
+  `/var/lib/rancher/k3s/server/manifests/homeserver-coredns-custom.yaml`, a
+  `coredns-custom` ConfigMap (`*.override`, imported in the `.:53` block).
+- Check it: `k3s kubectl -n kube-system get cm coredns-custom`, and a query for
+  `x.home.arpa` at `10.43.0.10` returns NXDOMAIN without an upstream forward.
+- The node's own resolver (systemd-resolved, used by containerd's image pulls)
+  still uses the ISP-intercepted path. The encrypted upstream is open (ADR 0031).
+
 ## Growing a node's disk
 
 `proxmox/opentofu/k3s.tf` sets each VM's disk size; a bigger `size` is an

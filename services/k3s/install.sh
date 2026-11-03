@@ -51,7 +51,7 @@ export DEBIAN_FRONTEND=noninteractive
 command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl ca-certificates; }
 
 install -d -m 0755 /etc/rancher/k3s
-files=(/etc/rancher/k3s/config.yaml /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/token /etc/rancher/k3s/agent-token)
+files=(/etc/rancher/k3s/config.yaml /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/resolv.conf /etc/rancher/k3s/token /etc/rancher/k3s/agent-token)
 before=$({ cat "${files[@]}" 2>/dev/null || true; } | sha256sum)
 
 umask 077
@@ -77,6 +77,8 @@ secrets-encryption: true
 # the one address through the Postgres pinhole. Platform pods tolerate it.
 node-taint:
   - node-role.kubernetes.io/control-plane:NoSchedule
+# Pods and CoreDNS's forwarder resolve through resolv.conf below (no search list).
+resolv-conf: /etc/rancher/k3s/resolv.conf
 kubelet-arg:
   - system-reserved=cpu=250m,memory=512Mi
   - kube-reserved=cpu=250m,memory=512Mi
@@ -87,12 +89,27 @@ else
 # managed by services/k3s/install.sh (homeserver repo) — edit there.
 server: https://${SERVER_IP}:6443
 token-file: /etc/rancher/k3s/token
+resolv-conf: /etc/rancher/k3s/resolv.conf
 kubelet-arg:
   - system-reserved=cpu=250m,memory=256Mi
   - kube-reserved=cpu=250m,memory=256Mi
   - pod-max-pids=1024
 EOF
 fi
+
+# The nameservers CoreDNS's forwarder reads, and that kubelet copies for
+# dnsPolicy Default pods and CoreDNS itself (ClusterFirst pods get only
+# ndots from kubelet). No search list: the node's own domain, home.arpa, is
+# not resolvable from the DMZ (the hEX drops DMZ DNS, design §2), and every
+# pod that inherited it sent an extra upstream lookup per name. The options
+# line is inert for CoreDNS: its forward plugin has its own timeout (2 s,
+# the lever for a lossy upstream, set in the Corefile).
+cat > /etc/rancher/k3s/resolv.conf <<'EOF'
+# managed by services/k3s/install.sh (homeserver repo) — edit there.
+nameserver 1.1.1.1
+nameserver 9.9.9.9
+options edns0 timeout:1 attempts:3
+EOF
 
 # Kubeletto's registry mirror (source: kubeletto repo,
 # infra/k8s/cluster-bootstrap/registries.yaml): containerd pulls
@@ -106,6 +123,29 @@ mirrors:
     endpoint:
       - "http://10.43.229.215:5000"
 EOF
+
+# CoreDNS override, server only. k3s applies anything in its server manifests
+# directory, and re-applies on change without a restart. It mounts ConfigMap
+# coredns-custom as optional and imports *.override inside the .:53 block,
+# before forward. Answering home.arpa here with NXDOMAIN stops every pod's
+# home.arpa lookup from going upstream. Nothing legitimate lives there: the
+# DMZ cannot resolve it anyway. Repo: services/k3s/install.sh only.
+if [ "$ROLE" = server ]; then
+  install -d -m 0700 /var/lib/rancher/k3s/server/manifests
+  cat > /var/lib/rancher/k3s/server/manifests/homeserver-coredns-custom.yaml <<'EOF'
+# managed by services/k3s/install.sh (homeserver repo) — edit there.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  home-arpa.override: |
+    template ANY ANY home.arpa {
+      rcode NXDOMAIN
+    }
+EOF
+fi
 after=$({ cat "${files[@]}" 2>/dev/null || true; } | sha256sum)
 
 if [ "$(k3s --version 2>/dev/null | awk 'NR==1 {print $3}')" != "$K3S_VERSION" ]; then
