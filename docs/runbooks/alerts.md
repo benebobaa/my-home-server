@@ -359,6 +359,11 @@ GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
 the disk and pool alerts above are blind.
 **Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
 **Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
+**Known cause (pve2/pve3, after a power cut):** the laptops lose their RTC
+without AC and boot at 2026-04-14. The SMART collector runs before chrony
+steps the clock, so its file carries an April mtime and looks 200 days old.
+It clears by itself when the timer runs again, 15 min after boot
+([2026-11-04](../incidents/2026-11-04-power-cut.md)).
 **Known cause (pve1, found 2026-10-14):** Debian's SMART timer runs only when
 `/dev/sd*` or `/dev/hd*` exists, and pve1 has NVMe only: the timer never fired
 by itself, and the alert came from the one file the installer's USB disk left.
