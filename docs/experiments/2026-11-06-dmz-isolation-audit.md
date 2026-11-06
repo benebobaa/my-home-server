@@ -53,6 +53,22 @@ Not done: no packet was sent from a tenant pod to check the policies hold
    NetworkPolicy. That matches D2 (paid plans are not port-limited); noting it
    because the router would not catch a missing policy (finding 1).
 
+## Measured afterwards: what `restricted` would break
+
+A server-side dry run of `kubectl label --overwrite ns <ns>
+pod-security.kubernetes.io/enforce=restricted` on every `kl-*` namespace
+(changes nothing; the API server only reports which existing pods would be
+refused). Result, 2026-11-06: **18 namespaces with running pods would
+violate `restricted`, every one for the same two reasons**: "unrestricted
+capabilities" and "runAsNonRoot != true". `allowPrivilegeEscalation` and
+`seccompProfile`, the other two things the profile checks, already pass.
+
+So the gap to `restricted` is exactly two settings. Dropping all capabilities
+is something the platform can set for every tenant (a canary first: images
+that chown or setuid at start would notice). `runAsNonRoot` is the customer's
+image: setting it on an image whose `USER` is root makes the pod fail to
+start, so it cannot be forced platform-wide.
+
 ## Not tested
 
 - A probe from a tenant-like pod, to confirm the private ranges are
