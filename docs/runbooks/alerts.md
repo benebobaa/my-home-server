@@ -297,6 +297,38 @@ liveness probe.
 `logs --previous`.
 **Fix:** the cause; a memory limit in the Kubeletto home overlay if it is OOM.
 
+### K8sTenantColdStartChurn
+**Meaning:** one tenant namespace started more than 200 distinct pods in 24 h
+(info; it feeds the weekly review). A scale-to-zero app that something pings
+every few minutes (an uptime pinger, a kiosk page, a cron) starts a fresh pod
+each time: about 715 a day means one request every two minutes. On 2026-11-06
+six free tenants were over the line (240 to 715 a day); one of them pulled 40-50
+GB a day from the internet, the others cost CPU and startup churn but little
+bandwidth.
+**Check:** `services/kubeletto/tenant-bandwidth.sh` for whether it costs
+bandwidth (`TenantWorkerInboundSustained` is the alert that says so); the
+request rate in `usage_samples` (`http_requests`, per service); pods over a few
+minutes (`kubectl -n <ns> get pods`).
+**Fix:** none by itself. If it also pulls a lot, treat it as
+`WanQuotaPaceHigh`. A longer Knative scale-down delay would turn the cycling
+into one warm pod (a memory cost on the 4 GB worker): a platform decision, not
+an alert response.
+
+### K8sTenantContainerRestarting
+**Meaning:** a tenant's app container (`user-container`) restarted more than 10
+times an hour, summed over the namespace, for 3 hours: a crash loop, not a
+deploy. On 2026-11-06 one free tenant had restarted about 7,000 times in 21
+days (a Django app without its required `DJANGO_SECRET_KEY`), and nothing had
+said so.
+**Check:** `kubectl -n <ns> logs <pod> -c user-container --previous` for the
+error; `kubectl -n <ns> get events` for quota errors (a namespace at its Services
+or ephemeral-storage quota cannot replace pods).
+**Fix:** the owner's: tell them what the log says. The platform's crash-loop
+suspender (`CRASH_LOOP_SUSPEND_ENABLED`, off at home until the operator turns it
+on) pauses such a service and emails the owner (Kubeletto ticket RUNTIME-001,
+operating model D18). Pausing by hand is `kubectl delete ksvc <svc> -n <ns>`:
+customer-facing, the operator's call.
+
 ### K8sTenantLogsThrottled
 **Meaning:** Vector's per-tenant cap (Kubeletto `infra/k8s/home/vector.toml`,
 `kubeletto_throttle_runtime`: 6000 events per 10 s per tenant per node)

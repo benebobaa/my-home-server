@@ -154,3 +154,41 @@ groups:
         annotations:
           summary: "Kubeletto's {{ $labels.meter }} meter reports no checkpoint"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+
+  # Tenant apps that misbehave without being down (2026-11-06). Two free apps
+  # cost the platform far more than their traffic: one scale-to-zero app was
+  # woken every two minutes (715 new pods a day) and pulled 40-50 GB a day from
+  # the internet; another crash-looped about 7,000 times in 21 days because a
+  # required secret was unset. Neither was visible: tenant pods are expected
+  # to come and go.
+  - name: k8s-tenants
+    rules:
+      # Distinct pods of one tenant namespace in 24 h (every pod is its own
+      # kube-state-metrics series). A scale-to-zero app that something pings
+      # every few minutes starts a fresh pod each time. 200 a day is a pod
+      # every 7 minutes, far above a normal app.
+      - alert: K8sTenantColdStartChurn
+        expr: count by (namespace) (last_over_time(kube_pod_info{job="service_dmz", namespace=~"kl-.*"}[1d])) > 200
+        for: 1h
+        # info, not warning: on 2026-11-06 six free tenants were over the line
+        # (240 to 715 pods a day) and only one of them pulled much from the
+        # network. The churn is for the weekly review; TenantWorkerInbound
+        # Sustained is the alert that says it costs bandwidth.
+        labels: { severity: info }
+        annotations:
+          summary: "{{ $labels.namespace }}: {{ $value }} pods in 24 h (a scale-to-zero app woken every few minutes by a pinger?)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcoldstartchurn
+
+      # Restarts of tenant app containers, summed over the namespace's pods
+      # (a crash loop spreads over several revisions' pods). More than 10 an
+      # hour for 3 hours is a loop, not a deploy.
+      - alert: K8sTenantContainerRestarting
+        expr: |
+          sum by (namespace) (
+            increase(kube_pod_container_status_restarts_total{job="service_dmz", namespace=~"kl-.*", container="user-container"}[1h])
+          ) > 10
+        for: 3h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.namespace }}: tenant container restarted {{ $value | humanize }} times in the last hour, for 3 h (a crash loop)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcontainerrestarting
