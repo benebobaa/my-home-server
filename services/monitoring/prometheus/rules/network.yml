@@ -114,3 +114,41 @@ groups:
         annotations:
           summary: "hEX rebooted {{ $value | humanizeDuration }} ago — a power cut?"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerrebooted
+
+  # The Biznet plan (Home Internet 100 Mbps, 1500 GB a month, renews on the
+  # 16th) caps the line at 5 Mbit/s once the quota is gone. The quota counts
+  # what comes IN on ether1; 1500 GB a month is 50 GB a day. On 2026-11-06 it ran
+  # out after about 21 days: one free tenant app, woken every two minutes, pulled
+  # 40-50 GB a day and nothing warned. Warn on the pace, early.
+  - name: wan-quota
+    rules:
+      # Inbound over the last 7 days at a pace of more than 1500 GB per 30
+      # days (350 GB a week): the plan runs out before the renewal.
+      - alert: WanQuotaPaceHigh
+        expr: increase(ifHCInOctets{job="snmp_hex", ifName="ether1"}[7d]) > 350e9
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "WAN inbound {{ $value | humanize }}B in 7 days: on pace to use up the 1500 GB plan before it renews"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#wanquotapacehigh
+
+      # Inbound over the last 24 h above 60 GB (the plan allows 50 GB a day
+      # on average, plus 20 % margin): something is pulling hard right now.
+      - alert: WanInboundDayHigh
+        expr: increase(ifHCInOctets{job="snmp_hex", ifName="ether1"}[24h]) > 60e9
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "WAN inbound {{ $value | humanize }}B in the last 24 h (the plan allows about 50 GB a day)"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#waninbounddayhigh
+
+      # The Kubeletto tenant worker takes nearly all of the WAN inbound.
+      # Above 2.5 Mbit/s for two hours is about 27 GB a day: more than half
+      # the plan, from tenant pods alone.
+      - alert: TenantWorkerInboundSustained
+        expr: rate(node_network_receive_bytes_total{instance="k3s-worker", device="eth0"}[30m]) * 8 > 2.5e6
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: "k3s-worker receives {{ $value | humanize }} bit/s from the internet for 2 h: which tenant pod is pulling?"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tenantworkerinboundsustained

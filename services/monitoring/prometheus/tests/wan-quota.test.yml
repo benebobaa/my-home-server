@@ -1,0 +1,75 @@
+# promtool unit tests for the wan-quota group in rules/network.yml (make check):
+# the Biznet plan is 1500 GB a month (50 GB a day); the alerts must fire on the
+# 2026-11-06 pattern (a tenant pulling ~45 GB a day on top of the household)
+# and stay quiet on a normal month.
+rule_files:
+  - ../rules/network.yml
+
+evaluation_interval: 1h
+
+tests:
+  # --- a heavy pace: 3.4 GB an hour = 81.6 GB a day for 9 days
+  - interval: 1h
+    input_series:
+      - series: 'ifHCInOctets{job="snmp_hex",ifName="ether1",instance="hex"}'
+        values: '0+3400000000x216'
+    alert_rule_test:
+      - eval_time: 12h
+        alertname: WanInboundDayHigh
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: WanInboundDayHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: snmp_hex, ifName: ether1, instance: hex }
+            exp_annotations:
+              summary: "WAN inbound 81.6GB in the last 24 h (the plan allows about 50 GB a day)"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#waninbounddayhigh
+      - eval_time: 200h
+        alertname: WanQuotaPaceHigh
+        exp_alerts:
+          - exp_labels: { severity: warning, job: snmp_hex, ifName: ether1, instance: hex }
+            exp_annotations:
+              summary: "WAN inbound 571.2GB in 7 days: on pace to use up the 1500 GB plan before it renews"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#wanquotapacehigh
+
+  # --- a normal month: 1.5 GB an hour = 36 GB a day (under the 50 GB budget)
+  - interval: 1h
+    input_series:
+      - series: 'ifHCInOctets{job="snmp_hex",ifName="ether1",instance="hex"}'
+        values: '0+1500000000x216'
+    alert_rule_test:
+      - eval_time: 30h
+        alertname: WanInboundDayHigh
+        exp_alerts: []
+      - eval_time: 200h
+        alertname: WanQuotaPaceHigh
+        exp_alerts: []
+
+  # --- the tenant worker: 4.8 Mbit/s (600 kB/s) sustained for 3 h fires after
+  # 2 h; 0.1 MB/s (0.8 Mbit/s) never does
+  - interval: 1m
+    input_series:
+      - series: 'node_network_receive_bytes_total{job="service_dmz",instance="k3s-worker",device="eth0"}'
+        values: '0+36000000x240'
+      - series: 'node_network_receive_bytes_total{job="service_dmz",instance="k3s",device="eth0"}'
+        values: '0+36000000x240'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: TenantWorkerInboundSustained
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: TenantWorkerInboundSustained
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, device: eth0 }
+            exp_annotations:
+              summary: "k3s-worker receives 4.8M bit/s from the internet for 2 h: which tenant pod is pulling?"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tenantworkerinboundsustained
+
+  - interval: 1m
+    input_series:
+      - series: 'node_network_receive_bytes_total{job="service_dmz",instance="k3s-worker",device="eth0"}'
+        values: '0+6000000x240'
+    alert_rule_test:
+      - eval_time: 3h
+        alertname: TenantWorkerInboundSustained
+        exp_alerts: []

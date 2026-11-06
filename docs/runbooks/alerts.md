@@ -104,6 +104,45 @@ are the usual cause.
 power cut. Info only.
 **Check:** `HostOnBattery` at the same time confirms a power cut.
 
+## Internet quota (Biznet plan)
+
+The line is "Home Internet 100 Mbps, 1500 GB", renewed on the 16th. The quota
+counts what comes IN on ether1: 1500 GB a month is 50 GB a day. When it is gone
+the line drops to 5 Mbit/s for everyone (the household and every customer)
+until the renewal. On 2026-11-06 that happened after about 21 days, and the
+cause was one free tenant app (see the three alerts below). Real remaining
+quota: the Biznet portal (ask Biznet support for add-on prices).
+
+### WanQuotaPaceHigh
+**Meaning:** WAN inbound over the last 7 days is above 350 GB, so the month is
+on pace for more than the 1500 GB plan.
+**Check:** `services/kubeletto/tenant-bandwidth.sh` ranks namespaces by network
+use (read-only, 60 s) and names the tenant and plan. Then Grafana, router
+counters `ifHCInOctets{ifName="ether1"}`.
+**Fix:** in this order. (1) Find who pulls: the script. (2) If it is one tenant
+app, pause that service (customer-facing: the operator decides; `kubectl delete
+ksvc` keeps its settings and a redeploy brings it back) and tell the owner.
+(3) Only if the traffic is legitimate, buy extra quota or a bigger tier from
+Biznet; do not buy it to pay for one runaway app. Design: operating model D17
+(Kubeletto repo, `docs/design/platform-operating-model.md`).
+
+### WanInboundDayHigh
+**Meaning:** WAN inbound over the last 24 h is above 60 GB (the plan allows
+about 50 GB a day).
+**Check / Fix:** as `WanQuotaPaceHigh`: something is pulling hard right now.
+
+### TenantWorkerInboundSustained
+**Meaning:** the Kubeletto tenant worker (k3s-worker) has received more than
+2.5 Mbit/s from the internet for 2 hours (about 27 GB a day, over half the
+plan from tenant pods alone).
+**Check:** `services/kubeletto/tenant-bandwidth.sh`. A tenant pod that appears
+and disappears every couple of minutes is a scale-to-zero app being woken by a
+pinger or a kiosk page: look at its request rate in `usage_samples`
+(`http_requests`, per service) and its pods
+(`kubectl -n <ns> get pods` over a few minutes).
+**Fix:** as `WanQuotaPaceHigh`. The free tier's per-pod cap is 2 Mbit/s, so one
+app can still pull about 4 Mbit/s with two pods overlapping.
+
 ## Proxmox cluster
 
 ### PveClusterNotQuorate
