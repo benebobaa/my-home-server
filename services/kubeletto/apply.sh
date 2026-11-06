@@ -8,6 +8,8 @@
 #
 #   ./apply.sh            # base, knative, traefik, platform, rehearsal
 #   ./apply.sh <step>
+#   ./apply.sh diff       # read-only: what `platform` would change on the cluster
+#   ./apply.sh drift      # same, exit 1 if anything differs (cluster != repo)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -32,11 +34,9 @@ vm_bash() {
     python3 -c 'import json,sys; d=json.load(sys.stdin); sys.stdout.write(d.get("out-data","")); sys.stderr.write(d.get("err-data","")); sys.exit(d.get("exitcode",1))'
 }
 
-# Server-side apply multi-document YAML (stdin) in chunks under 900 KB.
-kapply() {
-  local dir; dir=$(mktemp -d)
-  cat > "$dir/input"
-  python3 - "$dir" <<'PY'
+# Split multi-document YAML (<dir>/input) into <dir>/NNN.yaml chunks under 900 KB.
+split_chunks() {
+  python3 - "$1" <<'PY'
 import sys, pathlib, re
 out = pathlib.Path(sys.argv[1])
 docs = [d for d in re.split(r"(?m)^---\s*$", (out / "input").read_text()) if d.strip(" \n#")]
@@ -51,6 +51,13 @@ for d in docs:
     chunk.append(d); size += len(d)
 flush()
 PY
+}
+
+# Server-side apply multi-document YAML (stdin) in chunks under 900 KB.
+kapply() {
+  local dir; dir=$(mktemp -d)
+  cat > "$dir/input"
+  split_chunks "$dir"
   local f out rc=0
   for f in "$dir"/[0-9]*.yaml; do
     # Fail on any kubectl error (no masking): a half-applied overlay could
@@ -61,6 +68,30 @@ PY
   done
   rm -rf "$dir"
   return "$rc"
+}
+
+# Read-only server-side diff of multi-document YAML (stdin) against the
+# cluster, in the same chunks. kubectl diff exits 1 when something differs,
+# 0 when nothing does, and above 1 on a real error. Returns the result as the
+# exit status, because kdiff usually runs in a pipe (a subshell, so a variable
+# set here would be lost): 0 = no difference, 1 = something differs, 2 = a
+# chunk could not be diffed (an error outranks a difference: a diff we could
+# not run is not "no drift").
+kdiff() {
+  local dir; dir=$(mktemp -d)
+  cat > "$dir/input"
+  split_chunks "$dir"
+  local f out c differs=0 rc=0
+  for f in "$dir"/[0-9]*.yaml; do
+    c=0
+    out=$({ echo 'k3s kubectl diff --server-side --force-conflicts --field-manager=homeserver -f - <<'"'"'KDIFF_EOF'"'"''
+        cat "$f"; echo; echo 'KDIFF_EOF'; } | vm_bash 300 2>&1) || c=$?
+    if [ "$c" -eq 1 ]; then differs=1; elif [ "$c" -gt 1 ]; then rc=2; fi
+    if [ -n "$out" ]; then printf '%s\n' "$out"; fi
+  done
+  rm -rf "$dir"
+  if [ "$rc" -ne 0 ]; then return "$rc"; fi
+  return "$differs"
 }
 
 render() {
@@ -109,8 +140,10 @@ step_traefik() {
     -f "$OVERLAY/traefik-values.yaml" --include-crds | kapply
 }
 
-step_platform() {
-  echo "== platform: the overlay ($REV)"
+# The overlay as it would be applied, with the home public IPv4 written into
+# the build egress policy. Shared by the apply and by diff/drift, so a diff
+# does not report the injected address as drift.
+render_platform() {
   # Build pods must not reach the home public IP either (TENANT_EGRESS_DENY
   # parity). It is dynamic and kept out of git, so it is written into the
   # rendered policy before the apply: one apply, never a window in which the
@@ -131,7 +164,12 @@ for o in yaml.safe_load_all(sys.stdin):
     out.append(yaml.safe_dump(o, sort_keys=False))
 if not found: sys.exit("allow-build-egress: no 0.0.0.0/0 rule to extend")
 sys.stdout.write("---\n".join(out))
-' "$v4" | kapply
+' "$v4"
+}
+
+step_platform() {
+  echo "== platform: the overlay ($REV)"
+  render_platform | kapply
   vm_bash 600 <<'EOF'
 set -euo pipefail
 for ns in platform nats registry logs traefik; do
@@ -167,7 +205,23 @@ ALLOW_EOF
   kapply < manifests/rehearsal.yaml
 }
 
+# Read-only: what applying the platform overlay would change. drift is the same
+# with an exit status for make drift: 0 = cluster matches the repo, 1 = it
+# differs, 2 = could not tell.
+step_diff() {
+  echo "== diff: platform overlay ($REV) against the cluster (read-only)"
+  local rc=0
+  render_platform | kdiff || rc=$?
+  case "$rc" in
+    0) echo "== no drift: the cluster matches $REV" ;;
+    1) echo "== drift: the cluster differs from $REV"; return 1 ;;
+    *) echo "diff: could not run on every chunk (render or kubectl failed)" >&2; return 2 ;;
+  esac
+}
+
 case "${1:-all}" in
+  diff) step_diff ;;
+  drift) step_diff ;;
   base) step_base ;;
   knative) step_knative ;;
   traefik) step_traefik ;;

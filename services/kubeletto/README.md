@@ -28,12 +28,26 @@ cd services/kubeletto
 ./secrets.sh snapshot|verify|--from-snapshot|--live   # prod secrets survive prod
 ./secrets.sh             # Secrets: shared ones from prod, home ones generated
 ./apply.sh               # base, knative, traefik, platform (overlay), rehearsal
+./apply.sh diff          # read-only: what the platform overlay would change
+./apply.sh drift         # same, exit 1 if the cluster differs from the repo
 ```
 
 `apply.sh` renders the overlay at the worktree's checked-out commit (it
 prints the commit, warns when `infra/k8s` is dirty). The cluster API is not
 reachable from the LAN side, so the scripts go through root SSH to pve2 and
 VM 300's guest agent (stdin capped at 1 MiB, hence the chunked apply).
+
+**Look before you apply.** Run `./apply.sh diff` first: it server-side diffs
+the rendered overlay against the cluster and changes nothing. `drift` is the
+same with an exit status (0 matches, 1 differs, 2 could not tell) and runs as
+part of `make drift`, so a hand edit on the cluster shows up like any other
+drift. `KUBELETTO_REPO` picks the checkout compared (default `kubeletto-home`),
+so drift is only meaningful against the commit that is meant to be running.
+Proven 2026-11-06 with a positive control (a worktree with one env value
+flipped reported the `-"false"`/`+"true"` change and exit 1) and a negative
+one (the real overlay reported no drift, exit 0). The `diff` covers the
+`platform` overlay only, not Knative, Kourier or Traefik (upstream YAML and a
+Helm chart) or the Secrets created outside git.
 
 Not in git, added at apply time: the home public IPv4 (tenant and build
 egress deny lists) and the operator's IPv6 /64 (the `home-api` allowlist).

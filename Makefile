@@ -3,7 +3,7 @@
 #   make check   static checks: format, validate, lint, rule files, secret scan.
 #                No secrets needed; CI runs exactly this.
 #   make plan    tofu plan on both stacks (needs the age key)
-#   make drift   plan + Ansible --check --diff (needs the age key + lab access)
+#   make drift   plan + Ansible --check --diff + Kubeletto overlay diff (needs the age key + lab access)
 #   make fmt     rewrite Tofu files in canonical format
 #
 # Tools come from mise.toml (`mise install` once). Every tool runs through
@@ -88,3 +88,6 @@ plan:
 
 drift: plan
 	cd ansible && $(X) ansible-playbook proxmox-nodes.yml --check --diff 2>&1 | cat | sed -n '/PLAY RECAP/,$$p'
+	@kr="$${KUBELETTO_REPO:-$$HOME/Documents/benelabs/kubeletto-home}"; \
+	if [ -d "$$kr/infra/k8s/home" ]; then cd services/kubeletto && ./apply.sh drift; \
+	else echo "kubeletto drift: no repo at $$kr, skipped"; fi
