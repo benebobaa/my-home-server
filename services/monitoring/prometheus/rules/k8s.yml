@@ -192,3 +192,24 @@ groups:
         annotations:
           summary: "{{ $labels.namespace }}: tenant container restarted {{ $value | humanize }} times in the last hour, for 3 h (a crash loop)"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcontainerrestarting
+
+      # Every tenant namespace must carry kubeletto-base-policy. The router's
+      # worker pinholes to Postgres 5432 and Valkey 6381 apply to every pod on
+      # the worker, so that policy (private ranges blocked) is what keeps other
+      # tenants off the data stores (docs/experiments/2026-11-06-dmz-isolation-audit.md).
+      # The last line is a guard: before kube-state-metrics exports
+      # networkpolicies there are no such series at all, and "has no policy"
+      # would be true for every namespace.
+      - alert: K8sTenantNamespaceWithoutNetworkPolicy
+        expr: |
+          (
+            kube_namespace_created{job="service_dmz", namespace=~"kl-.*"}
+            unless on (namespace)
+            kube_networkpolicy_created{job="service_dmz", networkpolicy="kubeletto-base-policy"}
+          )
+          and on () (count(kube_networkpolicy_created{job="service_dmz"}) > 0)
+        for: 15m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.namespace }} has no kubeletto-base-policy: its pods are not fenced off from the lab network"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantnamespacewithoutnetworkpolicy

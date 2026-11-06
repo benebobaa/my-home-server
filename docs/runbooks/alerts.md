@@ -329,6 +329,21 @@ on) pauses such a service and emails the owner (Kubeletto ticket RUNTIME-001,
 operating model D18). Pausing by hand is `kubectl delete ksvc <svc> -n <ns>`:
 customer-facing, the operator's call.
 
+### K8sTenantNamespaceWithoutNetworkPolicy
+**Meaning:** a tenant namespace (`kl-*`) has no `kubeletto-base-policy`. That
+policy blocks every private range and the household's public address for the
+tenant's pods. The router's worker pinholes to Postgres 5432 and Valkey 6381
+apply to every pod on the worker, so without the policy that namespace's pods
+can try the shared data stores (only `pg_hba` and the Valkey password remain).
+Critical. Needs kube-state-metrics to export `networkpolicies` (Kubeletto
+overlay `kube-state-metrics.yaml`); until it does, the alert cannot fire.
+**Check:** `kubectl -n <ns> get networkpolicy`. A namespace seconds old is
+normal (the alert waits 15 min); a missing policy after that means core's
+quota/policy reconciler did not run for it (core logs, `internal/quota`).
+**Fix:** re-apply the policy (redeploy the service, or core's quota sync); if
+it cannot be fixed quickly, pause that tenant's services. Customer-facing:
+the operator decides.
+
 ### K8sTenantLogsThrottled
 **Meaning:** Vector's per-tenant cap (Kubeletto `infra/k8s/home/vector.toml`,
 `kubeletto_throttle_runtime`: 6000 events per 10 s per tenant per node)

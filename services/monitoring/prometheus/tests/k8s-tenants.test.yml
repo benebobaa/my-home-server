@@ -524,3 +524,39 @@ tests:
             exp_annotations:
               summary: "kl-loop: tenant container restarted 12 times in the last hour, for 3 h (a crash loop)"
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcontainerrestarting
+
+  # a namespace without the base policy fires; one with it does not
+  - interval: 1m
+    input_series:
+      - series: 'kube_namespace_created{job="service_dmz",instance="k3s",namespace="kl-fenced"}'
+        values: '1700000000x60'
+      - series: 'kube_namespace_created{job="service_dmz",instance="k3s",namespace="kl-open"}'
+        values: '1700000000x60'
+      - series: 'kube_networkpolicy_created{job="service_dmz",instance="k3s",namespace="kl-fenced",networkpolicy="kubeletto-base-policy"}'
+        values: '1700000000x60'
+      - series: 'kube_namespace_created{job="service_dmz",instance="k3s",namespace="platform"}'
+        values: '1700000000x60'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: K8sTenantNamespaceWithoutNetworkPolicy
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: K8sTenantNamespaceWithoutNetworkPolicy
+        exp_alerts:
+          - exp_labels: { severity: critical, job: service_dmz, instance: k3s, namespace: kl-open }
+            exp_annotations:
+              summary: "kl-open has no kubeletto-base-policy: its pods are not fenced off from the lab network"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantnamespacewithoutnetworkpolicy
+
+  # the guard: before kube-state-metrics exports networkpolicies there is no
+  # policy series at all, and nothing may fire
+  - interval: 1m
+    input_series:
+      - series: 'kube_namespace_created{job="service_dmz",instance="k3s",namespace="kl-a"}'
+        values: '1700000000x60'
+      - series: 'kube_namespace_created{job="service_dmz",instance="k3s",namespace="kl-b"}'
+        values: '1700000000x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: K8sTenantNamespaceWithoutNetworkPolicy
+        exp_alerts: []
