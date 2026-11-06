@@ -116,7 +116,10 @@ The steps, in order, with those gaps marked:
 3. A full drill on a scratch VM of Path A (both disks, worker rejoin, `drift`,
    the reconciler's behaviour), timed; then of Path B.
 4. Room on the main PBS: `pbs` is 85 % full (26.2 of 30.8 GiB, 3 GB free,
-   2026-11-06). VM 300 no longer lands there, but every other guest does.
+   2026-11-06; prune keeps 7 daily, 4 weekly and 6 monthly, GC runs daily, and
+   `PveStorageFilling` fires at 90 %). VM 300 no longer lands there, but its old
+   copies still sit in the 4 weekly / 6 monthly slots. Forgetting them would free
+   room now that the replica holds VM 300: a deletion, so the operator's decision.
 
 Related: `docs/runbooks/backup-restore.md` (PBS in general, the VM 300 test
 restore), `services/k3s/README.md` (how the cluster is built, tokens, access),

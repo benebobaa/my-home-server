@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# The weekly 15-minute review of Kubeletto tenants (operating model D19, D23):
+# one read-only report of who looks abusive, broken or expensive, so the
+# decision to pause or contact someone is made from numbers, not from hunches.
+# Nothing here changes anything; pausing a service is the operator's call.
+#
+#   ./weekly-review.sh            # about a minute (a 30 s network sample)
+#   NET_SECS=0 ./weekly-review.sh # skip the network sample
+#
+# Sections (each says where its number comes from):
+#   1. Network: who uses the line right now (tenant-bandwidth.sh)
+#   2. Cold-start churn: tenant apps that start more than 200 pods a day
+#   3. Crash loops: tenant containers restarting more than 50 times a day
+#   4. Traffic: top services by requests over 7 days, with their error share
+#   5. Accounts: tenants by plan, how many are paused, how many are new
+# Tenants appear by slug and plan, never by name or e-mail.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+PROM=${PROM_URL:-http://10.10.10.16:9090}   # the lab's Prometheus (CT 120)
+NODE=root@10.10.10.12                        # pve2: the Kubeletto database is CT 130 there
+NET_SECS=${NET_SECS:-30}
+
+prom() { curl -s -m 30 "$PROM/api/v1/query" --data-urlencode "query=$1"; }
+db() { # SQL on stdin, '|'-separated rows out
+  ssh -o BatchMode=yes "$NODE" 'pct exec 130 -- su postgres -c "psql -d kubeletto -At -F \"|\" -f -"'
+}
+
+churn=$(prom 'count by (namespace) (last_over_time(kube_pod_info{job="service_dmz", namespace=~"kl-.*"}[1d]))')
+loops=$(prom 'sum by (namespace) (increase(kube_pod_container_status_restarts_total{job="service_dmz", namespace=~"kl-.*", container="user-container"}[1d]))')
+
+traffic_and_accounts=$(db <<'SQL'
+select 'traffic', left(t.id::text, 8), t.slug, t.plan, sum(s.value)::bigint,
+       coalesce(round(100.0 * sum(coalesce((s.metadata->>'request_4xx_count')::int, 0) + coalesce((s.metadata->>'request_5xx_count')::int, 0)) / nullif(sum(s.value), 0), 1), 0)
+from usage_samples s join tenants t on t.id = s.tenant_id
+where s.metric = 'http_requests' and s.sampled_at > now() - interval '7 days'
+group by 2, 3, 4 order by 5 desc limit 5;
+select 'plan', plan, count(*), count(*) filter (where suspended_at is not null),
+       count(*) filter (where created_at > now() - interval '7 days'), 0 from tenants group by plan order by plan;
+select 'slug', left(id::text, 8), slug, plan, 0, 0 from tenants;
+SQL
+)
+
+net=""
+if [ "$NET_SECS" -ge 10 ]; then net=$(./tenant-bandwidth.sh "$NET_SECS" 2>&1 | head -n 8); fi
+
+CHURN="$churn" LOOPS="$loops" ROWS="$traffic_and_accounts" NET="$net" python3 -c '
+import datetime, json, os, re
+who = {}
+rows = [l.split("|") for l in os.environ["ROWS"].splitlines() if l.strip()]
+for r in rows:
+    if r[0] == "slug": who[r[1]] = (r[2], r[3])
+def tenant(ns):
+    m = re.match(r"^kl-([0-9a-f]{8})-", ns)
+    t = who.get(m.group(1)) if m else None
+    return "%s (%s)" % t if t else "?"
+def series(js, floor):
+    out = []
+    for x in json.loads(js)["data"]["result"]:
+        v = float(x["value"][1])
+        if v > floor: out.append((v, x["metric"].get("namespace", "?")))
+    return sorted(out, reverse=True)
+
+print("Kubeletto weekly review, %s" % datetime.date.today().isoformat())
+print()
+print("1. Network right now (a short sample; the ranking, not an invoice)")
+print(os.environ["NET"] or "   skipped (NET_SECS=0)")
+print()
+c = series(os.environ["CHURN"], 200)
+print("2. Cold-start churn: %d tenant namespace(s) above 200 pods in 24 h" % len(c))
+print("   A scale-to-zero app that something pings every few minutes starts a fresh pod each time.")
+for v, ns in c[:8]: print("   %5d pods  %-24s %s" % (v, ns, tenant(ns)))
+print()
+l = series(os.environ["LOOPS"], 50)
+print("3. Crash loops: %d tenant namespace(s) above 50 container restarts in 24 h" % len(l))
+for v, ns in l[:8]: print("   %5d restarts  %-24s %s" % (v, ns, tenant(ns)))
+print()
+print("4. Traffic: top services by requests, last 7 days")
+print("   %9s %7s  %s" % ("requests", "errors", "tenant (plan)"))
+for r in rows:
+    if r[0] == "traffic": print("   %9d %6s%%  %s (%s)" % (int(r[4]), r[5], r[2], r[3]))
+print()
+print("5. Accounts")
+print("   %-9s %7s %7s %9s" % ("plan", "tenants", "paused", "new, 7 d"))
+for r in rows:
+    if r[0] == "plan": print("   %-9s %7s %7s %9s" % (r[1], r[2], r[3], r[4]))
+'
