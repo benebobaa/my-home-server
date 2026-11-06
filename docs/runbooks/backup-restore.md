@@ -2,11 +2,14 @@
 
 Every guest is backed up nightly at 02:30 to PBS (CT 111 on pve3, storage
 `pbs`). Why and what is not covered (bind mounts — the family archive):
-[ADR 0009](../decisions/0009-backups-pbs-on-pve3.md). Also not covered: the
-registry's blobs, VM 300's second disk (`scsi1`, mounted at `/mnt/registry`,
-`backup=0`; [ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md)).
-After a restore of VM 300 that disk comes back empty or not at all: built
-images are gone until their owners redeploy. Service:
+[ADR 0009](../decisions/0009-backups-pbs-on-pve3.md). VM 300 is no longer on
+the main `pbs`: since 2026-10-28 VM 300 (both
+disks, the registry's blobs on `scsi1` included) is backed up nightly to
+`pbs-replica` on pve1 instead ([ADR 0025](../decisions/0025-replica-backup-of-vm-300-on-pve1.md),
+amending [ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md));
+checked 2026-11-06, latest copy that morning. That is the same house: no
+off-site copy yet ([ADR 0032](../decisions/0032-off-site-copies-for-kubeletto-data.md)).
+Restoring VM 300: [k3s-rebuild.md](k3s-rebuild.md). Service:
 [`services/pbs/`](../../services/pbs/README.md).
 
 Run commands on a node as root (`ssh root@10.10.10.12` or `.13`).
