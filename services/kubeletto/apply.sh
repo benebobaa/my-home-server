@@ -10,6 +10,7 @@
 #   ./apply.sh <step>
 #   ./apply.sh diff       # read-only: what `platform` would change on the cluster
 #   ./apply.sh drift      # same, exit 1 if anything differs (cluster != repo)
+#   ./apply.sh nodes      # read-only: is every node admitted by the registry policies?
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -205,6 +206,44 @@ ALLOW_EOF
   kapply < manifests/rehearsal.yaml
 }
 
+# Read-only: is every K3s node's flannel address admitted by the registry
+# policies? Containerd on a node pulls tenant images from the registry and the
+# mirror, and that traffic arrives from the node's own address in its pod
+# subnet (10.42.<n>.0), which policies.yaml lists as /32 entries. A node that
+# joins without its entry cannot pull images, and nothing says why. (Widening
+# the CIDR is not the answer: tenant pods live in the same range and would be
+# admitted too.) EXTRA_NODES="name cidr" lines simulate a node, for testing.
+step_nodes() {
+  local nodes
+  nodes=$(vm_bash <<'EOF'
+k3s kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name} {.spec.podCIDR}{"\n"}{end}'
+EOF
+  )
+  nodes="$nodes${EXTRA_NODES:+$'\n'$EXTRA_NODES}"
+  render | NODES="$nodes" python3 -c '
+import ipaddress, os, sys, yaml
+want = {"registry-clients", "dockerhub-mirror-clients"}
+admitted = {}
+for o in yaml.safe_load_all(sys.stdin):
+    if o and o.get("kind") == "NetworkPolicy" and o["metadata"].get("namespace") == "registry" and o["metadata"]["name"] in want:
+        admitted[o["metadata"]["name"]] = {
+            f["ipBlock"]["cidr"] for r in o["spec"].get("ingress", []) for f in r.get("from", []) if "ipBlock" in f}
+missing_policy = want - set(admitted)
+if missing_policy:
+    sys.exit("registry policies not found in the overlay: %s" % sorted(missing_policy))
+bad = 0
+for line in os.environ["NODES"].splitlines():
+    if not line.strip(): continue
+    name, cidr = line.split()
+    addr = "%s/32" % ipaddress.ip_network(cidr).network_address
+    for pol in sorted(admitted):
+        ok = addr in admitted[pol]
+        print("  %-14s %-14s %-26s %s" % (name, addr, pol, "admitted" if ok else "MISSING: add this ipBlock to infra/k8s/home/policies.yaml"))
+        bad += 0 if ok else 1
+sys.exit(1 if bad else 0)
+'
+}
+
 # Read-only: what applying the platform overlay would change. drift is the same
 # with an exit status for make drift: 0 = cluster matches the repo, 1 = it
 # differs, 2 = could not tell.
@@ -217,9 +256,12 @@ step_diff() {
     1) echo "== drift: the cluster differs from $REV"; return 1 ;;
     *) echo "diff: could not run on every chunk (render or kubectl failed)" >&2; return 2 ;;
   esac
+  echo "== nodes: every node admitted by the registry policies?"
+  step_nodes || { echo "== drift: a node cannot pull tenant images (see MISSING above)"; return 1; }
 }
 
 case "${1:-all}" in
+  nodes) step_nodes ;;
   diff) step_diff ;;
   drift) step_diff ;;
   base) step_base ;;

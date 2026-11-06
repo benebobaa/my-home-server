@@ -30,6 +30,7 @@ cd services/kubeletto
 ./apply.sh               # base, knative, traefik, platform (overlay), rehearsal
 ./apply.sh diff          # read-only: what the platform overlay would change
 ./apply.sh drift         # same, exit 1 if the cluster differs from the repo
+./apply.sh nodes         # read-only: is every K3s node admitted by the registry policies?
 ./pin.sh running         # pin the overlay's own images to the digests the cluster runs
 ./pin.sh set core <sha8> <sha256:...>   # pin a new build (digest from the images run)
 ```
@@ -50,6 +51,18 @@ flipped reported the `-"false"`/`+"true"` change and exit 1) and a negative
 one (the real overlay reported no drift, exit 0). The `diff` covers the
 `platform` overlay only, not Knative, Kourier or Traefik (upstream YAML and a
 Helm chart) or the Secrets created outside git.
+
+**Adding a node.** Containerd on every node pulls tenant images from the
+registry and the Docker Hub mirror, and that traffic arrives from the node's own
+address in its pod subnet (`10.42.<n>.0`), which `policies.yaml` lists as `/32`
+entries (the CIDR cannot be widened: tenant pods are in the same range). A node
+that joins without its entry cannot pull images and nothing says why.
+`./apply.sh nodes` compares every node's pod subnet with those policies and
+names the line to add; `drift` runs it too. Proven 2026-11-06 on the live two
+nodes (both admitted) and with a simulated third (`EXTRA_NODES="k3s-worker2
+10.42.2.0/24" ./apply.sh nodes` fails and names it). Traefik's `trustedIPs`
+(`10.42.0.0/24`) is deliberately the server node only and needs no change for a
+worker.
 
 **Pinned images.** A tag can be re-pushed to different content; a digest cannot.
 `pin.sh` writes `digest: sha256:...` next to `newTag` for Kubeletto's own two
