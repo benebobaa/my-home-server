@@ -37,11 +37,18 @@ flattened). 58 dangling Windows junctions (`My Music` etc.) were removed.
 
 ### Zoom recordings
 
+**Deleted 2026-11-06** at the operator's request; the family keeps a copy
+elsewhere. The 288 re-encodes and their `.claims/` markers in
+`/mnt/e4/_captures-30fps` were removed (23 GB freed). `irene/zoom-recordings`
+now shows only the four encode logs. The originals were **not** touched: they
+are still in `/mnt/e4/_pve3-rescue/sda2.img` (see below).
+
 `Captures` (288 files, 120 h, 1376×776 @ 60 fps, 276 GB) re-encoded on both
 nodes' Intel iGPUs (VAAPI H.264, 30 fps, CQP 27, audio copied):
 **~12 % of the original size, SSIM 0.990** on a test clip, ~16× real time
-per node. Worker: `scripts/rescue/encode-worker.sh`. The originals stay on the
-pve2 HDD until Irene has checked some re-encodes.
+per node. Worker: `scripts/rescue/encode-worker.sh`. Before the deletion the
+originals were meant to stay until Irene had checked some re-encodes; the
+operator decided otherwise on 2026-11-06.
 
 ## Operator steps (account-level, once)
 
@@ -82,8 +89,9 @@ pct start 110
 
 `/mnt/e4` is read-only now: the re-encodes are finished, and it holds the only
 copy of the original `Captures`. Remount it `rw,force` only for a deliberate
-write. Check: the archive URL loads, `irene/zoom-recordings` lists 288 files,
-and the `HostUnreachable` alert for `archive` resolves.
+write. Check: the archive URL loads, `irene/zoom-recordings` holds no
+recordings (only the four logs, since 2026-11-06), and the `HostUnreachable`
+alert for `archive` resolves.
 
 ## Maintenance
 
