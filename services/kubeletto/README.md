@@ -30,6 +30,8 @@ cd services/kubeletto
 ./apply.sh               # base, knative, traefik, platform (overlay), rehearsal
 ./apply.sh diff          # read-only: what the platform overlay would change
 ./apply.sh drift         # same, exit 1 if the cluster differs from the repo
+./pin.sh running         # pin the overlay's own images to the digests the cluster runs
+./pin.sh set core <sha8> <sha256:...>   # pin a new build (digest from the images run)
 ```
 
 `apply.sh` renders the overlay at the worktree's checked-out commit (it
@@ -48,6 +50,19 @@ flipped reported the `-"false"`/`+"true"` change and exit 1) and a negative
 one (the real overlay reported no drift, exit 0). The `diff` covers the
 `platform` overlay only, not Knative, Kourier or Traefik (upstream YAML and a
 Helm chart) or the Secrets created outside git.
+
+**Pinned images.** A tag can be re-pushed to different content; a digest cannot.
+`pin.sh` writes `digest: sha256:...` next to `newTag` for Kubeletto's own two
+images (core, admin-ui) in `infra/k8s/home/kustomization.yaml`; kustomize
+renders `image:tag@sha256:...`, so the tag stays readable and the digest is
+what runs. After a green `main` build the `images` workflow prints each digest
+in its run summary: `./pin.sh set core <sha8> <digest>`, then `./apply.sh diff`,
+then apply. `running` pins what the cluster runs now and refuses when the
+cluster's tag differs from the overlay's, or two versions run at once.
+Applying the first pin changes the pod template (`tag` becomes `tag@digest`),
+so core and admin roll once: do it in a quiet moment. `pin.sh` does not talk to
+the registry (the packages are private and the `gh` token has no
+`read:packages`); resolving a digest from GHCR needs that scope.
 
 Not in git, added at apply time: the home public IPv4 (tenant and build
 egress deny lists) and the operator's IPv6 /64 (the `home-api` allowlist).
