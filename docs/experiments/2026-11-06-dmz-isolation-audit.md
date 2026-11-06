@@ -60,6 +60,6 @@ Not done: no packet was sent from a tenant pod to check the policies hold
   policy objects; it did not send packets. The first Phase 3 test should: a
   scratch namespace with the base policy, one pod, `nc` to `10.10.20.x:5432`,
   the router (`10.10.25.1`), the Proxmox UI and a lab DNS name.
-- Other tenant namespaces: one was read, not all 70-odd. Finding 1's alert
+- Other tenant namespaces: one of the 246 was read. Finding 1's alert
   would cover that.
 - IPv6: the DMZ has none and K3s pods are IPv4-only, so it was not examined.
