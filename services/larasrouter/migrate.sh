@@ -55,17 +55,17 @@ pending=$(goose status 2>&1 | grep -c 'Pending' || true)
 echo "pending migrations: $pending"
 [ "$MODE" = up ] || exit 0
 
-if [ "$pending" = 0 ]; then
-  echo "nothing to migrate; running the idempotent seeds only"
-else
-  mkdir -p "$SNAP_DIR" && chmod 700 "$SNAP_DIR"
-  snap="$SNAP_DIR/larasrouter-pre-$(date +%Y%m%d-%H%M%S).dump"
-  "$PGBIN/pg_dump" -Fc --no-owner --no-acl "$DATABASE_URL" -f "$snap"
-  chmod 600 "$snap"
-  echo "snapshot: $snap ($(wc -c <"$snap") bytes)"
-  # keep the 10 newest snapshots
-  find "$SNAP_DIR" -name 'larasrouter-pre-*.dump' -print0 | xargs -0 ls -1t 2>/dev/null | tail -n +11 | while read -r old; do rm -f "$old"; done
-fi
+[ "$pending" = 0 ] && echo "nothing to migrate; running the idempotent seeds only"
+# Snapshot every time, seeds included: a seed can launch a model (it adds a
+# price version the API sells at once), and a release without migrations
+# went out on 2026-11-08 with no point-in-time copy.
+mkdir -p "$SNAP_DIR" && chmod 700 "$SNAP_DIR"
+snap="$SNAP_DIR/larasrouter-pre-$(date +%Y%m%d-%H%M%S).dump"
+"$PGBIN/pg_dump" -Fc --no-owner --no-acl "$DATABASE_URL" -f "$snap"
+chmod 600 "$snap"
+echo "snapshot: $snap ($(wc -c <"$snap") bytes)"
+# keep the 10 newest snapshots
+find "$SNAP_DIR" -name 'larasrouter-pre-*.dump' -print0 | xargs -0 ls -1t 2>/dev/null | tail -n +11 | while read -r old; do rm -f "$old"; done
 if [ "$YES" != 1 ]; then
   read -r -p "type 'migrate' to apply $pending migration(s) to the larasrouter database: " ans
   [ "$ans" = migrate ] || { echo "aborted"; exit 1; }

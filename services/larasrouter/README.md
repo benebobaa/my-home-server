@@ -56,7 +56,7 @@ database, remove their values from the account's notes.
 ## Migrations (`DB_MIGRATE_ON_START=false`)
 
 `./migrate.sh status` shows applied and pending; `./migrate.sh up` takes a
-`pg_dump` snapshot (`~/Documents/benelabs/larasrouter-db-snapshots/`, 10 newest kept),
+`pg_dump` snapshot on every `up`, seeds-only runs included (`~/Documents/benelabs/larasrouter-db-snapshots/`, 10 newest kept),
 shows what is pending, asks you to type `migrate`, runs `goose up` with the version the
 repo pins and the idempotent seeds, and checks that nothing is pending. Check out the
 commit you are about to release in `~/Documents/benelabs/larasrouter` first.
