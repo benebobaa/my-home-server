@@ -115,8 +115,13 @@ probes unaffected.
   `coredns-custom` ConfigMap (`*.override`, imported in the `.:53` block).
 - Check it: `k3s kubectl -n kube-system get cm coredns-custom`, and a query for
   `x.home.arpa` at `10.43.0.10` returns NXDOMAIN without an upstream forward.
-- The node's own resolver (systemd-resolved, used by containerd's image pulls)
-  still uses the ISP-intercepted path. The encrypted upstream is open (ADR 0031).
+- The node's own resolver (systemd-resolved: containerd's image pulls, kubelet,
+  apt) uses DNS over TLS to 1.1.1.1 and 9.9.9.9, opportunistic (ADR 0033):
+  `/etc/systemd/resolved.conf.d/10-homeserver-dot.conf`. Pods still resolve
+  over plain UDP through CoreDNS; that stays open (ADR 0031).
+- Check it: `resolvectl status` shows `DNSOverTLS=opportunistic` and the
+  `#cloudflare-dns.com` / `#dns.quad9.net` names, and
+  `ss -Htn state established '( dport = :853 )'` lists the TLS sessions.
 
 ## Growing a node's disk
 

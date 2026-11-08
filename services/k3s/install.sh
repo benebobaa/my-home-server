@@ -111,6 +111,27 @@ nameserver 9.9.9.9
 options edns0 timeout:1 attempts:3
 EOF
 
+# The node's own lookups (containerd image pulls, kubelet, apt) go through
+# systemd-resolved to the same 1.1.1.1 / 9.9.9.9, and the ISP intercepts and
+# loses 4-7% of plain UDP/53 (ADR 0031). DNS over TLS on 853 is not
+# intercepted and measured with no loss (ADR 0033). Opportunistic: a server
+# that cannot do TLS falls back to plain DNS rather than failing, so this can
+# never take the node's DNS away. Node only: pods resolve through CoreDNS and
+# /etc/rancher/k3s/resolv.conf above, unchanged. Not in `files`: it never
+# restarts k3s, only systemd-resolved (sub-second).
+install -d -m 0755 /etc/systemd/resolved.conf.d
+dot_conf=/etc/systemd/resolved.conf.d/10-homeserver-dot.conf
+dot_new='# managed by services/k3s/install.sh (homeserver repo) — edit there. ADR 0033.
+[Resolve]
+DNS=1.1.1.1#cloudflare-dns.com 9.9.9.9#dns.quad9.net
+DNSOverTLS=opportunistic'
+if [ "$(cat "$dot_conf" 2>/dev/null || true)" != "$dot_new" ]; then
+  printf '%s\n' "$dot_new" > "$dot_conf"
+  chmod 0644 "$dot_conf"
+  systemctl restart systemd-resolved
+  echo "k3s: node DNS over TLS (opportunistic) set, systemd-resolved restarted"
+fi
+
 # Kubeletto's registry mirror (source: kubeletto repo,
 # infra/k8s/cluster-bootstrap/registries.yaml): containerd pulls
 # registry.kubeletto.com from the in-cluster registry Service, pinned at
