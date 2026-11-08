@@ -49,7 +49,9 @@ while i < len(lines):
                 continue            # dropped; re-added after newTag
             if cur.strip().startswith("newTag:"):
                 comment = re.search(r"\s+#.*$", cur)
-                out.append("    newTag: %s%s" % (tag, comment.group(0) if comment else ""))
+                # Always quoted: a commit sha of only digits (30378122) is a
+                # YAML number, and kustomize refuses a numeric newTag.
+                out.append('    newTag: "%s"%s' % (tag, comment.group(0) if comment else ""))
                 out.append("    digest: %s" % digest)
                 saw_tag = True
             else:
@@ -80,7 +82,7 @@ for line in lines:
         if re.match(r"^\s*-\s", line) or not line.startswith("    "):
             break
         m = re.match(r"^\s+newTag:\s+(\S+)", line)
-        if m: tag = m.group(1)
+        if m: tag = m.group(1).strip('"\'')
         m = re.match(r"^\s+digest:\s+(\S+)", line)
         if m: digest = m.group(1)
 print(tag, digest)
