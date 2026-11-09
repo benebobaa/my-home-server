@@ -12,6 +12,9 @@ shellcheck = "0.11.0"
 # Same release as the monitoring CT (Debian 13), so rule checks match prod.
 "aqua:prometheus/prometheus" = "2.53.3"
 "aqua:prometheus/alertmanager" = "0.28.1"
+# Grafana's own dashboard linter (pre-1.0). Its exclusions, each with a reason:
+# scripts/dashboards/lint.yml. Run by `make dashboard-lint`.
+"github:grafana/dashboard-linter" = "0.5.2"
 uv = "0.12.23"
 "pipx:yamllint" = "1.38.0"
 "pipx:ansible-core" = "2.18.7"
