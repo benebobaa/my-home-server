@@ -21,7 +21,9 @@ tests:
           - exp_labels: { severity: info }
             exp_annotations:
               summary: "traces: 15.5GiB stored, near the 16 GiB cap — retention is being cut short"
+              description: "The trace store holds 15.5GiB, near its 16 GiB cap, so the oldest days are dropped before the 30-day retention. Find the sender that writes the most and sample on the app side, or raise the cap and CT 122's disk together."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tracesneardiskcap
+              dashboard_url: http://10.10.10.16:3000/d/homelab-obs-stores
   - interval: 1m
     input_series:
       # 14 GiB stored: under the line, for the whole test.

@@ -18,9 +18,9 @@ MODULES     := inventory proxmox/opentofu/modules/lxc-guest
 SHELL_FILES := $(shell git ls-files '*.sh' .githooks/pre-commit)
 RULES       := services/monitoring/prometheus/rules/*.yml
 
-.PHONY: check inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config dashboards dashboards-check dashboard-lint secrets-scan fmt plan drift
+.PHONY: check inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config alert-contract dashboards dashboards-check dashboard-lint secrets-scan fmt plan drift
 
-check: inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config dashboards-check dashboard-lint secrets-scan
+check: inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config alert-contract dashboards-check dashboard-lint secrets-scan
 	@echo "check: all passed"
 
 # inventory/lab.yaml: unique IPs/VMIDs, IPs inside their VLAN, known nodes.
@@ -71,6 +71,12 @@ monitoring-config:
 	$(X) amtool template render --template.glob='services/monitoring/alertmanager/*.tmpl' \
 	  --template.text='{{ template "homelab.telegram" . }}' >/dev/null && echo "amtool: templates OK"
 	python3 -c "import ast; ast.parse(open('services/monitoring/targets.py').read())" && echo "targets.py: syntax OK"
+
+# ADR 0036 decision 5: every alert rule has summary, description, runbook_url
+# (an anchor of docs/runbooks/alerts.md), dashboard_url (a generated board),
+# and a severity label; rule names are unique.
+alert-contract:
+	$(X) uv run scripts/check-alert-contract.py
 
 # Grafana boards are generated (ADR 0036): `make dashboards` rewrites the JSON;
 # `make check` fails if the committed JSON differs from the generator, if a

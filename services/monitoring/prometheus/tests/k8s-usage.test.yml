@@ -27,7 +27,9 @@ tests:
           - exp_labels: { severity: warning, job: service_dmz, instance: k3s, port: "30080", meter: log_bytes }
             exp_annotations:
               summary: "Kubeletto's log_bytes meter is 36m 0s behind"
+              description: "Kubeletto's log_bytes meter is 36m 0s behind (healthy lag is 7-13 min), so the request and log caps and the usage page stand still. Look in core's log for usage meter errors: a failing collect names VictoriaLogs, a failing commit names Postgres."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
       - eval_time: 60m
         alertname: KubelettoUsageMeterMissing
         exp_alerts: []
@@ -49,7 +51,9 @@ tests:
           - exp_labels: { severity: warning, job: service_dmz, meter: log_bytes }
             exp_annotations:
               summary: "Kubeletto's log_bytes meter reports no checkpoint"
-              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+              description: "Kubeletto's metrics endpoint answers but has no checkpoint for the log_bytes meter, so that usage meter never started and its caps and usage page do not move. Check that core was deployed with VICTORIALOGS_URL and that a worker leader runs the meters."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemetermissing
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
 
   # The endpoint is down: TargetDown covers it, Missing stays quiet.
   - interval: 1m

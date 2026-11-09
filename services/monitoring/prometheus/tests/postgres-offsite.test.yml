@@ -27,7 +27,9 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
             exp_annotations:
               summary: "postgres: no WAL reached the off-site bucket for 1h 10m 0s"
+              description: "No WAL has reached the off-site bucket for 1h 10m 0s (normal is under 15 min), so committed data since then exists only at home. Run pgbackrest check in CT 130: the error names the cause, such as B2 unreachable, a revoked key or a full bucket."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitearchivestale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
   # A full at t=0 and none after: fine at 3.5 days, firing after 4 days + 30 min.
   # The daily job last succeeded at t=0 too: failing after 30 h + 30 min.
@@ -47,7 +49,9 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
             exp_annotations:
               summary: "postgres: the daily off-site job has not completed for 1d 7h 0m 0s"
+              description: "The daily off-site job has not completed for 1d 7h 0m 0s, so the repo size and full-backup metrics are stale. Check the pg-offsite-daily journal for the failing step."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitedailyfailing
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
       - eval_time: 84h
         alertname: PostgresOffsiteFullBackupOld
         exp_alerts: []
@@ -57,7 +61,9 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
             exp_annotations:
               summary: "postgres: newest off-site full backup is 4d 1h 0m 0s old"
+              description: "The newest off-site full backup is 4d 1h 0m 0s old (one is taken every third day), so the restore window is shrinking; WAL alone still restores from the older full. Check the status and journal of pg-offsite-daily."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitefullbackupold
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
   # The repo at 7 GB, then 8.5 GB: warns after 15 min above 8 GB. The guard
   # never ran (0): no guard alert; it ran at t=600 s: fires for a day.
@@ -80,14 +86,18 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
             exp_annotations:
               summary: "postgres: the off-site repo holds 8.5GB of the 10 GB free tier"
+              description: "The off-site repo holds 8.5GB of B2's 10 GB free tier (steady state is about 4-5 GB); at 9 GB the guard expires it down to one full backup, and at 10 GB writes stop. Check pgbackrest info for which backups are large and whether a database or the WAL rate grew."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiterepolarge
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
       - eval_time: 20m
         alertname: PostgresOffsiteGuardExpired
         exp_alerts:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
             exp_annotations:
               summary: "postgres: the off-site repo passed 9 GB and was expired down to one full backup"
+              description: "The off-site repo passed 9 GB and was expired down to one full backup, so the restore window is 0-3 days instead of 3-6 until it shrinks back. Handle it as PostgresOffsiteRepoLarge and find what made the repo grow."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiteguardexpired
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
       - eval_time: 1460m
         alertname: PostgresOffsiteGuardExpired
         exp_alerts: []

@@ -42,18 +42,24 @@ tests:
           - exp_labels: { severity: warning, job: service_dmz, namespace: registry, pod: registry-1, container: registry }
             exp_annotations:
               summary: "k3s: registry/registry-1 (registry) runs but is not ready for 10 min"
+              description: "registry/registry-1 (registry) has been running without passing its readiness probe for 10 min, so deploys, builds or traffic through that platform component fail. Describe the pod for readiness events and read its logs."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodnotready
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
       - eval_time: 12m
         alertname: K8sPlatformPodWaiting
         exp_alerts:
           - exp_labels: { severity: warning, job: service_dmz, namespace: nats, pod: nats-1, container: nats, reason: CrashLoopBackOff }
             exp_annotations:
               summary: "k3s: nats/nats-1 (nats) stuck in CrashLoopBackOff for 10 min"
+              description: "nats/nats-1 (nats) cannot start because of CrashLoopBackOff, for 10 min. Describe the pod and, for a crash loop, read its previous logs; a missing Secret or ConfigMap or a bad image tag is the usual cause."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodwaiting
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
       - eval_time: 20m
         alertname: K8sPlatformPodRestarting
         exp_alerts:
           - exp_labels: { severity: warning, job: service_dmz, namespace: platform, pod: platform-core-1, container: core }
             exp_annotations:
               summary: "k3s: platform/platform-core-1 (core) restarted 4 times in 30 min"
+              description: "platform/platform-core-1 (core) restarted 4 times in 30 min, more than a node reboot explains, so a platform component is falling over. Check the pod's last state for OOMKilled and read its previous logs."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodrestarting
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads

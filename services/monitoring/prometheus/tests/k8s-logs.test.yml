@@ -30,11 +30,15 @@ tests:
           - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, component_id: kubeletto_throttle_runtime, intentional: "true" }
             exp_annotations:
               summary: "k3s-worker: Vector's per-tenant throttle dropped 450 log events in 15 min"
+              description: "Vector's per-tenant cap dropped 450 runtime log events on k3s-worker in 15 min, leaving holes in that tenant's logs while its app is unaffected. Find which tenant logs the most; a runaway logger is the owner's to fix."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantlogsthrottled
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
       - eval_time: 50m
         alertname: K8sLogsDropped
         exp_alerts:
           - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, component_id: victorialogs, intentional: "false" }
             exp_annotations:
               summary: "k3s-worker: Vector lost 90 log events in victorialogs in 15 min"
+              description: "Vector lost 90 log events in victorialogs on k3s-worker in 15 min because a sink failed, and those lines do not come back. Check that VictoriaLogs is running and has disk, and read Vector's errors."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8slogsdropped
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads

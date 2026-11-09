@@ -11,7 +11,9 @@ groups:
           severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
           summary: "{{ $labels.instance }} does not answer ping"
+          description: "{{ $labels.instance }} has not answered ping for 3 min, and its other alerts are suppressed while this fires. For a guest check pct status on its node; for a node check power and the switch; for a device open its UI from the operator Mac."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostunreachable
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-reachability
 
       # The admin gateways are an HA pair (tier standard: one down is a
       # warning). Both down = no remote access to the lab at all: critical.
@@ -24,7 +26,9 @@ groups:
         labels: { severity: critical, instance: admin-gw-pair }
         annotations:
           summary: "Both Tailscale admin gateways are unreachable: no remote access to the lab"
+          description: "Both Tailscale admin gateways have been unreachable for 3 min, so nothing in the lab can be reached remotely. From home run pct list on both nodes and start or restart the gateways; if both nodes are down, suspect power."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#remoteaccessdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-reachability
 
       # Both public resolvers silent = the household uplink (Biznet) is down.
       # Telegram cannot be reached then either: this arrives when the line is
@@ -35,7 +39,9 @@ groups:
         labels: { severity: critical, instance: internet }
         annotations:
           summary: "Internet unreachable from the lab (1.1.1.1 and 8.8.8.8 silent)"
+          description: "Both public resolvers have been silent for 3 min, so the uplink to the ISP is down; Telegram is unreachable while it lasts and this arrives afterwards as a record. Check RouterWanLinkDown (cable, ONT) against the ISP's own router."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#internetdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-reachability
 
       # Every `health:` URL in lab.yaml (management UIs and apps). Severity
       # from the tier, like HostUnreachable.
@@ -46,7 +52,9 @@ groups:
           severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
           summary: "{{ $labels.instance }}: health check failing (health URL in lab.yaml)"
+          description: "The health check URL of {{ $labels.instance }} has failed for 5 min, although the host may still answer ping. Run curl -sv on the URL from CT 120, then read the service's status and journal in the guest."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#httpprobefailed
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-reachability
 
       # Kubeletto's public path (blackbox_public): the API or the registry's
       # token endpoint does not answer as the home core from the internet.
@@ -58,7 +66,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: Kubeletto does not answer correctly from the internet for 5 min"
+          description: "{{ $labels.instance }} has not answered correctly from the internet for 5 min, so customers see Kubeletto's console, CLI or registry pulls fail. Curl the URL by hand: a Cloudflare 52x page means the tunnel, a 404 the DNS record, a timeout Traefik or core."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopublicpathdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
 
       - alert: DnsResolverFailing
         expr: probe_success{job="blackbox_dns"} == 0
@@ -66,7 +76,9 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "hEX DNS resolver (10.10.10.1) is not resolving public names"
+          description: "The router's DNS resolver has failed to resolve a public name for 3 min, so every VLAN that uses it loses name resolution. Check InternetDown first, then the resolver on the router, and flush its cache."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#dnsresolverfailing
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-reachability
 
   # hEX (RB750Gr3, 4-core MIPS, 256 MB) over SNMPv3, every 60 s.
   - name: router
@@ -78,7 +90,9 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "hEX ether1 (uplink to the Biznet router) link is down"
+          description: "The router's uplink port (ether1, to the ISP's router) has had no link for 1 min, so the lab has no internet. Check the cable and the ISP's router; this is physical."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerwanlinkdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       - alert: RouterCpuHigh
         expr: avg by (instance) (hrProcessorLoad{job="snmp_hex"}) > 85
@@ -86,7 +100,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX CPU at {{ $value }}% for 10 min (a DMZ tenant scan, a log flood?)"
+          description: "The router CPU has been at {{ $value }}% for 10 min, which slows routing for the whole lab. Run the profile tool on the router to find the cause: a scan hitting the firewall, a log flood or SNMP walks."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routercpuhigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       - alert: RouterMemoryHigh
         expr: |
@@ -96,7 +112,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX memory {{ $value | humanizePercentage }} used"
+          description: "The router's memory is {{ $value | humanizePercentage }} used (256 MB in total) for 15 min; large connection tables or address lists are the usual cause. Check /system resource print and, if it is a leak, reboot in a quiet moment after a snapshot."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routermemoryhigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       # mtxrHlTemperature is in tenths of a degree.
       - alert: RouterHot
@@ -105,7 +123,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "hEX board at {{ $value }} °C"
+          description: "The router board has been at {{ $value }} °C, above 70 °C, for 15 min. Check the airflow around it; this is physical."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerhot
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       # sysUpTime is in hundredths of a second.
       - alert: RouterRebooted
@@ -113,7 +133,9 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "hEX rebooted {{ $value | humanizeDuration }} ago — a power cut?"
+          description: "The router came up {{ $value | humanizeDuration }} ago and it has no battery, so this is usually a power cut. Confirm with HostOnBattery firing at the same time; info only."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#routerrebooted
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
   # The Biznet plan (Home Internet 100 Mbps, 1500 GB a month, renews on the
   # 16th) caps the line at 5 Mbit/s once the quota is gone. The quota counts
@@ -130,7 +152,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "WAN inbound {{ $value | humanize }}B in 7 days: on pace to use up the 1500 GB plan before it renews"
+          description: "The WAN has taken in {{ $value | humanize }}B in 7 days, a pace above what the 1500 GB monthly plan allows, and when the quota is gone the line drops to 5 Mbit/s for everyone until the renewal. Run services/kubeletto/tenant-bandwidth.sh to find who is pulling."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#wanquotapacehigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       # Inbound over the last 24 h above 60 GB (the plan allows 50 GB a day
       # on average, plus 20 % margin): something is pulling hard right now.
@@ -140,7 +164,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "WAN inbound {{ $value | humanize }}B in the last 24 h (the plan allows about 50 GB a day)"
+          description: "{{ $value | humanize }}B came in over the WAN in the last 24 h, above the 60 GB that the plan's 50 GB a day plus margin allows, so something is pulling hard right now. Find the source as for WanQuotaPaceHigh, and pause a runaway tenant app only on the operator's call."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#waninbounddayhigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-net-router
 
       # The Kubeletto tenant worker takes nearly all of the WAN inbound.
       # Above 2.5 Mbit/s for two hours is about 27 GB a day: more than half
@@ -151,4 +177,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "k3s-worker receives {{ $value | humanize }} bit/s from the internet for 2 h: which tenant pod is pulling?"
+          description: "{{ $labels.instance }} has received {{ $value | humanize }} bit/s from the internet for 2 h, over half the WAN plan from tenant pods alone. Run tenant-bandwidth.sh and look for a scale-to-zero app that something wakes every couple of minutes."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tenantworkerinboundsustained
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants

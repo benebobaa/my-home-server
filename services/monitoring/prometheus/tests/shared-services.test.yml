@@ -30,14 +30,18 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: nats, account: kubeletto }
             exp_annotations:
               summary: "nats: account kubeletto uses 81.49% of its JetStream storage"
+              description: "Account kubeletto stores 81.49% of its JetStream limit, and at 100% its publishes are refused. Find which stream grew (jetstream_stream_total_bytes); usually a stream without max_age or max_bytes, or a consumer that never acks."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsaccountstoragehigh
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-nats
       - eval_time: 20m
         alertname: NatsConsumerBacklog
         exp_alerts:
           - exp_labels: { severity: warning, job: service, instance: nats, account: kubeletto, stream_name: EVENTS, consumer_name: deployer }
             exp_annotations:
               summary: "nats: consumer deployer of kubeletto/EVENTS is 5000 messages behind"
+              description: "Consumer deployer of kubeletto/EVENTS has 5000 messages pending for 15 min, so its app stopped consuming. Check that app's logs, then restart or repair it; a poison message redelivered forever is a common cause."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsconsumerbacklog
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-nats
 
   - interval: 1m
     input_series:
@@ -60,11 +64,15 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: valkey, tier: standard }
             exp_annotations:
               summary: "valkey: a Valkey instance does not answer its exporter"
+              description: "valkey: the exporter cannot reach a Valkey instance for 2 min, so its app has no cache, locks or rate limits (Kubeletto's core refuses to start without it). Check the instance's valkey-server unit in CT 132; the CT holds no data, so a rebuild is always safe."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeydown
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-valkey
       - eval_time: 16m
         alertname: ValkeyMemoryFull
         exp_alerts:
           - exp_labels: { severity: warning, job: service, instance: valkey, tier: standard }
             exp_annotations:
               summary: "valkey: a Valkey instance is at 97.01% of its maxmemory"
+              description: "valkey: a Valkey instance is at 97.01% of its maxmemory, and with a volatile policy keys without a TTL are never evicted, so once they fill the cap writes fail with OOM. Check INFO memory and keyspace for many keys without a TTL (an app bug), or raise maxmemory."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeymemoryfull
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-valkey

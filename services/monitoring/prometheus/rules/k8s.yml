@@ -25,7 +25,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: {{ $value }} pod(s) unschedulable for 5 min (a tenant cannot start)"
+          description: "{{ $labels.instance }} has {{ $value }} pod(s) the scheduler refused for 5 min, so a tenant app or a build cannot start. Describe a Pending pod: Insufficient memory means requests are overcommitted on the worker."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8spodunschedulable
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
       # Memory reserved by pods (requests) against what a node can hand out
       # (allocatable). Only pods that hold a reservation count: Running and
@@ -46,7 +48,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.exported_node }}: pods request {{ $value | humanizePercentage }} of allocatable memory"
+          description: "Pods on {{ $labels.exported_node }} reserve {{ $value | humanizePercentage }} of its allocatable memory, so the next cold start or build may not fit even though free RAM looks fine. This is the warning before K8sPodUnschedulable; check Allocated resources with kubectl describe node."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememoryrequestshigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
       # Kubeletto's Phase 3 capacity trigger (operating model D27): a node
       # whose pods have reserved more than 85 % of its allocatable memory
@@ -72,7 +76,9 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "{{ $labels.exported_node }}: pods have reserved over 85 % of allocatable memory for 7 days (lowest {{ $value | humanizePercentage }}): Kubeletto's add-a-node trigger"
+          description: "Pods on {{ $labels.exported_node }} have reserved over 85% of its allocatable memory at every reading for 7 days (lowest {{ $value | humanizePercentage }}), Kubeletto's trigger to plan a new node. Not an incident: raise it at the operator's next weekly session."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodecapacitytrigger
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
       # The kubelet itself says it is short of memory and starts evicting.
       - alert: K8sNodeMemoryPressure
@@ -81,7 +87,9 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "{{ $labels.exported_node }}: MemoryPressure, the kubelet is evicting pods"
+          description: "The kubelet reports MemoryPressure on {{ $labels.exported_node }} and is evicting tenant pods. Find what grew with kubectl top pods and suspend a runaway tenant rather than restarting the node."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
   # The platform itself (core, NATS, Valkey, the registry and its mirror,
   # Traefik, Kourier, Knative, cloudflared, logs, kube-system): the 2026-10-14
@@ -98,7 +106,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) runs but is not ready for 10 min"
+          description: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) has been running without passing its readiness probe for 10 min, so deploys, builds or traffic through that platform component fail. Describe the pod for readiness events and read its logs."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodnotready
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
 
       # A container that cannot start at all: crash loop, image pull, a
       # missing Secret or ConfigMap. kube-state-metrics only has the series
@@ -111,7 +121,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) stuck in {{ $labels.reason }} for 10 min"
+          description: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) cannot start because of {{ $labels.reason }}, for 10 min. Describe the pod and, for a crash loop, read its previous logs; a missing Secret or ConfigMap or a bad image tag is the usual cause."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodwaiting
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
 
       # More than 2 restarts in 30 min: a node reboot restarts each container
       # once, so this is a component falling over, not maintenance.
@@ -120,7 +132,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "k3s: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted {{ $value | humanize }} times in 30 min"
+          description: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted {{ $value | humanize }} times in 30 min, more than a node reboot explains, so a platform component is falling over. Check the pod's last state for OOMKilled and read its previous logs."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8splatformpodrestarting
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
 
   # Tenant logs that never reached VictoriaLogs, from Vector's own metrics
   # (K3s :30598, one target per node; prometheus.yml keeps only these
@@ -137,7 +151,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: Vector's per-tenant throttle dropped {{ $value | humanize }} log events in 15 min"
+          description: "Vector's per-tenant cap dropped {{ $value | humanize }} runtime log events on {{ $labels.instance }} in 15 min, leaving holes in that tenant's logs while its app is unaffected. Find which tenant logs the most; a runaway logger is the owner's to fix."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantlogsthrottled
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
       # Events lost by failure, not by a filter or the throttle (those are
       # intentional="true"): a sink rejected or dropped them.
@@ -146,7 +162,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: Vector lost {{ $value | humanize }} log events in {{ $labels.component_id }} in 15 min"
+          description: "Vector lost {{ $value | humanize }} log events in {{ $labels.component_id }} on {{ $labels.instance }} in 15 min because a sink failed, and those lines do not come back. Check that VictoriaLogs is running and has disk, and read Vector's errors."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8slogsdropped
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-workloads
 
   # Kubeletto's usage meters (Kubeletto D11): core turns the access logs and
   # tenant logs in its VictoriaLogs into usage_samples, 5-minute windows read
@@ -163,7 +181,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Kubeletto's {{ $labels.meter }} meter is {{ $value | humanizeDuration }} behind"
+          description: "Kubeletto's {{ $labels.meter }} meter is {{ $value | humanizeDuration }} behind (healthy lag is 7-13 min), so the request and log caps and the usage page stand still. Look in core's log for usage meter errors: a failing collect names VictoriaLogs, a failing commit names Postgres."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
 
       # The endpoint answers but a meter has no checkpoint: core was deployed
       # without VICTORIALOGS_URL, or the meter never started. (When the
@@ -179,7 +199,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Kubeletto's {{ $labels.meter }} meter reports no checkpoint"
-          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemeterstale
+          description: "Kubeletto's metrics endpoint answers but has no checkpoint for the {{ $labels.meter }} meter, so that usage meter never started and its caps and usage page do not move. Check that core was deployed with VICTORIALOGS_URL and that a worker leader runs the meters."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettousagemetermissing
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
 
   # Tenant apps that misbehave without being down (2026-11-06). Two free apps
   # cost the platform far more than their traffic: one scale-to-zero app was
@@ -203,7 +225,9 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "{{ $labels.namespace }}: {{ $value }} pods in 24 h (a scale-to-zero app woken every few minutes by a pinger?)"
+          description: "{{ $labels.namespace }} started {{ $value }} distinct pods in 24 h, so something wakes a scale-to-zero app every few minutes. Info for the weekly review: run tenant-bandwidth.sh to see whether it also costs bandwidth."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcoldstartchurn
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
       # Restarts of tenant app containers, summed over the namespace's pods
       # (a crash loop spreads over several revisions' pods). More than 10 an
@@ -217,7 +241,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.namespace }}: tenant container restarted {{ $value | humanize }} times in the last hour, for 3 h (a crash loop)"
+          description: "The app container in {{ $labels.namespace }} restarted {{ $value | humanize }} times in the last hour, for 3 h running: a crash loop, not a deploy. Read the container's previous log for the error and tell the owner; pausing the service is the operator's call."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcontainerrestarting
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
       # Every tenant namespace must carry kubeletto-base-policy. The router's
       # worker pinholes to Postgres 5432 and Valkey 6381 apply to every pod on
@@ -238,4 +264,6 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "{{ $labels.namespace }} has no kubeletto-base-policy: its pods are not fenced off from the lab network"
+          description: "{{ $labels.namespace }} has had no kubeletto-base-policy for 15 min, so its pods are not fenced off from the lab network or the shared data stores. Check kubectl get networkpolicy in it and core's quota reconciler logs; if it cannot be fixed quickly, the operator decides whether to pause the tenant."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantnamespacewithoutnetworkpolicy
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants

@@ -13,7 +13,9 @@ groups:
           severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
           summary: "{{ $labels.instance }}: PostgreSQL does not answer the exporter"
+          description: "The exporter on {{ $labels.instance }} cannot reach PostgreSQL for 2 min, so every app with a database is failing. Check systemctl status postgresql@18-main in CT 130 and its log; a full disk stops it too."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # A full disk stops every write (and every app). Root disk of the CT,
       # from the Proxmox API; data, WAL and the nightly dumps all live there.
@@ -25,7 +27,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: root disk {{ $value | humanizePercentage }} full"
+          description: "CT 130's root disk, which holds the data, the WAL and the nightly dumps, is {{ $value | humanizePercentage }} full, and at 100% every write fails. Check what grew under /var/lib/postgresql and /var/backups/postgres, then grow disk_gb in Tofu."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdiskfilling
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # Connections near max_connections (100, services/postgres/setup.sh):
       # new ones are refused soon. Usually an app leaking connections.
@@ -38,7 +42,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: {{ $value | humanizePercentage }} of max_connections in use"
+          description: "{{ $labels.instance }} uses {{ $value | humanizePercentage }} of max_connections, so new connections will be refused soon, usually because an app leaks connections. Group pg_stat_activity by user and application to see who holds them."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresconnectionshigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # One app's database is big enough to plan for: 5 GB is half the size at
       # which a high-volume app's tables become worth partitioning (larasrouter:
@@ -50,7 +56,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: database {{ $labels.datname }} is {{ $value | humanize1024 }}B"
+          description: "Database {{ $labels.datname }} is {{ $value | humanize1024 }}B, past 5 GB. Nothing is broken, but CT 130's disk is shared with every app: list the biggest tables, then plan to grow the disk, partition, or give the app its own Postgres."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabaselarge
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # A database grew more than 1 GB in a day (larasrouter: ~200k requests a
       # day): at that rate CT 130's free disk lasts weeks, and this fires long
@@ -61,7 +69,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: database {{ $labels.datname }} grew {{ $value | humanize1024 }}B in 24 h"
+          description: "Database {{ $labels.datname }} grew {{ $value | humanize1024 }}B in 24 h, which fills CT 130's free disk within weeks. Check whether it is real traffic or a runaway (a retry loop, a test against production) and which tables grew."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabasegrowingfast
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
   # The off-site copy: pgBackRest to a B2 bucket (ADR 0034). The series are
   # textfiles that pg-offsite writes in CT 130 (services/postgres/
@@ -79,7 +89,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: no WAL reached the off-site bucket for {{ $value | humanizeDuration }}"
+          description: "No WAL has reached the off-site bucket for {{ $value | humanizeDuration }} (normal is under 15 min), so committed data since then exists only at home. Run pgbackrest check in CT 130: the error names the cause, such as B2 unreachable, a revoked key or a full bucket."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitearchivestale
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # A full every 3 days (pg-offsite-daily, 04:00 WIB); one missed run is a day late.
       - alert: PostgresOffsiteFullBackupOld
@@ -88,7 +100,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: newest off-site full backup is {{ $value | humanizeDuration }} old"
+          description: "The newest off-site full backup is {{ $value | humanizeDuration }} old (one is taken every third day), so the restore window is shrinking; WAL alone still restores from the older full. Check the status and journal of pg-offsite-daily."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitefullbackupold
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       - alert: PostgresOffsiteDailyFailing
         expr: time() - pg_offsite_daily_last_success_timestamp_seconds{job="service"} > 30 * 3600
@@ -96,7 +110,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: the daily off-site job has not completed for {{ $value | humanizeDuration }}"
+          description: "The daily off-site job has not completed for {{ $value | humanizeDuration }}, so the repo size and full-backup metrics are stale. Check the pg-offsite-daily journal for the failing step."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitedailyfailing
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # B2's free tier is 10 GB; steady state is ~4-5 GB. The guard expires
       # at 9 GB; this is the warning before it.
@@ -106,7 +122,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: the off-site repo holds {{ $value | humanize }}B of the 10 GB free tier"
+          description: "The off-site repo holds {{ $value | humanize }}B of B2's 10 GB free tier (steady state is about 4-5 GB); at 9 GB the guard expires it down to one full backup, and at 10 GB writes stop. Check pgbackrest info for which backups are large and whether a database or the WAL rate grew."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiterepolarge
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
       # The guard expired down to one full backup: the restore window is now
       # 0-3 days instead of 3-6 until the repo shrinks back.
@@ -117,4 +135,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "postgres: the off-site repo passed 9 GB and was expired down to one full backup"
+          description: "The off-site repo passed 9 GB and was expired down to one full backup, so the restore window is 0-3 days instead of 3-6 until it shrinks back. Handle it as PostgresOffsiteRepoLarge and find what made the repo grow."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiteguardexpired
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres

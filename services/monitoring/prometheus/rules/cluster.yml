@@ -11,7 +11,9 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "Cluster {{ $labels.id }} is NOT quorate: management actions are locked"
+          description: "Cluster {{ $labels.id }} has lost quorum: guests keep running, but starting, stopping, configuring and backing up guests is locked. Run pvecm status on a surviving node to see which nodes are missing and bring them back."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveclusternotquorate
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
 
       # Severity from the node's tier, read off its node_exporter target:
       # `up` exists while the node is off (value 0), unlike any node_* series.
@@ -30,7 +32,9 @@ groups:
           severity: '{{ if eq $labels.tier "best-effort" }}info{{ else if eq $labels.tier "standard" }}warning{{ else }}critical{{ end }}'
         annotations:
           summary: "Proxmox node {{ $labels.node }} is offline in the cluster"
+          description: "Proxmox node {{ $labels.node }} has been offline in the cluster for 2 min, and its guests' and its own host alerts are suppressed while this fires. Check its power and switch link first (node-ops runbook), then wait for the cluster to be quorate again."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvenodedown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
 
       # Only guests that should be running: onboot=1 (the archive CT is
       # deliberately not boot-safe yet and is excluded by that).
@@ -43,7 +47,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is not running"
+          description: "{{ $labels.name }} ({{ $labels.id }}) is set to start on boot but has not been running on {{ $labels.node }} for 5 min. Check pct or qm status and the start log; if it was stopped on purpose, set start_on_boot to false in its Tofu definition."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
 
       # Directory storages (`local`: ISOs, templates, backups-to-come). The
       # thin pools are watched directly (hosts.yml, ThinPool*).
@@ -55,7 +61,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.id }} is {{ $value | humanizePercentage }} full"
+          description: "The Proxmox storage {{ $labels.id }} is {{ $value | humanizePercentage }} full; it holds ISOs, templates and backups. Remove old templates and ISOs (pveam list local, pvesm free) before it fills."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvestoragefilling
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
 
       # A guest no backup job covers (PBS, ADR 0009). The PBS CT itself is
       # excluded from the nightly job on purpose: its disk *is* the datastore.
@@ -70,4 +78,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) is in no backup job"
+          description: "{{ $labels.name }} ({{ $labels.id }} on {{ $labels.node }}) has been in no backup job for over 1 h, so it has no backups at all. Check the nightly job's exclusions and the PBS storage, and re-converge Tofu in proxmox/opentofu if the job was changed."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestnotbackedup
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox

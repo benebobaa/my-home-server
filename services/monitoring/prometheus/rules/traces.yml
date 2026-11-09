@@ -13,4 +13,6 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "traces: {{ $value | humanize1024 }}B stored, near the 16 GiB cap — retention is being cut short"
+          description: "The trace store holds {{ $value | humanize1024 }}B, near its 16 GiB cap, so the oldest days are dropped before the 30-day retention. Find the sender that writes the most and sample on the app side, or raise the cap and CT 122's disk together."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#tracesneardiskcap
+          dashboard_url: http://10.10.10.16:3000/d/homelab-obs-stores

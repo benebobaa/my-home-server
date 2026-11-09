@@ -27,7 +27,9 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: standard, datname: larasrouter }
             exp_annotations:
               summary: "postgres: database larasrouter is 5.588GiB"
+              description: "Database larasrouter is 5.588GiB, past 5 GB. Nothing is broken, but CT 130's disk is shared with every app: list the biggest tables, then plan to grow the disk, partition, or give the app its own Postgres."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabaselarge
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres
 
   # larasrouter growing 2 MB a minute (~2.9 GB a day) fires
   # PostgresDatabaseGrowingFast; kubeletto growing 100 KB a minute does not.
@@ -47,4 +49,6 @@ tests:
           - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: standard, datname: larasrouter }
             exp_annotations:
               summary: "postgres: database larasrouter grew 2.682GiB in 24 h"
+              description: "Database larasrouter grew 2.682GiB in 24 h, which fills CT 130's free disk within weeks. Check whether it is real traffic or a runaway (a retry loop, a test against production) and which tables grew."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabasegrowingfast
+              dashboard_url: http://10.10.10.16:3000/d/homelab-platform-postgres

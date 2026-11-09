@@ -53,7 +53,9 @@ tests:
           - exp_labels: { severity: warning, exported_node: k3s-worker }
             exp_annotations:
               summary: "k3s-worker: pods request 96.67% of allocatable memory"
+              description: "Pods on k3s-worker reserve 96.67% of its allocatable memory, so the next cold start or build may not fit even though free RAM looks fine. This is the warning before K8sPodUnschedulable; check Allocated resources with kubectl describe node."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememoryrequestshigh
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
   # a pod the scheduler refuses for 10 min, and a node under MemoryPressure.
   - interval: 1m
@@ -72,7 +74,9 @@ tests:
           - exp_labels: { severity: warning, instance: k3s }
             exp_annotations:
               summary: "k3s: 1 pod(s) unschedulable for 5 min (a tenant cannot start)"
+              description: "k3s has 1 pod(s) the scheduler refused for 5 min, so a tenant app or a build cannot start. Describe a Pending pod: Insufficient memory means requests are overcommitted on the worker."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8spodunschedulable
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
       - eval_time: 3m
         alertname: K8sNodeMemoryPressure
         exp_alerts: []
@@ -82,7 +86,9 @@ tests:
           - exp_labels: { severity: critical, node: pve3, exported_node: k3s-worker, instance: k3s, job: service_dmz, condition: MemoryPressure, status: "true" }
             exp_annotations:
               summary: "k3s-worker: MemoryPressure, the kubelet is evicting pods"
+              description: "The kubelet reports MemoryPressure on k3s-worker and is evicting tenant pods. Find what grew with kubectl top pods and suspend a runaway tenant rather than restarting the node."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
 
   # Capacity trigger (D27): 2.7 of 3 GB reserved (90 %) for 7 days fires;
   # the same node with one 40-minute dip to 2.4 GB (80 %) inside the week
@@ -105,7 +111,9 @@ tests:
           - exp_labels: { severity: info, exported_node: k3s }
             exp_annotations:
               summary: "k3s: pods have reserved over 85 % of allocatable memory for 7 days (lowest 90%): Kubeletto's add-a-node trigger"
+              description: "Pods on k3s have reserved over 85% of its allocatable memory at every reading for 7 days (lowest 90%), Kubeletto's trigger to plan a new node. Not an incident: raise it at the operator's next weekly session."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodecapacitytrigger
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-cluster
   - interval: 1m
     input_series:
       - series: 'kube_node_status_allocatable{job="service_dmz",instance="k3s",node="pve2",exported_node="k3s",resource="memory",unit="byte"}'

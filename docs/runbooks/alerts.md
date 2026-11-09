@@ -208,6 +208,102 @@ Check `kubectl top pods -A --sort-by=memory` and
 nothing to restart — find the app that grew. Lasting fix: the D9 growth
 path (a bigger or second worker), not raising requests.
 
+### HostFilesystemFull
+**Meaning:** under 15 % free on a filesystem for 15 min.
+**Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.
+**Fix:** clear the cause (old kernels: `apt autoremove`; logs:
+`journalctl --vacuum-size=200M`).
+**VM 300 `/mnt/registry`:** those fixes do not apply. It holds the registry's
+only copy of its blobs and has no backup ([ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md)),
+so never delete files there by hand. Garbage collection needs the registry
+read-only or stopped, and retention is off; plan it as in the
+[retention dry run](../experiments/2026-10-15-registry-retention-dry-run.md).
+Until then, the fix is to grow `scsi1` in `proxmox/opentofu/k3s.tf` and extend
+the ext4 filesystem.
+
+### ThinPoolFilling
+**Meaning:** the guest thin pool (`pve/data`) is over 85 % allocated. It
+auto-extends at 80 % into a small VG buffer, so that buffer is being used up.
+**Check:** `lvs -a pve`; which guest grew: `pvesh get /nodes/<node>/storage/local-lvm/content`.
+**Fix:** `fstrim` in the guests (`pct fstrim <vmid>`), shrink or move a guest,
+or add disk. At 100 % every guest on the pool freezes.
+
+### ThinPoolCritical
+**Meaning:** thin pool over 92 %. Guests freeze at 100 % and can corrupt.
+**Fix:** now: `pct fstrim` every guest on that node, stop the largest
+non-essential guest. Then as for `ThinPoolFilling`.
+
+### ThinPoolMetadataFilling
+**Meaning:** thin pool metadata over 75 %.
+**Fix:** `lvextend --poolmetadatasize +256M pve/data` (needs free VG space).
+
+### DiskSmartFailing
+**Meaning:** a disk reports SMART overall health FAILED.
+**Fix:** copy the data off now and replace the disk
+(`docs/runbooks/disk-rescue.md`).
+
+### DiskPendingSectors
+**Meaning:** a disk has unreadable sectors. pve3's old HDD died this way.
+**Fix:** copy the data off now (`docs/runbooks/disk-rescue.md`); plan the
+replacement.
+
+### DiskReallocatedSectorsGrowing
+**Meaning:** reallocated sectors grew in 24 h: the disk is degrading.
+**Fix:** check backups of everything on it; plan the replacement.
+
+### DiskHot
+**Meaning:** a disk above 55 °C for 30 min.
+**Fix:** airflow (laptop lid, dust). Physical: operator.
+
+### HostCpuHot
+**Meaning:** CPU package above 90 °C for 10 min, on any Proxmox node: Intel's
+`coretemp` (pve2, pve3) or AMD's `k10temp` (pve1), chosen by hwmon chip name
+(NVMe and ACPI sensors do not count).
+**Check:** what is using the CPU (`top`); a transcode, a build, or on pve1 the
+GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
+(`services/ai/README.md`), so a sustained 90 means more than that test did.
+**Fix:** airflow, or limit the guest's cores. The Ryzen throttles at 95 °C.
+
+### HostTextfileCollectorStale
+**Meaning:** the SMART or thin-pool collector has not written for over 1 h:
+the disk and pool alerts above are blind.
+**Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
+**Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
+**Known cause (pve2/pve3, after a power cut):** the laptops lose their RTC
+without AC and boot at 2026-04-14. The SMART collector runs before chrony
+steps the clock, so its file carries an April mtime and looks 200 days old.
+It clears by itself when the timer runs again, 15 min after boot
+([2026-11-04](../incidents/2026-11-04-power-cut.md)).
+**Known cause (pve1, found 2026-10-14):** Debian's SMART timer runs only when
+`/dev/sd*` or `/dev/hd*` exists, and pve1 has NVMe only: the timer never fired
+by itself, and the alert came from the one file the installer's USB disk left.
+A drop-in (`prometheus-node-exporter-smartmon.timer.d/nvme.conf`, Ansible
+`monitoring` tag) adds `/dev/nvme*`. Verify on a node: `systemctl cat
+prometheus-node-exporter-smartmon.timer | grep nvme` and the age of
+`/var/lib/prometheus/node-exporter/smartmon.prom` is under 15 min.
+
+### HostSystemdUnitFailed
+**Meaning:** a systemd unit is in `failed` state for 10 min.
+**Check:** `systemctl status <unit>`; `journalctl -u <unit> -b`.
+**Fix:** fix the cause, then `systemctl reset-failed <unit>`.
+
+### HostClockUnsynced
+**Meaning:** the node clock is not NTP-synchronised. Corosync, TLS and logs
+all suffer.
+**Check:** `chronyc tracking`; can the node reach the hEX NTP/DNS?
+**Fix:** `systemctl restart chrony`.
+
+### HostRebooted
+**Meaning:** a node rebooted in the last 15 min. Info only.
+**Check:** expected (maintenance)? If not, `journalctl -b -1 -n 50` for the
+reason, and `HostOnBattery` for a power cut.
+
+## Kubernetes and Kubeletto
+
+Alerts about the Kubeletto K3s cluster (`k3s`, `k3s-worker`) and about
+Kubeletto as a service. Commands that need `kubectl` go through VM 300's
+guest agent (`qm guest exec 300 -- k3s kubectl ...` on pve2).
+
 ### K8sPodUnschedulable
 **Meaning:** the scheduler of the Kubeletto cluster (`k3s`, `k3s-worker`)
 refused a pod for 5 min: no node has room. A tenant app or a build cannot
@@ -380,13 +476,11 @@ whether `victorialogs-0` in `logs` is running and has disk.
 come back.
 
 ### KubelettoUsageMeterStale
-Also **KubelettoUsageMeterMissing** (same runbook).
 **Meaning:** a Kubeletto usage meter (`http_requests`, `log_bytes`; Kubeletto
 D11) has not recorded a window for 30 min. Healthy lag is 7-13 min (5-minute
 windows, read 2 min after they close). Until it catches up, the request and
-log caps and the tenants' usage page stand still. *Missing*: core's `/metrics`
-answers but has no checkpoint for a meter (deployed without
-`VICTORIALOGS_URL`, or the meter never started).
+log caps and the tenants' usage page stand still. A meter with no checkpoint
+at all is `KubelettoUsageMeterMissing`.
 **Check:** core's log for `usage meter` lines (`kubectl -n platform logs
 deploy/platform-core | grep 'usage meter'`): a failing collect names
 VictoriaLogs, a failing commit names Postgres. Then `victorialogs-0` in `logs`
@@ -398,95 +492,24 @@ up to 24 h back (VictoriaLogs keeps 7 days). A gap older than 24 h is skipped
 and logged, never invented. Never edit the checkpoint by hand to "skip
 ahead" unless you mean to leave that window unmetered.
 
-### HostFilesystemFull
-**Meaning:** under 15 % free on a filesystem for 15 min.
-**Check:** `du -xh --max-depth=2 <mountpoint> | sort -h | tail`.
-**Fix:** clear the cause (old kernels: `apt autoremove`; logs:
-`journalctl --vacuum-size=200M`).
-**VM 300 `/mnt/registry`:** those fixes do not apply. It holds the registry's
-only copy of its blobs and has no backup ([ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md)),
-so never delete files there by hand. Garbage collection needs the registry
-read-only or stopped, and retention is off; plan it as in the
-[retention dry run](../experiments/2026-10-15-registry-retention-dry-run.md).
-Until then, the fix is to grow `scsi1` in `proxmox/opentofu/k3s.tf` and extend
-the ext4 filesystem.
-
-### ThinPoolFilling
-**Meaning:** the guest thin pool (`pve/data`) is over 85 % allocated. It
-auto-extends at 80 % into a small VG buffer, so that buffer is being used up.
-**Check:** `lvs -a pve`; which guest grew: `pvesh get /nodes/<node>/storage/local-lvm/content`.
-**Fix:** `fstrim` in the guests (`pct fstrim <vmid>`), shrink or move a guest,
-or add disk. At 100 % every guest on the pool freezes.
-
-### ThinPoolCritical
-**Meaning:** thin pool over 92 %. Guests freeze at 100 % and can corrupt.
-**Fix:** now: `pct fstrim` every guest on that node, stop the largest
-non-essential guest. Then as for `ThinPoolFilling`.
-
-### ThinPoolMetadataFilling
-**Meaning:** thin pool metadata over 75 %.
-**Fix:** `lvextend --poolmetadatasize +256M pve/data` (needs free VG space).
-
-### DiskSmartFailing
-**Meaning:** a disk reports SMART overall health FAILED.
-**Fix:** copy the data off now and replace the disk
-(`docs/runbooks/disk-rescue.md`).
-
-### DiskPendingSectors
-**Meaning:** a disk has unreadable sectors. pve3's old HDD died this way.
-**Fix:** copy the data off now (`docs/runbooks/disk-rescue.md`); plan the
-replacement.
-
-### DiskReallocatedSectorsGrowing
-**Meaning:** reallocated sectors grew in 24 h: the disk is degrading.
-**Fix:** check backups of everything on it; plan the replacement.
-
-### DiskHot
-**Meaning:** a disk above 55 °C for 30 min.
-**Fix:** airflow (laptop lid, dust). Physical: operator.
-
-### HostCpuHot
-**Meaning:** CPU package above 90 °C for 10 min, on any Proxmox node: Intel's
-`coretemp` (pve2, pve3) or AMD's `k10temp` (pve1), chosen by hwmon chip name
-(NVMe and ACPI sensors do not count).
-**Check:** what is using the CPU (`top`); a transcode, a build, or on pve1 the
-GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
-(`services/ai/README.md`), so a sustained 90 means more than that test did.
-**Fix:** airflow, or limit the guest's cores. The Ryzen throttles at 95 °C.
-
-### HostTextfileCollectorStale
-**Meaning:** the SMART or thin-pool collector has not written for over 1 h:
-the disk and pool alerts above are blind.
-**Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
-**Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
-**Known cause (pve2/pve3, after a power cut):** the laptops lose their RTC
-without AC and boot at 2026-04-14. The SMART collector runs before chrony
-steps the clock, so its file carries an April mtime and looks 200 days old.
-It clears by itself when the timer runs again, 15 min after boot
-([2026-11-04](../incidents/2026-11-04-power-cut.md)).
-**Known cause (pve1, found 2026-10-14):** Debian's SMART timer runs only when
-`/dev/sd*` or `/dev/hd*` exists, and pve1 has NVMe only: the timer never fired
-by itself, and the alert came from the one file the installer's USB disk left.
-A drop-in (`prometheus-node-exporter-smartmon.timer.d/nvme.conf`, Ansible
-`monitoring` tag) adds `/dev/nvme*`. Verify on a node: `systemctl cat
-prometheus-node-exporter-smartmon.timer | grep nvme` and the age of
-`/var/lib/prometheus/node-exporter/smartmon.prom` is under 15 min.
-
-### HostSystemdUnitFailed
-**Meaning:** a systemd unit is in `failed` state for 10 min.
-**Check:** `systemctl status <unit>`; `journalctl -u <unit> -b`.
-**Fix:** fix the cause, then `systemctl reset-failed <unit>`.
-
-### HostClockUnsynced
-**Meaning:** the node clock is not NTP-synchronised. Corosync, TLS and logs
-all suffer.
-**Check:** `chronyc tracking`; can the node reach the hEX NTP/DNS?
-**Fix:** `systemctl restart chrony`.
-
-### HostRebooted
-**Meaning:** a node rebooted in the last 15 min. Info only.
-**Check:** expected (maintenance)? If not, `journalctl -b -1 -n 50` for the
-reason, and `HostOnBattery` for a power cut.
+### KubelettoUsageMeterMissing
+**Meaning:** core's `/metrics` (the `k3s` target, port 30080) answers, but one
+meter (the `meter` label: `http_requests` or `log_bytes`) has had no checkpoint
+series for 30 min: core was deployed without `VICTORIALOGS_URL`, or the meter
+never started. Nothing is metered, so the request and log caps and the tenants'
+usage page do not move. When the endpoint itself is down, `TargetDown` fires
+and this alert stays quiet; a meter that reports an old checkpoint is
+`KubelettoUsageMeterStale`.
+**Check:** which meters exist: `kubeletto_usage_meter_processed_until_seconds`
+in Prometheus. Then core's setup and log: does the deployment set
+`VICTORIALOGS_URL` (`kubectl -n platform get deploy platform-core -o yaml`; it
+may come from a Secret), and `kubectl -n platform logs deploy/platform-core |
+grep -E 'usage meter|leader-only'`. Only the worker leader runs the meters.
+**Fix:** a missing setting: restore it in the Kubeletto home overlay (or its
+secrets, `services/kubeletto/secrets.sh`) and re-apply
+(`services/kubeletto/apply.sh platform`); core restarts on the rollout and the
+meter starts from its checkpoint. If the setting is there, the startup log
+names why the meter did not start.
 
 ## GPU (pve1's RTX 3060, in the `ai` VM)
 

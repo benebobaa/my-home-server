@@ -12,7 +12,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "logs: VictoriaLogs has ingested nothing for 30 min — log shipping is broken"
+          description: "VictoriaLogs has ingested nothing for 30 min although every host ships continuously, so log shipping is broken and logs are being lost. Check systemd-journal-upload on a sender and the router's syslog action."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#logsingestionstopped
+          dashboard_url: http://10.10.10.16:3000/d/homelab-obs-stores
 
       # The disk cap (services/logs/setup.sh) drops the oldest days early when
       # it is hit; sustained, that means retention is shorter than intended.
@@ -22,4 +24,6 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "logs: {{ $value | humanize1024 }}B stored, near the 6 GiB cap — retention is being cut short"
+          description: "The log store holds {{ $value | humanize1024 }}B, near its 6 GiB cap, so the oldest days are dropped before the 30-day retention. Find the noisiest host with a stats-by-host query in Explore, or raise the cap and CT 121's disk together."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#logsneardiskcap
+          dashboard_url: http://10.10.10.16:3000/d/homelab-obs-stores

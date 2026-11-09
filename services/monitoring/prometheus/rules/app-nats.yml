@@ -16,7 +16,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "nats: account {{ $labels.account }} uses {{ $value | humanizePercentage }} of its JetStream storage"
+          description: "Account {{ $labels.account }} stores {{ $value | humanizePercentage }} of its JetStream limit, and at 100% its publishes are refused. Find which stream grew (jetstream_stream_total_bytes); usually a stream without max_age or max_bytes, or a consumer that never acks."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsaccountstoragehigh
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-nats
 
       # A durable consumer falling behind: its app stopped consuming (down,
       # stuck, or a poison message).
@@ -26,7 +28,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "nats: consumer {{ $labels.consumer_name }} of {{ $labels.account }}/{{ $labels.stream_name }} is {{ $value }} messages behind"
+          description: "Consumer {{ $labels.consumer_name }} of {{ $labels.account }}/{{ $labels.stream_name }} has {{ $value }} messages pending for 15 min, so its app stopped consuming. Check that app's logs, then restart or repair it; a poison message redelivered forever is a common cause."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsconsumerbacklog
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-nats
 
       # The CT's root disk holds the JetStream file store.
       - alert: NatsDiskFilling
@@ -37,4 +41,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "nats: root disk {{ $value | humanizePercentage }} full"
+          description: "CT 131's root disk, which holds the JetStream file store, is {{ $value | humanizePercentage }} full. Check du under /var/lib/nats/jetstream per account, then fix retention as for NatsAccountStorageHigh or grow disk_gb."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#natsdiskfilling
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-nats

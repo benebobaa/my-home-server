@@ -14,7 +14,9 @@ groups:
           severity: '{{ if eq $labels.tier "critical" }}critical{{ else if eq $labels.tier "standard" }}warning{{ else }}info{{ end }}'
         annotations:
           summary: "{{ $labels.instance }}: a Valkey instance does not answer its exporter"
+          description: "{{ $labels.instance }}: the exporter cannot reach a Valkey instance for 2 min, so its app has no cache, locks or rate limits (Kubeletto's core refuses to start without it). Check the instance's valkey-server unit in CT 132; the CT holds no data, so a rebuild is always safe."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeydown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-valkey
 
       # Full is normal for a cache that evicts; with volatile-* policies it is
       # not: when the keys without a TTL fill maxmemory, writes fail with OOM.
@@ -26,4 +28,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: a Valkey instance is at {{ $value | humanizePercentage }} of its maxmemory"
+          description: "{{ $labels.instance }}: a Valkey instance is at {{ $value | humanizePercentage }} of its maxmemory, and with a volatile policy keys without a TTL are never evicted, so once they fill the cap writes fail with OOM. Check INFO memory and keyspace for many keys without a TTL (an app bug), or raise maxmemory."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#valkeymemoryfull
+          dashboard_url: http://10.10.10.16:3000/d/homelab-platform-valkey

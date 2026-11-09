@@ -499,7 +499,9 @@ tests:
           - exp_labels: { severity: info, namespace: kl-churn }
             exp_annotations:
               summary: "kl-churn: 210 pods in 24 h (a scale-to-zero app woken every few minutes by a pinger?)"
+              description: "kl-churn started 210 distinct pods in 24 h, so something wakes a scale-to-zero app every few minutes. Info for the weekly review: run tenant-bandwidth.sh to see whether it also costs bandwidth."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcoldstartchurn
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
   # a crash loop: 2 pods of one namespace restarting 6 times an hour each
   # (12 an hour together) for 4 h; a quiet namespace with 2 restarts an hour
@@ -523,7 +525,9 @@ tests:
           - exp_labels: { severity: warning, namespace: kl-loop }
             exp_annotations:
               summary: "kl-loop: tenant container restarted 12 times in the last hour, for 3 h (a crash loop)"
+              description: "The app container in kl-loop restarted 12 times in the last hour, for 3 h running: a crash loop, not a deploy. Read the container's previous log for the error and tell the owner; pausing the service is the operator's call."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantcontainerrestarting
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
   # a namespace without the base policy fires; one with it does not
   - interval: 1m
@@ -546,7 +550,9 @@ tests:
           - exp_labels: { severity: critical, job: service_dmz, instance: k3s, namespace: kl-open }
             exp_annotations:
               summary: "kl-open has no kubeletto-base-policy: its pods are not fenced off from the lab network"
+              description: "kl-open has had no kubeletto-base-policy for 15 min, so its pods are not fenced off from the lab network or the shared data stores. Check kubectl get networkpolicy in it and core's quota reconciler logs; if it cannot be fixed quickly, the operator decides whether to pause the tenant."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8stenantnamespacewithoutnetworkpolicy
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
 
   # the guard: before kube-state-metrics exports networkpolicies there is no
   # policy series at all, and nothing may fire

@@ -38,7 +38,9 @@ tests:
           - exp_labels: { severity: warning, instance: pve1 }
             exp_annotations:
               summary: "pve1: CPU at 92 °C for 10 min"
+              description: "The CPU of pve1 has been above 90 °C for 10 min (92 °C now) and will throttle. Check what is using the CPU (top, a build, the GPU VM on pve1) and the airflow."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostcpuhot
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-hardware
 
   # the K3s worker's root filesystem (scraped by job service_dmz) at 10 % free
   - interval: 1m
@@ -54,4 +56,6 @@ tests:
           - exp_labels: { severity: warning, job: service_dmz, instance: k3s-worker, fstype: ext4, mountpoint: / }
             exp_annotations:
               summary: "k3s-worker: / has 10% free"
+              description: "/ on k3s-worker has 10% free; a full filesystem stops writes and, on the K3s worker, makes the kubelet evict tenant pods. Find the biggest directories with du first, and never delete by hand on VM 300's /mnt/registry (see the runbook)."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#hostfilesystemfull
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-nodes

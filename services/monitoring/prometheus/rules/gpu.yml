@@ -18,7 +18,9 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: GPU at {{ $value }} °C for 5 min"
+          description: "The GPU in {{ $labels.instance }} has been at {{ $value }} °C or more for 5 min; the card slows itself down from about 83 °C and shuts down near 93 °C. Check nvidia-smi for fan and power, what is running, and the cooler for dust."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#gpuhot
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-hardware
 
       # Hardware slowdown: the board itself pulls the clocks down — over
       # temperature (hw_thermal_slowdown) or the power supply asserting the
@@ -35,4 +37,6 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "{{ $labels.instance }}: GPU clocks forced down by hardware (thermal or power brake) for 5 min"
+          description: "The board has forced the GPU clocks down on {{ $labels.instance }} for 5 min, by over-temperature or the PSU's power brake, so jobs run slower than they should. Check the clock-event reasons: thermal means airflow, power brake means the PSU or its PCIe power cable."
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#gpuhardwareslowdown
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-hardware
