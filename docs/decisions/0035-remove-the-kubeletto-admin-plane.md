@@ -4,7 +4,7 @@
 
 ## Context
 
-ADR 0026 split Kubeletto's admin API into its own process and ADR 0027 put it on the operator's tailnet. It was built, deployed (pod `platform-admin`, an ephemeral tailnet node tagged `tag:admin`) and never used: no admin account was ever created on the home cluster. It still cost an extra image build, a tailnet auth key kept in SOPS, a tailnet policy tag and grant, and a second run mode of core.
+ADR 0026 split Kubeletto's admin API into its own process and ADR 0027 put it on the operator's tailnet. It was built, deployed (pod `platform-admin`, an ephemeral tailnet node tagged `tag:admin`) and never put to work: one account was created and logged in once on 2026-10-28 to check it, and the audit log holds no admin action since. It still cost an extra image build, a tailnet auth key kept in SOPS, a tailnet policy tag and grant, and a second run mode of core.
 
 ## Decision
 
