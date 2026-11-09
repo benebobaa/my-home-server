@@ -11,7 +11,7 @@ ADR 0026 split Kubeletto's admin API into its own process and ADR 0027 put it on
 - **The admin plane is gone.** Kubeletto's repo removed the console (`apps/admin`), the `/v1/admin/*` API, `RUN_MODE=admin`, `ADMIN_API_ENABLED`, `bootstrap-admin` and the pod's manifests (Kubeletto D30). A tenant is suspended or restored with SQL, as the runbook already described.
 - **Live objects deleted on 2026-11-09:** Deployment, NetworkPolicy, four ConfigMaps and the `platform-admin-tailscale` Secret in the `platform` namespace. The customer API was unaffected: it answers `/v1/admin/*` exactly as it answers any path that does not exist.
 - **Here:** `services/kubeletto/admin-bootstrap.sh` and `tailnet-admin-key.sh` are removed, `pin.sh` pins core only, `PLATFORM_ADMIN_TS_AUTHKEY` is removed from `secrets.sops.env`, and `tag:admin` is removed from the tailnet policy template (owner, grant, tests).
-- **The `admin_*` tables stay** in Kubeletto's database, inert. Dropping them (and the audit history) is a separate decision.
+- **The `admin_*` tables are dropped** (Kubeletto migration 106, applied 2026-11-09 after the core without the admin code was live): five tables and `feedback.reviewed_by` / `reviewed_at`. They held one account, one expired session and one audit row. The rows are in the PBS and pgBackRest backups; the migration's Down section recreates the empty structures.
 
 ## Consequences
 
