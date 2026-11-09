@@ -62,3 +62,59 @@ groups:
         annotations:
           summary: "postgres: database {{ $labels.datname }} grew {{ $value | humanize1024 }}B in 24 h"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresdatabasegrowingfast
+
+  # The off-site copy: pgBackRest to a B2 bucket (ADR 0034). The series are
+  # textfiles that pg-offsite writes in CT 130 (services/postgres/
+  # offsite-job.sh), scraped from its node_exporter on :9100. Absent until
+  # archiving goes live. Warnings, not pages: the database is fine, the
+  # copy that survives losing the house is late. Timestamps age by
+  # themselves, so a job that stopped running fires these too.
+  - name: app-postgres-offsite
+    rules:
+      # RPO is ~15 min (archive_timeout). Assumes something writes every hour,
+      # which Kubeletto always does; an idle cluster switches no segment.
+      - alert: PostgresOffsiteArchiveStale
+        expr: time() - pg_offsite_archive_last_success_timestamp_seconds{job="service"} > 3600
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: no WAL reached the off-site bucket for {{ $value | humanizeDuration }}"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitearchivestale
+
+      # A full every 3 days (pg-offsite-daily, 04:00 WIB); one missed run is a day late.
+      - alert: PostgresOffsiteFullBackupOld
+        expr: time() - pg_offsite_full_backup_last_timestamp_seconds{job="service"} > 4 * 86400
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: newest off-site full backup is {{ $value | humanizeDuration }} old"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitefullbackupold
+
+      - alert: PostgresOffsiteDailyFailing
+        expr: time() - pg_offsite_daily_last_success_timestamp_seconds{job="service"} > 30 * 3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: the daily off-site job has not completed for {{ $value | humanizeDuration }}"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitedailyfailing
+
+      # B2's free tier is 10 GB; steady state is ~4-5 GB. The guard expires
+      # at 9 GB; this is the warning before it.
+      - alert: PostgresOffsiteRepoLarge
+        expr: pg_offsite_repo_bytes{job="service"} > 8e9
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: the off-site repo holds {{ $value | humanize }}B of the 10 GB free tier"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiterepolarge
+
+      # The guard expired down to one full backup: the restore window is now
+      # 0-3 days instead of 3-6 until the repo shrinks back.
+      - alert: PostgresOffsiteGuardExpired
+        expr: |
+          pg_offsite_guard_last_expire_timestamp_seconds{job="service"} > 0
+            and time() - pg_offsite_guard_last_expire_timestamp_seconds{job="service"} < 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "postgres: the off-site repo passed 9 GB and was expired down to one full backup"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiteguardexpired

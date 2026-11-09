@@ -626,6 +626,63 @@ which tables grew: the `PostgresDatabaseLarge` query above.
 **Fix:** a runaway: stop its source. Real growth: as `PostgresDatabaseLarge`,
 sooner.
 
+### Off-site copy (pgBackRest → B2)
+
+[ADR 0034](../decisions/0034-postgres-off-site-on-b2-with-pgbackrest.md). All
+warnings: the database is fine, the copy that survives losing the house is
+late. The jobs' output is in the CT's journal
+(`journalctl -u pg-offsite-daily -u pg-offsite-metrics`, and Postgres's own
+log for `archive_command` failures: `journalctl -t postgres | grep -i archive`).
+Run commands in the CT as `postgres`:
+`pct exec 130 -- runuser -u postgres -- pgbackrest --stanza=main info`.
+
+### PostgresOffsiteArchiveStale
+**Meaning:** no WAL segment reached the bucket for over an hour (normal: at
+most 15 min, `archive_timeout`). Committed data since then exists only at
+home. Segments wait in `pg_wal` (`pg_offsite_archive_ready_segments`);
+past 4 GiB pgBackRest drops them to keep the disk from filling, and the
+off-site copy then has a gap until the next full backup.
+**Check:** `pgbackrest --stanza=main check` (it forces a segment switch and
+waits for it in the bucket); the error says what is wrong: B2 unreachable
+(the home line, `HostUnreachable` on the hEX), the key revoked or the B2
+cap reached (403), the bucket gone.
+**Fix:** what the error names. A rotated key: [secrets.md](secrets.md#the-off-site-backup-b2-keys-and-the-cipher-passphrase).
+Once `check` passes the queue drains by itself. If segments were dropped
+(`pgbackrest` warned "dropped WAL file(s)" in the Postgres log), run a full
+now: `systemctl start pg-offsite-daily` only runs one when due, so
+`runuser -u postgres -- pgbackrest --stanza=main --type=full backup`.
+
+### PostgresOffsiteFullBackupOld
+**Meaning:** the newest full backup in the bucket is over 4 days old (one is
+taken every third day at 04:00 WIB). The restore window shrinks; WAL alone
+still restores, from the older full.
+**Check:** `systemctl status pg-offsite-daily`, `journalctl -u pg-offsite-daily -n 50`.
+**Fix:** what the log names, then `systemctl start pg-offsite-daily`.
+
+### PostgresOffsiteDailyFailing
+**Meaning:** the daily job (full backup when due, repo size, the guard) has
+not completed for 30 h. The repo size and full-backup metrics are stale.
+**Check / Fix:** as `PostgresOffsiteFullBackupOld`.
+
+### PostgresOffsiteRepoLarge
+**Meaning:** the repo holds over 8 GB of B2's 10 GB free tier (steady state
+~4-5 GB). At 9 GB the daily job expires down to one full backup
+(`PostgresOffsiteGuardExpired`); at 10 GB B2's $0 cap refuses writes and the
+archive stops.
+**Check:** `pgbackrest --stanza=main info` (sizes per backup); has a database
+grown (`PostgresDatabaseLarge`), or is the WAL rate up (a bulk load, a
+runaway)? B2's web UI shows the bucket's size including hidden versions;
+if that is much larger than the repo, the lifecycle rule ("keep only the
+last version") is missing.
+**Fix:** a one-off (a bulk load): nothing, the next fulls expire it. Lasting
+growth: decide in an ADR (retention 1, or a paid tier).
+
+### PostgresOffsiteGuardExpired
+**Meaning:** the repo passed 9 GB and the daily job expired it down to one
+full backup and its WAL. The restore window is 0-3 days instead of 3-6
+until it shrinks back. Fires for a day.
+**Check / Fix:** as `PostgresOffsiteRepoLarge`.
+
 ## NATS (CT 131)
 
 NATS itself down, or up without JetStream, is `HttpProbeFailed` on

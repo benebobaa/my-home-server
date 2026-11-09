@@ -1,0 +1,93 @@
+# promtool unit tests for the off-site backup rules (ADR 0034; make check).
+# Labels as the service job gives CT 130's node_exporter target (two metrics
+# ports, so a `port` label). Values are Unix seconds; promtool's clock starts
+# at 0, so a series that grows by 60 per minute is a fresh timestamp.
+rule_files:
+  - ../rules/app-postgres.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The archive keeps up for 30 min, then stops at t=1800 s: stale after
+  # 90 min, firing after 95.
+  - interval: 1m
+    input_series:
+      - series: 'pg_offsite_archive_last_success_timestamp_seconds{job="service",instance="postgres",service="postgres",node="pve2",tier="critical",port="9100"}'
+        values: '0+60x30 1800x100'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PostgresOffsiteArchiveStale
+        exp_alerts: []
+      - eval_time: 92m
+        alertname: PostgresOffsiteArchiveStale
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PostgresOffsiteArchiveStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
+            exp_annotations:
+              summary: "postgres: no WAL reached the off-site bucket for 1h 10m 0s"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitearchivestale
+
+  # A full at t=0 and none after: fine at 3.5 days, firing after 4 days + 30 min.
+  # The daily job last succeeded at t=0 too: failing after 30 h + 30 min.
+  - interval: 1m
+    input_series:
+      - series: 'pg_offsite_full_backup_last_timestamp_seconds{job="service",instance="postgres",service="postgres",node="pve2",tier="critical",port="9100"}'
+        values: '0x6000'
+      - series: 'pg_offsite_daily_last_success_timestamp_seconds{job="service",instance="postgres",service="postgres",node="pve2",tier="critical",port="9100"}'
+        values: '0x6000'
+    alert_rule_test:
+      - eval_time: 30h
+        alertname: PostgresOffsiteDailyFailing
+        exp_alerts: []
+      - eval_time: 31h
+        alertname: PostgresOffsiteDailyFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
+            exp_annotations:
+              summary: "postgres: the daily off-site job has not completed for 1d 7h 0m 0s"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitedailyfailing
+      - eval_time: 84h
+        alertname: PostgresOffsiteFullBackupOld
+        exp_alerts: []
+      - eval_time: 97h
+        alertname: PostgresOffsiteFullBackupOld
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
+            exp_annotations:
+              summary: "postgres: newest off-site full backup is 4d 1h 0m 0s old"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsitefullbackupold
+
+  # The repo at 7 GB, then 8.5 GB: warns after 15 min above 8 GB. The guard
+  # never ran (0): no guard alert; it ran at t=600 s: fires for a day.
+  - interval: 1m
+    input_series:
+      - series: 'pg_offsite_repo_bytes{job="service",instance="postgres",service="postgres",node="pve2",tier="critical",port="9100"}'
+        values: '7e9x60 8.5e9x60'
+      - series: 'pg_offsite_guard_last_expire_timestamp_seconds{job="service",instance="postgres",service="postgres",node="pve2",tier="critical",port="9100"}'
+        values: '0x9 600x1500'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PostgresOffsiteGuardExpired
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PostgresOffsiteRepoLarge
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: PostgresOffsiteRepoLarge
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
+            exp_annotations:
+              summary: "postgres: the off-site repo holds 8.5GB of the 10 GB free tier"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiterepolarge
+      - eval_time: 20m
+        alertname: PostgresOffsiteGuardExpired
+        exp_alerts:
+          - exp_labels: { severity: warning, job: service, instance: postgres, service: postgres, node: pve2, tier: critical, port: "9100" }
+            exp_annotations:
+              summary: "postgres: the off-site repo passed 9 GB and was expired down to one full backup"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#postgresoffsiteguardexpired
+      - eval_time: 1460m
+        alertname: PostgresOffsiteGuardExpired
+        exp_alerts: []
