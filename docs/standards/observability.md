@@ -62,7 +62,7 @@ Or `monitoring: none`, with the reason in `note`.
 | Scrape of its `/metrics`, labelled `instance`, `service`, `tier` | job `service` |
 | Its logs, 30 days | Grafana → Explore → VictoriaLogs: `_stream:{_HOSTNAME="myapp"}` |
 | Its traces, 30 days, once it sends them | Grafana → Explore → Traces (Tempo data source), or Drilldown → Traces, by `service.name` |
-| The Service dashboard (pick the host) | Grafana → Homelab → Service |
+| The host and guest board (pick the host) | Grafana → Infrastructure → Host and guest ([dashboards.md](dashboards.md)) |
 | The hEX rules for the above, if it lives outside MGMT | generated in `network/routeros/firewall.tf` |
 
 ## 4. Backups (ADR 0009)
@@ -79,8 +79,10 @@ a guest falls out of the job.
   rule needs `severity` (`critical` / `warning` / `info`), a `summary`, and a
   `runbook_url` to a section in `docs/runbooks/alerts.md` (or the app's own
   runbook). `make check` runs `promtool` on it.
-- **App dashboard:** `services/monitoring/grafana/dashboards/app-<name>.json`,
-  datasource uids `prometheus` and `victorialogs`.
+- **App dashboard:** a board module in `scripts/dashboards/boards/` (folder
+  Platform services or Applications), generated into
+  `services/monitoring/grafana/dashboards/`, following
+  [dashboards.md](dashboards.md). Datasource uids `prometheus` and `victorialogs`.
 
 ## 6. Onboarding checklist
 

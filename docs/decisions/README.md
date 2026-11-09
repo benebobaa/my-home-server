@@ -10,9 +10,9 @@ never edited — supersede them with a new one.
 | [0003](0003-lxc-gpu-passthrough.md) | Shared LXC device passthrough for NVIDIA GPUs (not VM/VFIO) |
 | [0004](0004-public-ingress-cloudflare-tunnel.md) | Public ingress through Cloudflare Tunnel; VPS path deferred |
 | [0005](0005-family-archive-over-tailscale.md) | Family archive served over Tailscale node sharing, not Cloudflare Tunnel |
-| [0006](0006-monitoring-stack.md) | Monitoring: Prometheus + Alertmanager + Grafana on VLAN 10, Telegram, external dead-man's switch |
+| [0006](0006-monitoring-stack.md) | Monitoring: Prometheus + Alertmanager + Grafana on VLAN 10, Telegram, external dead-man's switch (dashboards amended by 0036) |
 | [0007](0007-repo-architecture-for-growth.md) | Repo architecture for growth: one inventory, an LXC module, Ansible for guest config |
-| [0008](0008-observability-standard.md) | Observability standard: every host declares how it is watched in lab.yaml; severity routing; logs in VictoriaLogs (CT 121) |
+| [0008](0008-observability-standard.md) | Observability standard: every host declares how it is watched in lab.yaml; severity routing; logs in VictoriaLogs (CT 121) (Service dashboard and alert annotations amended by 0036) |
 | [0009](0009-backups-pbs-on-pve3.md) | Backups: Proxmox Backup Server in a container on pve3, nightly, every guest; the archive's bind mounts not yet covered |
 | [0010](0010-shared-postgres-and-app-standard.md) | One shared PostgreSQL 18 (CT 130) for the lab's apps, a database + role per app; databases get an exporter; the app standard |
 | [0011](0011-kubeletto-on-the-home-cluster.md) | Kubeletto runs on the home K3s cluster: tunnel-only edge, free tier boxed for a household IP, one observability stack, prod-data copies operator-only |
@@ -40,3 +40,4 @@ never edited — supersede them with a new one.
 | [0033](0033-k3s-nodes-resolve-over-dns-over-tls.md) | K3s nodes resolve over DNS over TLS (opportunistic) to 1.1.1.1 and 9.9.9.9: image pulls skip the ISP-intercepted UDP/53; pods unchanged (narrows 0031) |
 | [0034](0034-postgres-off-site-on-b2-with-pgbackrest.md) | The shared Postgres goes off-site to Backblaze B2's free tier with pgBackRest: encrypted in the CT, ~15 min RPO, a full every 3 days, 2 kept, a 10 GB guard; the registry stays on-site (amends 0032; built, not yet live) |
 | [0035](0035-remove-the-kubeletto-admin-plane.md) | The Kubeletto admin plane (console, API, `platform-admin` pod, its tailnet node, key and policy tag) is removed: never used (supersedes 0026 and 0027) |
+| [0036](0036-observability-v2-generated-dashboards-and-alert-contract.md) | Observability v2: dashboards generated from Python into committed classic JSON and grouped by concern (13 old boards removed), one alert annotation contract checked in CI, one Kubeletto SLO (99.5 % / 30 d), retention unchanged, data gaps closed where proven (amends 0006 and 0008) |
