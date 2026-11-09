@@ -10,7 +10,10 @@
 # Everything in the guest is converged through the pinned root SSH to pve2 +
 # `pct exec` — never a direct SSH to the CT, whose host key changes on every
 # rebuild:
-#   monitoring_setup     packages + configs (re-runs when services/monitoring/ changes)
+#   monitoring_setup     packages + configs (re-runs when services/monitoring/ changes,
+#                        except the generated boards)
+#   monitoring_dashboards the generated Grafana boards (ADR 0036): replaced as a whole,
+#                        no service restarts
 #   monitoring_pve_token read-only PVE API token, created on pve2, straight into the CT
 #   monitoring_secrets   Telegram, healthchecks.io, SNMPv3, Grafana admin (+ PVE's
 #                        own notifications → the same Telegram chat)
@@ -18,10 +21,19 @@
 locals {
   monitoring_dir = "${path.module}/../../services/monitoring"
   monitoring_ssh = local.node_ssh[local.host.monitoring.node]
-  # Everything the guest runs, so an edit to any of it re-converges.
+  # Everything the guest runs, so an edit to any of it re-converges. The
+  # generated boards are not part of it: they have their own step below, so
+  # editing a board never restarts Prometheus or Grafana.
   monitoring_files_sha = sha256(join("", [
     for f in sort(fileset(local.monitoring_dir, "**")) :
-    filesha256("${local.monitoring_dir}/${f}") if f != "README.md"
+    filesha256("${local.monitoring_dir}/${f}")
+    if f != "README.md" && !startswith(f, "grafana/dashboards/")
+  ]))
+  # The boards, by path and content (a move between folders re-pushes too).
+  monitoring_dashboards_dir = "${local.monitoring_dir}/grafana/dashboards"
+  monitoring_dashboards_sha = sha256(join("", [
+    for f in sort(fileset(local.monitoring_dashboards_dir, "**/*.json")) :
+    "${f}:${filesha256("${local.monitoring_dashboards_dir}/${f}")}"
   ]))
 
   # --- scrape targets, generated from the `monitoring:` blocks in lab.yaml ----
@@ -123,11 +135,31 @@ resource "terraform_data" "monitoring_setup" {
   provisioner "local-exec" {
     command = <<-EOT
       set -eu
-      COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C ${local.monitoring_dir} -cf - . \
+      COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md --exclude ./grafana/dashboards -C ${local.monitoring_dir} -cf - . \
         | ${local.monitoring_ssh} 'pct exec ${module.monitoring.vmid} -- sh -c "rm -rf /root/monitoring && mkdir -p /root/monitoring && tar -xf - -C /root/monitoring"'
       ${local.monitoring_ssh} 'pct exec ${module.monitoring.vmid} -- bash /root/monitoring/setup.sh'
     EOT
   }
+}
+
+# The generated Grafana boards (scripts/dashboards, ADR 0036). The directory is
+# extracted beside the live one and swapped in with two renames, so Grafana's
+# 30 s scan never sees it half-written and a board removed from the repo is
+# removed from the CT (the provider has disableDeletion: false). Nothing is
+# restarted: Grafana picks the change up on its next scan.
+resource "terraform_data" "monitoring_dashboards" {
+  triggers_replace = [local.monitoring_dashboards_sha, module.monitoring.generation]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -eu
+      COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C ${local.monitoring_dashboards_dir} -cf - . \
+        | ${local.monitoring_ssh} 'pct exec ${module.monitoring.vmid} -- sh -c "set -e; d=/var/lib/grafana; rm -rf \$d/dashboards.new \$d/dashboards.old; mkdir -p \$d/dashboards.new; tar -xf - -C \$d/dashboards.new; find \$d/dashboards.new -type d -exec chmod 0755 {} +; find \$d/dashboards.new -type f -exec chmod 0644 {} +; mv \$d/dashboards \$d/dashboards.old; mv \$d/dashboards.new \$d/dashboards; rm -rf \$d/dashboards.old"'
+    EOT
+  }
+
+  # setup.sh creates /var/lib/grafana/dashboards and the provider config.
+  depends_on = [terraform_data.monitoring_setup]
 }
 
 # Scrape targets → /etc/prometheus/targets/<job>.json (targets.sh). Keyed on

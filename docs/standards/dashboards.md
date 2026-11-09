@@ -31,7 +31,7 @@ Boards are **generated**, never edited by hand and never saved from the UI:
 
 | Field | Rule |
 | --- | --- |
-| `uid` | `homelab-<folder>-<name>` (the Overview is `homelab-overview`) |
+| `uid` | `homelab-<token>-<name>`, token by folder: `infra`, `net`, `platform`, `k8s`, `apps`, `obs` (the Overview is `homelab-overview`) |
 | `tags` | `homelab`, the folder, the method |
 | `description` | the question the board answers, and when to open it |
 | `schemaVersion` | 39 (Grafana migrates up on load) |

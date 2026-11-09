@@ -25,15 +25,6 @@ GRAFANA_KEY_FPR=B53AE77BADB630A683046005963FA27710458545  # gitleaks:allow (publ
 SNMP_YML_VERSION=v0.28.0
 SNMP_YML_SHA256=3ce8896729f582acb822a506501b6db3e2d937d059d4fdbc55fdf293d9bdde13
 
-# grafana.com dashboard id, pinned revision, sha256 of that download.
-DASHBOARDS=(
-  "1860 45 184c6b7409f306da75525d7772f71945b10cea23ad16b5d78c4698ea0ea51986 node-exporter-full"
-  "10347 5 ac7b52531baf0fd6563b8419742d80b738439ad5db6819aa2cbb7b11c6858eff proxmox"
-  "13659 1 9e70455850c0a8a52a4ce6313ab9113e55656b88a8419eaba84a9a91dcd48f54 blackbox"
-  "14857 5 c85725d43d01a362ca3807bfde141ffe9c6bf1704b915a2451e31c0b6be4ea3d mikrotik"
-  "14574 15 2f5c9778bdcb2e7c8f1e54b4977d34ef980ef964bf584df35c3f1e35e475afcd nvidia-gpu"
-)
-
 # --- packages ---------------------------------------------------------------
 install -d -m 0755 /etc/apt/keyrings
 if [ ! -s /etc/apt/keyrings/grafana.gpg ]; then
@@ -166,6 +157,7 @@ Environment=GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
 Environment=GF_NEWS_NEWS_FEED_ENABLED=false
 Environment=GF_USERS_ALLOW_SIGN_UP=false
 Environment=GF_AUTH_ANONYMOUS_ENABLED=false
+Environment=GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/overview.json
 EOF
 install -m 0644 "$SRC/grafana/datasource.yml" /etc/grafana/provisioning/datasources/homelab.yml
 vlogs_json=/var/lib/grafana/plugins/victoriametrics-logs-datasource/plugin.json
@@ -177,25 +169,12 @@ if [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["info"][
 fi
 install -m 0644 "$SRC/grafana/dashboards.yml" /etc/grafana/provisioning/dashboards/homelab.yml
 install -d -m 0755 /var/lib/grafana/dashboards
-for d in "${DASHBOARDS[@]}"; do
-  read -r id rev sha name <<<"$d"
-  out=/var/lib/grafana/dashboards/$name.json
-  if [ ! -f "$out.sha256" ] || [ "$(cat "$out.sha256")" != "$sha" ]; then
-    tmp=$(mktemp)
-    curl -fsSL -o "$tmp" "https://grafana.com/api/dashboards/$id/revisions/$rev/download"
-    echo "$sha  $tmp" | sha256sum -c --quiet
-    # Import-style dashboards reference ${DS_PROMETHEUS}; file provisioning
-    # does not substitute inputs, so point them at the provisioned uid.
-    # shellcheck disable=SC2016  # a literal ${DS_PROMETHEUS}, not an expansion
-    sed 's/\${DS_PROMETHEUS}/prometheus/g' "$tmp" > "$out"
-    echo "$sha" > "$out.sha256"
-    rm -f "$tmp"
-  fi
-done
 
-# Dashboards kept in the repo (the standard's Service view, app dashboards):
-# services/monitoring/grafana/dashboards/*.json.
-install -m 0644 "$SRC"/grafana/dashboards/*.json /var/lib/grafana/dashboards/
+# The boards themselves are not installed here. They are generated Python
+# (scripts/dashboards, ADR 0036) and have their own deploy step
+# (terraform_data.monitoring_dashboards): an edit to a board must not restart
+# Prometheus or Grafana. That step replaces the whole directory, so boards
+# removed from the repo are removed from Grafana.
 
 # --- start -----------------------------------------------------------------------
 systemctl daemon-reload
