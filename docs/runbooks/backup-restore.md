@@ -83,7 +83,7 @@ tunnel's credentials.
 1. Stop the broken guest: `pct stop <vmid>`.
 2. Restore over it: `pct restore <vmid> <volid> --storage local-lvm --force 1`
    (on the node it should run on; `--force` replaces the existing disk).
-3. `pct start <vmid>`; check its service and the Service dashboard.
+3. `pct start <vmid>`; check its service and the Host and guest board (Grafana → Infrastructure).
 4. Converge: `tofu plan` in `proxmox/opentofu` should be `No changes`. If
    setup steps are keyed on the container's MAC (`generation`), a restore
    with `--unique 0` keeps the MAC and nothing re-runs.

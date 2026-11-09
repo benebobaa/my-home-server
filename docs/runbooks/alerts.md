@@ -27,7 +27,7 @@ in `inventory/lab.yaml`.
 
 ### HostUnreachable
 **Meaning:** a host in `lab.yaml` has not answered ping for 3 min.
-**Check:** the Service dashboard for that host. Guest → `pct status <vmid>` on
+**Check:** the Host and guest board (Infrastructure) for that host. Guest → `pct status <vmid>` on
 its node. Node → is it powered and on the switch (`docs/runbooks/node-ops.md`)?
 Device → the hEX/switch UI from the operator Mac.
 **Fix:** start the guest (`pct start <vmid>`), or bring the node back. Other
@@ -148,10 +148,10 @@ app can still pull about 4 Mbit/s with two pods overlapping.
 ## Proxmox cluster
 
 ### PveClusterNotQuorate
-**Meaning:** the two-node cluster lost quorum. Guests keep running. Starting,
+**Meaning:** the three-node cluster lost quorum (two nodes are down). Guests keep running. Starting,
 stopping and configuring guests, and backups, are locked.
-**Check:** `pvecm status` on the surviving node. Which node is gone?
-**Fix:** bring the other node back (`docs/runbooks/proxmox-cluster.md`). Only
+**Check:** `pvecm status` on a surviving node. Which nodes are gone?
+**Fix:** bring a node back, one is enough (`docs/runbooks/proxmox-cluster.md`). Only
 in an emergency, on the survivor: `pvecm expected 1`.
 
 ### PveNodeDown
@@ -514,7 +514,7 @@ names why the meter did not start.
 ## GPU (pve1's RTX 3060, in the `ai` VM)
 
 Metrics come from nvidia_gpu_exporter in `ai` (`:9835`, ADR 0014); the
-**Nvidia GPU Metrics** dashboard (Grafana → Homelab) shows them. While pve1
+GPU row of Infrastructure → **Hardware health** shows them. While pve1
 is off there is no data and nothing fires. Live view: `ssh ai nvtop`.
 
 ### GpuHot
@@ -587,7 +587,7 @@ before the 30-day retention. Info only.
 ### TracesNearDiskCap
 **Meaning:** the trace store holds about 14.5 GiB of its 16 GiB cap for an
 hour: the oldest days are dropped before the 30-day retention. Info only.
-**Check:** the dashboard *Trace store (VictoriaTraces)*: the stored share of
+**Check:** the board Observability → **Log and trace stores**: the stored share of
 the cap, and the rows dropped by reason.
 **Fix:** a sender that writes too much (sample on the app side), or raise the
 cap and CT 122's disk together (`services/traces/setup.sh`,

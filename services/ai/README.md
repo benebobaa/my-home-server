@@ -15,7 +15,7 @@ AI/LLM/AI-infra study plan: NVIDIA driver + CUDA toolkit, uv for Python
 | Login | user `bene`, the admin SSH key, passwordless sudo; no passwords |
 | Console | serial (`qm terminal 140` on pve1) — no VGA |
 | Starts | with pve1 (`onboot`): wake pve1 and the VM comes up by itself |
-| Monitoring | ping + PVE API, and GPU metrics from `nvidia_gpu_exporter` `:9835` (pulled by Prometheus; dashboard **Nvidia GPU Metrics**, alerts `GpuHot`, `GpuHardwareSlowdown`; ADR 0014). No logs leave the VM (ADR 0013) |
+| Monitoring | ping + PVE API, and GPU metrics from `nvidia_gpu_exporter` `:9835` (pulled by Prometheus; board Infrastructure → **Hardware health** (GPU row), alerts `GpuHot`, `GpuHardwareSlowdown`; ADR 0014). No logs leave the VM (ADR 0013) |
 
 ## Files
 

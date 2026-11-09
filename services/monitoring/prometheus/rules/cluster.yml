@@ -3,7 +3,7 @@
 groups:
   - name: cluster
     rules:
-      # Two-node cluster: with either node down it is non-quorate, guests keep
+      # Three-node cluster: with two nodes down it is non-quorate, guests keep
       # running but management (start/stop/config, backups) locks.
       - alert: PveClusterNotQuorate
         expr: pve_cluster_info{quorate!="1"} == 1

@@ -7,7 +7,7 @@ How an app sends traces: [docs/standards/observability.md](../../docs/standards/
 | | |
 | --- | --- |
 | Send (OTLP/HTTP) | `http://traces.home.arpa:10428/insert/opentelemetry/v1/traces` (JSON or protobuf) |
-| Query | Grafana → Explore → **Traces** (data source `traces`, Tempo), **Drilldown → Traces**, or the dashboard *Trace store (VictoriaTraces)* |
+| Query | Grafana → Explore → **Traces** (data source `traces`, Tempo), **Drilldown → Traces**, or the board Observability → **Log and trace stores** |
 | Built-in UI | `http://traces.home.arpa:10428/select/vmui` (MGMT only, no login) |
 | Tempo API (Grafana's data source) | `http://traces.home.arpa:10428/select/tempo`: TraceQL search and metrics, what Traces Drilldown reads |
 | Jaeger API | `http://traces.home.arpa:10428/select/jaeger` (the smoke test reads back through it) |
@@ -50,7 +50,7 @@ seconds after it returns 200 (`vt_pending_rows`).
 
 ## Gotchas
 
-- The Service box on the trace dashboard holds a placeholder (`type-a-service`) that no service has, so the search shows *no data* until a sender exists.
+- The Log and trace stores board has no trace search panel, because nothing sends traces yet. Search with Explore → **Traces** once a sender exists.
 - The smoke service `lab-smoke` stays until the 30-day retention drops it. It is a test record, not an app.
 - The release's `-healthcheck` flag is not used: `/health` is what the monitoring block probes.
 

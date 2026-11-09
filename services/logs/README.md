@@ -7,7 +7,7 @@ apps follow: [docs/standards/observability.md](../../docs/standards/observabilit
 
 | | |
 | --- | --- |
-| Query | Grafana → Explore → **VictoriaLogs**, or the Service dashboard's Logs panel. Built-in UI: `http://10.10.10.18:9428/select/vmui` (MGMT/TRUSTED/admin-gw only, no login) |
+| Query | Grafana → Explore → **VictoriaLogs**, or the Logs panel of Infrastructure → Host and guest. Built-in UI: `http://10.10.10.18:9428/select/vmui` (MGMT/TRUSTED/admin-gw only, no login) |
 | Retention | 30 days, hard cap 6 GiB (10 GB disk). At the cap the oldest days go first (`LogsNearDiskCap`, info) |
 | Built by | `proxmox/opentofu/logs.tf` → `setup.sh` (pinned release + sha256) |
 | Version | `VL_VERSION` in `setup.sh` (community release from GitHub, tarball checksum pinned) |

@@ -97,7 +97,7 @@ a guest falls out of the job.
    before and after (`./scripts/hex-snapshot.sh`).
 4. Verify:
    - Prometheus → Targets: its targets `up`.
-   - The Service dashboard shows it, including logs.
+   - The Host and guest board (Infrastructure) shows it, including logs.
    - Stop its service once: `HttpProbeFailed` fires (silence it first if
      it's the middle of the night).
 5. After the next nightly run (or `vzdump <vmid> --storage pbs`), its
