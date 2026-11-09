@@ -78,8 +78,9 @@ apt-get install -y -qq "postgresql-${PG_MAJOR}" prometheus-postgres-exporter
 # --- server config -----------------------------------------------------------------
 # What the server reads only when it starts. If none of it changes, the run
 # reloads instead of restarting (below), so pg_hba changes drop no session.
+# On a fresh CT neither file exists yet: `|| true`, or pipefail ends the run here.
 start_inputs() {
-  cat "$CONF/conf.d/homelab.conf" "/etc/systemd/system/postgresql@${PG_MAJOR}-main.service.d/wait-for-address.conf" 2>/dev/null | sha256sum
+  { cat "$CONF/conf.d/homelab.conf" "/etc/systemd/system/postgresql@${PG_MAJOR}-main.service.d/wait-for-address.conf" 2>/dev/null || true; } | sha256sum
 }
 start_inputs_before=$(start_inputs)
 
