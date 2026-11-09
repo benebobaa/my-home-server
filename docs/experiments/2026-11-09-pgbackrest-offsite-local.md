@@ -31,6 +31,45 @@ container, so the container was given `nameserver 8.8.8.8` and a hosts entry
 for the S3 stand-in. A first `apt-get` hung on a stalled connection and was
 killed.
 
+## Commands
+
+From the repo root on the Mac (test-only credentials; the scratchpad
+directory `$S` holds the certificate and the stdin file):
+
+```bash
+# S3 stand-in, HTTPS on 443 (small volumes: the defaults returned HTTP 500,
+# "no free volumes left")
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=s3 -addext subjectAltName=DNS:s3 -keyout $S/key.pem -out $S/cert.pem
+docker network create pgbr-net
+docker run -d --name pgbr-s3 --hostname s3 --network pgbr-net --ip 192.168.148.3 -v $S:/certs:ro chrislusf/seaweedfs:latest   server -dir=/data -volume.max=50 -master.volumeSizeLimitMB=64 -s3 -s3.port=443   -s3.cert.file=/certs/cert.pem -s3.key.file=/certs/key.pem -s3.config=/certs/s3.json   # two identities: read/write, read-only
+docker exec pgbr-s3 sh -c 'echo "s3.bucket.create -name pgbr-test" | weed shell'
+
+# "CT 130": Debian 13 with systemd as PID 1 (image: debian:trixie + systemd)
+docker run -d --name pgbr-pg --hostname postgres --network pgbr-net --privileged --cgroupns=host   -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock pgbr-test:trixie
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata --exclude README.md -C services/postgres -cf - .   | docker exec -i pgbr-pg sh -c 'rm -rf /root/postgres && mkdir -p /root/postgres && tar -xf - -C /root/postgres'
+docker exec pgbr-pg bash /root/postgres/setup.sh 192.168.148.2 192.168.148.0/24 192.168.148.100
+
+# stdin: B2_KEY_ID, B2_APP_KEY, B2_BUCKET=pgbr-test, B2_ENDPOINT=s3, B2_REGION=us-east-1,
+#        CIPHER_PASS=$(openssl rand -base64 36), S3_URI_STYLE=path, S3_VERIFY_TLS=n
+docker exec -i pgbr-pg bash /root/postgres/offsite.sh < $S/stdin.env          # → PENDING
+docker exec pgbr-pg bash /root/postgres/offsite.sh </dev/null                 # reuse config → PENDING
+docker exec pgbr-pg bash /root/postgres/offsite.sh --restart-ok </dev/null    # → live, first full
+
+# Rows around a target time, then a segment switch
+psql -d kubeletto -c "INSERT INTO drill (note) VALUES ('AFTER-BACKUP row: must survive PITR')"
+psql -XAtc "SELECT now()"                                                     # → the target
+psql -d kubeletto -c "INSERT INTO drill (note) VALUES ('AFTER-TARGET row: must NOT be in the copy')" -c "SELECT pg_switch_wal()"
+
+# Restore: a fresh container per docs/runbooks/backup-restore.md (read-only identity), then
+pgbackrest --stanza=main --type=time --target='2026-11-09 10:37:59.006464+00' --target-action=promote restore
+
+# Guard (in pgbr-pg, after a second full)
+PG_OFFSITE_FAKE_REPO_BYTES=9500000000 /usr/local/sbin/pg-offsite daily
+```
+
+(`psql` and `pgbackrest` above run in the container as `postgres`:
+`docker exec pgbr-pg runuser -u postgres -- ...`.)
+
 ## Results
 
 | Step | Result |
@@ -51,6 +90,12 @@ killed.
 | Timers | `pg-offsite-metrics.timer` every 5 min; `pg-offsite-daily.timer` 21:00 UTC (04:00 WIB) |
 | Files | `/etc/pgbackrest/pgbackrest.conf` 0640 root:postgres; secrets shown as `<redacted>` in every pgBackRest log line; `/var/log/pgbackrest` empty (`log-level-file=off`) |
 | Last run, the committed files | Same sha256 as the repo; `setup.sh` and `offsite.sh` re-run on the live-archiving container: no restart, `archiving to the bucket is live` |
+
+Checked separately: PGDG's `postgresql@.service` (postgresql-common
+293.pgdg13+1) sets no `PrivateTmp`, so `archive_command` and a
+`pgbackrest stop` run over `pct exec` share pgBackRest's default lock
+directory `/tmp/pgbackrest`; the `stop` steps in the runbooks reach the
+archiver.
 
 Containers, network and the test images were removed afterwards.
 
