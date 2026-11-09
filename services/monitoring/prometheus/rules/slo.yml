@@ -1,0 +1,68 @@
+# The one SLO (ADR 0036, decision 6): availability of the Kubeletto public API.
+#
+#   SLI        min(probe_success{job="blackbox_public"}): the service is up at a
+#              moment when BOTH synthetic probes (api /healthz, the registry's
+#              token endpoint) succeed. One probe a minute, constant rate.
+#              Traefik 5xx is not used: a client-cancelled upload shows as one.
+#   Objective  99.5 % over 30 days: an error budget of 0.005 = 3 h 36 min.
+#   Burn rate  error ratio over a window / 0.005. 1 spends exactly the budget
+#              over 30 days; 14.4 spends 2 % of it in 1 h (gone in 2 days); 6
+#              spends 5 % in 6 h (gone in 5 days).
+#
+# Multiwindow multi-burn-rate (Google SRE Workbook, "Alerting on SLOs"): an
+# alert needs the long AND the short window over the threshold. The long one
+# says the budget is really being spent, the short one makes the alert stop
+# soon after the outage does. `$value` is the left-hand sample, so the long
+# window is written first.
+#
+# The error ratio is computed straight from the probes with a subquery at the
+# probe's own 1 m step, not from a recording rule: nothing to warm up (a new
+# rule would need 3 days of history for the slow alert) and no extra series.
+# 3 d at 1 m is 4,320 steps over 2 series, about 3 ms per evaluation. Time
+# with no probe sample (the monitoring host down) is in no window: no data is
+# neither good nor bad, and an empty window raises no alert.
+#
+# KubelettoPublicPathDown (network.yml) is the fast, binary companion: 5 min of
+# either probe down. These alerts say how much of the budget it cost.
+# Tests: tests/slo.test.yml. Runbook: alerts.md, "Service level objectives".
+groups:
+  - name: kubeletto-slo
+    rules:
+      - alert: KubelettoErrorBudgetBurnFast
+        expr: |
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[1h:1m])) / 0.005 > 14.4
+          and
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[5m:1m])) / 0.005 > 14.4
+        for: 2m
+        labels: { severity: critical, instance: kubeletto-public }
+        annotations:
+          summary: 'Kubeletto is failing its probes: error budget burning at {{ $value | printf "%.1f" }}x over 1 h (page at 14.4x)'
+          description: "The Kubeletto public probes (the API and the registry token endpoint, both must answer) are failing now and have used up more than 2 % of the 30-day error budget in the last hour; at this pace the budget is gone in 2 days, and customers see the console, CLI or image pulls fail. Open the Kubeletto board: the Public probes panel shows which probe is red, and KubelettoPublicPathDown has the cause."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnfast
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+      - alert: KubelettoErrorBudgetBurnMedium
+        expr: |
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[6h:1m])) / 0.005 > 6
+          and
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[30m:1m])) / 0.005 > 6
+        for: 15m
+        labels: { severity: critical, instance: kubeletto-public }
+        annotations:
+          summary: 'Kubeletto keeps failing its probes: error budget burning at {{ $value | printf "%.1f" }}x over 6 h (page at 6x)'
+          description: "The Kubeletto public probes have used up more than 5 % of the 30-day error budget in the last 6 hours and are still failing, so an outage that is not over, or one flaky enough to keep coming back, will exhaust the budget in 5 days. Open the Kubeletto board, row Error budget and burn rate, and read the Public probes panel over the last 6 hours: the tunnel, Cloudflare and the household line are the usual causes."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnmedium
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+      - alert: KubelettoErrorBudgetBurnSlow
+        expr: |
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[3d:1m])) / 0.005 > 1
+          and
+          (1 - avg_over_time(min(probe_success{job="blackbox_public"})[6h:1m])) / 0.005 > 1
+        for: 1h
+        labels: { severity: warning, instance: kubeletto-public }
+        annotations:
+          summary: 'Kubeletto is slowly spending its error budget: burning at {{ $value | printf "%.1f" }}x over 3 d (warn at 1x)'
+          description: "The Kubeletto public probes have failed more often over the last 3 days than the 99.5 % objective allows, and the last 6 hours are no better, so at this pace the 30-day budget runs out before the 30 days do (it has used more than 10 % in 3 days). Nothing pages for it: it is a leak, not an outage. Open the Kubeletto board and look for the repeating pattern in the Public probes panel (a nightly restart, a flaky tunnel, a probe timeout)."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnslow
+          dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto

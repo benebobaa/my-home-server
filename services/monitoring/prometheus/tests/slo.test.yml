@@ -1,0 +1,293 @@
+# promtool unit tests for rules/slo.yml (make check): the Kubeletto availability
+# SLO, 99.5 % over 30 days (ADR 0036, decision 6). The probes answer once a minute,
+# so every series has one sample a minute and the rules run every minute.
+#
+# Arithmetic the cases rely on. burn = error ratio / 0.005. A failed probe minute is
+# one failed step of the 1 m subquery, and a window of N minutes holds N + 1 steps
+# (both ends count), so:
+#   Fast   1 h burn > 14.4 needs 5 failed minutes of the last 61 steps (limit 4.39)
+#   Medium 6 h burn > 6    needs 11 failed minutes of 361 (limit 10.83)
+#   Slow   3 d burn > 1    needs 22 failed minutes of 4,321 (limit 21.6)
+# A window holds only the samples that exist, so a case that must stay quiet starts
+# with enough clean history. promtool compares expression values exactly, so the
+# expression checks below use `> bool` and `< bool` (1 or 0) and the comments give
+# the numbers.
+rule_files:
+  - ../rules/slo.yml
+
+evaluation_interval: 1m
+
+tests:
+  # --- 1. both probes down for 70 minutes (minutes 360-429), then back
+  # Fast: 5 failed minutes make its condition true at minute 364, it is pending for
+  # its 2 m and fires at 366. Medium: 11 failed minutes at 370, 15 m pending, fires
+  # at 385. At 429 the whole last hour is down: 1 h burn 200 (the ceiling: error
+  # ratio 1 / 0.005), 6 h burn 70 / 361 / 0.005 = 38.8. Once the probes are back
+  # Fast stops at once (its 5 m window is clean though the 1 h window is still bad)
+  # and Medium goes on until its 30 m window is clean as well.
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x359 0x69 1x40'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x359 0x69 1x40'
+    alert_rule_test:
+      - eval_time: 365m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 368m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto is failing its probes: error budget burning at 29.5x over 1 h (page at 14.4x)"
+              description: &fast_desc "The Kubeletto public probes (the API and the registry token endpoint, both must answer) are failing now and have used up more than 2 % of the 30-day error budget in the last hour; at this pace the budget is gone in 2 days, and customers see the console, CLI or image pulls fail. Open the Kubeletto board: the Public probes panel shows which probe is red, and KubelettoPublicPathDown has the cause."
+              runbook_url: &fast_rb https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnfast
+              dashboard_url: &dash http://10.10.10.16:3000/d/homelab-apps-kubeletto
+      - eval_time: 380m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 400m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto keeps failing its probes: error budget burning at 22.7x over 6 h (page at 6x)"
+              description: &med_desc "The Kubeletto public probes have used up more than 5 % of the 30-day error budget in the last 6 hours and are still failing, so an outage that is not over, or one flaky enough to keep coming back, will exhaust the budget in 5 days. Open the Kubeletto board, row Error budget and burn rate, and read the Public probes panel over the last 6 hours: the tunnel, Cloudflare and the household line are the usual causes."
+              runbook_url: &med_rb https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnmedium
+              dashboard_url: *dash
+      - eval_time: 429m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto is failing its probes: error budget burning at 200.0x over 1 h (page at 14.4x)"
+              description: *fast_desc
+              runbook_url: *fast_rb
+              dashboard_url: *dash
+      - eval_time: 429m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto keeps failing its probes: error budget burning at 38.8x over 6 h (page at 6x)"
+              description: *med_desc
+              runbook_url: *med_rb
+              dashboard_url: *dash
+      - eval_time: 437m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 437m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto keeps failing its probes: error budget burning at 38.8x over 6 h (page at 6x)"
+              description: *med_desc
+              runbook_url: *med_rb
+              dashboard_url: *dash
+
+  # --- 2. a 3-minute blip of both probes after 12 h of clean history never pages.
+  # The 5 m burn is 3 / 6 / 0.005 = 100 but the 1 h burn is 3 / 61 / 0.005 = 9.8,
+  # under 14.4: both windows must agree, so Fast stays quiet. Medium's 6 h burn
+  # (1.7) and Slow's 3 d burn (0.83) are far under their lines too.
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x719 0x2 1x179'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x719 0x2 1x179'
+    promql_expr_test:
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[5m:1m])) / 0.005 > bool 14.4'
+        eval_time: 722m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[1h:1m])) / 0.005 > bool 14.4'
+        eval_time: 722m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 724m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 730m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 730m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 800m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 800m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts: []
+      - eval_time: 900m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # --- 3. steady 99.9 % (both probes fail the same minute, once in 1000) for 2 days
+  # fires nothing. Right at a failed probe the short windows are over their lines
+  # (5 m burn 33; 30 m burn 6.45, above Medium's 6) while the long ones are not (1 h
+  # burn 3.3, 6 h burn 0.55): that is what the second window is for. The 3 d burn
+  # is 0.2.
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x998 0 1x998 0 1x998 0'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x998 0 1x998 0 1x998 0'
+    promql_expr_test:
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[30m:1m])) / 0.005 > bool 6'
+        eval_time: 999m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[6h:1m])) / 0.005 > bool 6'
+        eval_time: 999m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[3d:1m])) / 0.005 < bool 1'
+        eval_time: 2999m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+    alert_rule_test:
+      - eval_time: 999m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 999m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 1010m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 1010m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 2999m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 2999m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 2999m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # --- 4. a mild leak: one failed minute in 100 (1 % errors, both probes at the same
+  # minute) for 3.2 days. Never a page: the 1 h burn is 3.3 and the 6 h burn about
+  # 2, under 14.4 and 6. Slow fires: the 3 d burn is 2.0 and the 6 h burn is over
+  # 1. (With a short history Slow judges what exists: it is already pending after
+  # the first failed minute and fires an hour later; at 4400 m, past 3 days, the
+  # 3 d window is full.)
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0 1x98 0'
+    alert_rule_test:
+      - eval_time: 4400m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 4400m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 4400m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto is slowly spending its error budget: burning at 2.0x over 3 d (warn at 1x)"
+              description: &slow_desc "The Kubeletto public probes have failed more often over the last 3 days than the 99.5 % objective allows, and the last 6 hours are no better, so at this pace the 30-day budget runs out before the 30 days do (it has used more than 10 % in 3 days). Nothing pages for it: it is a leak, not an outage. Open the Kubeletto board and look for the repeating pattern in the Public probes panel (a nightly restart, a flaky tunnel, a probe timeout)."
+              runbook_url: &slow_rb https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettoerrorbudgetburnslow
+              dashboard_url: *dash
+
+  # --- 5. ONE probe down while the other is up counts as down (the SLI is the min).
+  # kubeletto-registry-auth fails for 7 minutes (360-366); kubeletto-api stays up.
+  # By the min the 1 h burn is 7 / 61 / 0.005 = 23.0 and Fast fires. An average of
+  # the two probes would read half that (11.5, under 14.4) and miss it.
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x426'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x359 0x6 1x60'
+    promql_expr_test:
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[1h:1m])) / 0.005 > bool 14.4'
+        eval_time: 367m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: '(1 - avg_over_time(avg(probe_success{job="blackbox_public"})[1h:1m])) / 0.005 > bool 14.4'
+        eval_time: 367m
+        exp_samples:
+          - labels: '{}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 367m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto is failing its probes: error budget burning at 23.0x over 1 h (page at 14.4x)"
+              description: *fast_desc
+              runbook_url: *fast_rb
+              dashboard_url: *dash
+      - eval_time: 367m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts: []
+      - eval_time: 380m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts: []
+
+  # --- 6. a 20-minute outage after 3 clean days (minutes 4320-4339). It costs
+  # 20 / 4321 / 0.005 = 0.93 of the 3 d budget, under Slow's line of 1, although
+  # the 6 h window (burn 11) is bad: the long window keeps Slow quiet. Fast and
+  # Medium fire (20 failed minutes are more than 5 and 11).
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-api",role="public"}'
+        values: '1x4319 0x19 1x179'
+      - series: 'probe_success{job="blackbox_public",instance="kubeletto-registry-auth",role="public"}'
+        values: '1x4319 0x19 1x179'
+    promql_expr_test:
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[3d:1m])) / 0.005 < bool 1'
+        eval_time: 4519m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+      - expr: '(1 - avg_over_time(min(probe_success{job="blackbox_public"})[6h:1m])) / 0.005 > bool 6'
+        eval_time: 4519m
+        exp_samples:
+          - labels: '{}'
+            value: 1
+    alert_rule_test:
+      - eval_time: 4335m
+        alertname: KubelettoErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto is failing its probes: error budget burning at 52.5x over 1 h (page at 14.4x)"
+              description: *fast_desc
+              runbook_url: *fast_rb
+              dashboard_url: *dash
+      - eval_time: 4350m
+        alertname: KubelettoErrorBudgetBurnMedium
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: kubeletto-public }
+            exp_annotations:
+              summary: "Kubeletto keeps failing its probes: error budget burning at 11.1x over 6 h (page at 6x)"
+              description: *med_desc
+              runbook_url: *med_rb
+              dashboard_url: *dash
+      - eval_time: 4400m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts: []
+      - eval_time: 4519m
+        alertname: KubelettoErrorBudgetBurnSlow
+        exp_alerts: []

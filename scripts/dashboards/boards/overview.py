@@ -4,7 +4,13 @@ Top row = the answer (8 stats, same thresholds as the alerts they mirror).
 Below: what is firing now, whether it is getting worse, and the capacity runway.
 Alert expressions mirrored here (rules/): PveClusterNotQuorate, HostUnreachable,
 InternetDown, KubelettoPublicPathDown, PveGuestNotBackedUp, WanQuotaPaceHigh,
-WanInboundDayHigh, ThinPoolFilling / ThinPoolCritical.
+WanInboundDayHigh, ThinPoolFilling / ThinPoolCritical, and the level behind
+KubelettoErrorBudgetBurnFast / Medium / Slow (slo.yml: those fire on the rate, the tile
+shows what is left).
+
+The WAN inbound 7-day stat moved out of the top row (ADR 0036, decision 6 added the error
+budget tile; the top row holds 8): it sits beside its own rolling chart in "Is it getting
+worse?", which has the same query and the same 350 GB line.
 """
 from lib import (
     board, stat, up_stat, problem_stat, timeseries, bargauge, table, text,
@@ -16,6 +22,14 @@ NOT_BACKED_UP = (
     '(pve_not_backed_up_info == 1)'
     ' * on (id) group_left (name, node) pve_guest_info{template="0"}'
     ' unless on (id) pve_guest_info{name="pbs"}'
+)
+# ADR 0036 decision 6: the SLI is both public probes up; the budget is 1 - 99.5 %.
+# The 30-day subquery runs at the probes' own 1 m step (as the rules do): at 5 m it samples
+# one probe in five and read 24 % where the true figure on 2026-11-09 was 19 %.
+SLI = 'min(probe_success{job="blackbox_public"})'
+ERROR_BUDGET = 0.005
+BUDGET_LEFT = (
+    'clamp_min(100 * (1 - (1 - avg_over_time(' + SLI + '[30d:1m])) / ' + str(ERROR_BUDGET) + '), 0)'
 )
 FS = 'fstype=~"ext4|xfs|zfs|btrfs"'
 RUNWAY = (
@@ -68,6 +82,19 @@ def boards():
             "Kubeletto public API", 'min(probe_success{job="blackbox_public"})',
             desc="api.kubeletto.com/healthz and the registry token endpoint, probed through the "
                  "public edge (rule KubelettoPublicPathDown). The customer-facing path.", w=3),
+        stat(  # the level behind KubelettoErrorBudgetBurnFast / Medium / Slow
+            "Kubeletto error budget", BUDGET_LEFT, unit="percent", decimals=1, min=0, max=100,
+            thresholds=lo_bad(50, 25), w=3,
+            links=[("Kubeletto board", "/d/homelab-apps-kubeletto")],
+            desc="Share of the 30-day error budget left: 100 % minus the failure share of the "
+                 "last 30 days (the service counts as failed when either public probe fails) "
+                 "as a share of the 0.5 % that the 99.5 % objective allows, which is 3 h 36 min "
+                 "(ADR 0036). Red under 25 %, orange under 50 %, 0 % means the objective is "
+                 "missed. The probes exist only since the cutover on 2026-10-14, about 25 days, "
+                 "so until they have 30 days the figure is of the history that exists. No alert "
+                 "fires on the level: KubelettoErrorBudgetBurnFast, Medium and Slow fire on how "
+                 "fast it is being spent. The Kubeletto board's Error budget and burn rate row "
+                 "has the history and the burn rates."),
         up_stat(
             "Cluster quorum", 'max(pve_cluster_info{quorate="1"}) or vector(0)',
             desc="Proxmox cluster quorum (rule PveClusterNotQuorate). Two nodes down loses it: "
@@ -76,12 +103,6 @@ def boards():
             "Guests not backed up", f"count({NOT_BACKED_UP})",
             desc="Guests in no backup job (rule PveGuestNotBackedUp). Counts only what the Proxmox "
                  "API reports; it does not prove the last backup succeeded.", w=3),
-        stat(
-            "WAN inbound, 7 days", f"increase({WAN_IN}[7d])", unit="decbytes",
-            thresholds=steps(("green", None), ("orange", 300e9), ("red", 350e9)),
-            desc="Bytes received on the WAN port in the last 7 days. The ISP caps 1500 GB a month "
-                 "and throttles to 5 Mbit/s after; 350 GB a week is the pace that reaches it "
-                 "(rule WanQuotaPaceHigh).", w=3),
     ])
 
     b.row("Firing now", [
@@ -100,7 +121,7 @@ def boards():
             "Alerts firing over time", 'count by (severity) (ALERTS{alertstate="firing", alertname!="Watchdog"})',
             desc="How many alerts are firing at each severity. A staircase that only goes up "
                  "is something nobody is acting on; a spike that clears is a flap.",
-            unit="short", w=12, h=7, empty_ok=True, stack=True,
+            unit="short", w=10, h=7, empty_ok=True, stack=True,
             overrides=[
                 {"matcher": {"id": "byName", "options": "critical"},
                  "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
@@ -109,12 +130,19 @@ def boards():
                 {"matcher": {"id": "byName", "options": "info"},
                  "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]},
             ]),
+        stat(
+            "WAN inbound, 7 days", f"increase({WAN_IN}[7d])", unit="decbytes",
+            thresholds=steps(("green", None), ("orange", 300e9), ("red", 350e9)),
+            desc="Bytes received on the WAN port in the last 7 days. The ISP caps 1500 GB a month "
+                 "and throttles to 5 Mbit/s after; 350 GB a week is the pace that reaches it "
+                 "(rule WanQuotaPaceHigh). The chart to the right is the same number over time.",
+            w=4, h=7),
         timeseries(
             "WAN inbound, rolling 7 days", [(f"increase({WAN_IN}[7d])", "inbound 7 d")],
             desc="Bytes received in the trailing 7 days against the 350 GB pace that reaches the "
                  "ISP's 1500 GB monthly cap (dashed line, rule WanQuotaPaceHigh). The window is "
                  "7 days, so the first week after a Prometheus restart reads low.",
-            unit="decbytes", w=12, h=7,
+            unit="decbytes", w=10, h=7,
             thresholds=steps(("green", None), ("red", 350e9)), threshold_style="dashed",
             lint_ok=()),
     ])

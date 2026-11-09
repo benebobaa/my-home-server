@@ -452,6 +452,87 @@
     },
     {
       "type": "stat",
+      "title": "Kubeletto error budget",
+      "description": "Share of the 30-day error budget left: 100 % minus the failure share of the last 30 days (the service counts as failed when either public probe fails) as a share of the 0.5 % that the 99.5 % objective allows, which is 3 h 36 min (ADR 0036). Red under 25 %, orange under 50 %, 0 % means the objective is missed. The probes exist only since the cutover on 2026-10-14, about 25 days, so until they have 30 days the figure is of the history that exists. No alert fires on the level: KubelettoErrorBudgetBurnFast, Medium and Slow fire on how fast it is being spent. The Kubeletto board's Error budget and burn rate row has the history and the burn rates.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(100 * (1 - (1 - avg_over_time(min(probe_success{job=\"blackbox_public\"})[30d:1m])) / 0.005), 0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 25
+              },
+              {
+                "color": "green",
+                "value": 50
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [
+        {
+          "title": "Kubeletto board",
+          "url": "/d/homelab-apps-kubeletto",
+          "targetBlank": true
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
       "title": "Cluster quorum",
       "description": "Proxmox cluster quorum (rule PveClusterNotQuorate). Two nodes down loses it: guests keep running, management actions lock.",
       "datasource": {
@@ -526,9 +607,9 @@
         }
       },
       "links": [],
-      "id": 7,
+      "id": 8,
       "gridPos": {
-        "x": 15,
+        "x": 18,
         "y": 1,
         "w": 3,
         "h": 4
@@ -576,78 +657,6 @@
           },
           "mappings": [],
           "noValue": "0"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "auto",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "values": false,
-          "fields": ""
-        }
-      },
-      "links": [],
-      "id": 8,
-      "gridPos": {
-        "x": 18,
-        "y": 1,
-        "w": 3,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "WAN inbound, 7 days",
-      "description": "Bytes received on the WAN port in the last 7 days. The ISP caps 1500 GB a month and throttles to 5 Mbit/s after; 350 GB a week is the pace that reaches it (rule WanQuotaPaceHigh).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "increase(ifHCInOctets{job=\"snmp_hex\", ifName=\"ether1\"}[7d])",
-          "legendFormat": "",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "decbytes",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 300000000000.0
-              },
-              {
-                "color": "red",
-                "value": 350000000000.0
-              }
-            ]
-          },
-          "mappings": [],
-          "noValue": "n/a"
         },
         "overrides": []
       },
@@ -939,7 +948,79 @@
       "gridPos": {
         "x": 0,
         "y": 14,
-        "w": 12,
+        "w": 10,
+        "h": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "WAN inbound, 7 days",
+      "description": "Bytes received on the WAN port in the last 7 days. The ISP caps 1500 GB a month and throttles to 5 Mbit/s after; 350 GB a week is the pace that reaches it (rule WanQuotaPaceHigh). The chart to the right is the same number over time.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(ifHCInOctets{job=\"snmp_hex\", ifName=\"ether1\"}[7d])",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300000000000.0
+              },
+              {
+                "color": "red",
+                "value": 350000000000.0
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 14,
+      "gridPos": {
+        "x": 10,
+        "y": 14,
+        "w": 4,
         "h": 7
       }
     },
@@ -1017,16 +1098,16 @@
         }
       },
       "links": [],
-      "id": 14,
+      "id": 15,
       "gridPos": {
-        "x": 12,
+        "x": 14,
         "y": 14,
-        "w": 12,
+        "w": 10,
         "h": 7
       }
     },
     {
-      "id": 15,
+      "id": 16,
       "type": "row",
       "title": "Capacity runway",
       "collapsed": false,
@@ -1102,7 +1183,7 @@
           "fields": ""
         }
       },
-      "id": 16,
+      "id": 17,
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -1189,7 +1270,7 @@
         }
       },
       "links": [],
-      "id": 17,
+      "id": 18,
       "gridPos": {
         "x": 12,
         "y": 22,
@@ -1198,7 +1279,7 @@
       }
     },
     {
-      "id": 18,
+      "id": 19,
       "type": "row",
       "title": "Reading guide",
       "collapsed": false,
@@ -1218,7 +1299,7 @@
         "mode": "markdown",
         "content": "**Triage** (after an alert): the table above names it. Network → *Reachability* for ping, HTTP and DNS; Infrastructure → *Host and guest* for one machine; Observability → *Monitoring health* if the monitoring itself looks wrong.  \n**Review** (weekly): the runway row, the WAN quota and the alert history. Use the *Homelab boards* menu at the top for every board."
       },
-      "id": 19,
+      "id": 20,
       "gridPos": {
         "x": 0,
         "y": 31,

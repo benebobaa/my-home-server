@@ -759,3 +759,98 @@ the cap, writes fail with `OOM command not allowed`.
 keys: many keys without a TTL is an app bug).
 **Fix:** the app's TTLs; or raise `maxmemory` in `local.valkey_instances`
 (`proxmox/opentofu/valkey.tf`) within the CT's 256 MB.
+
+## Service level objectives
+
+The one SLO ([ADR 0036](../decisions/0036-observability-v2-generated-dashboards-and-alert-contract.md),
+decision 6): the **Kubeletto public API is up 99.5 % of the time over 30 days**.
+The error budget is the other 0.5 %: 3 h 36 min of failure in 30 days.
+
+- **SLI:** `min(probe_success{job="blackbox_public"})`, one sample a minute.
+  The service is up at a moment when *both* public probes answer
+  (`kubeletto-api`, the `/healthz` of the API, and `kubeletto-registry-auth`,
+  the registry's token endpoint). One probe down is the service down.
+  Traefik 5xx is not the SLI: an upload the client cancels shows as a 502.
+  A minute with no probe sample (the monitoring host was off) counts as
+  neither up nor down. The probes only exist since the cutover (about 25
+  days), so the 30-day figures describe the history there is.
+- **Burn rate** = error ratio over a window / 0.005. 1 spends exactly the budget
+  over 30 days; 14.4 spends 2 % of it in an hour; 6 spends 5 % in 6 hours.
+- **The alerts** (`rules/slo.yml`, tests in `tests/slo.test.yml`) need a long
+  and a short window both over the line: the long one says the budget is really
+  going, the short one lets the alert stop soon after the outage does.
+
+| Alert | Burn over | And over | Held | Severity | Budget spent in the long window |
+| --- | --- | --- | --- | --- | --- |
+| `KubelettoErrorBudgetBurnFast` | 1 h > 14.4 | 5 min | 2 min | critical | 2 % |
+| `KubelettoErrorBudgetBurnMedium` | 6 h > 6 | 30 min | 15 min | critical | 5 % |
+| `KubelettoErrorBudgetBurnSlow` | 3 d > 1 | 6 h | 1 h | warning | 10 % |
+
+**Reading it on the boards.** The Kubeletto board (Applications), row *Error
+budget and burn rate*: *Error budget left, 30 days* is what is still
+unspent (0 % = the objective is missed); *Burn rate against the alert lines*
+draws the 1 h, 6 h and 3 d burn rates with dashed lines at 14.4, 6 and 1 (the
+1 h line against 14.4, the 6 h against 6, the 3 d against 1; the top of the
+chart is clipped at 20, the tooltip has the number); *Availability, 30 days,
+against the objective* is the same history as a percentage against 99.5 %. The
+Overview has one tile, *Kubeletto error budget* (red under 25 %). The
+*Availability, 24 h / 7 d* tiles at the top of the Kubeletto board average each
+probe on its own and take the weaker, so they read better than the SLI
+whenever the two probes fail at different times.
+
+**`KubelettoPublicPathDown` is the fast, binary companion**: a warning after
+5 minutes of either probe down, with no memory. In a total outage it fires
+about 5 minutes in, `KubelettoErrorBudgetBurnFast` about a minute later and
+`KubelettoErrorBudgetBurnMedium` about 25 minutes in. The
+burn-rate alerts say how much the outage cost, and catch what a 5-minute rule
+cannot: an outage that is over, or a path that fails a minute in every few.
+
+### KubelettoErrorBudgetBurnFast
+**Meaning:** over the last hour the public probes failed so often (at least 5
+failed minutes in the hour; burn over 14.4) that more than 2 % of the 30-day
+error budget has gone, and they are failing in the last 5 minutes too, so it is
+happening now. At this pace the whole budget is gone in 2 days. Customers see
+the console, the CLI or image pulls fail. Fires after 5 failed minutes plus the
+2-minute hold.
+**Check:** `KubelettoPublicPathDown` is firing too and its section has the
+causes. On the Kubeletto board: *Public probes: up or down* (which probe is
+red), *Core ready* (platform or path: green means the line, Cloudflare, the
+tunnel or DNS), then Network → Reachability and *Router and WAN*, since the
+probe crosses the household line twice. By hand:
+`curl -si https://api.kubeletto.com/healthz`.
+**Fix:** the cause, as for `KubelettoPublicPathDown`. The alert clears about 5
+minutes after the probes recover; the budget it cost stays spent and shows in
+*Error budget left, 30 days*.
+
+### KubelettoErrorBudgetBurnMedium
+**Meaning:** over the last 6 hours the probes failed for at least 11 minutes
+(burn over 6, more than 5 % of the budget) and also in the last 30 minutes. At
+this pace the budget is gone in 5 days. It pages although the outage may be
+over by the time you read it: an outage of 11 minutes or more fires it 15
+minutes later, and it clears 30 minutes after the last failure. It also fires
+for a path that keeps failing in small pieces, which `KubelettoPublicPathDown`
+never sees.
+**Check:** *Public probes: up or down* over the last 6 hours: one long hole is
+an outage, repeated short holes are a flaky path (the tunnel, Cloudflare, the
+household line, Network → *Router and WAN*). *Burn rate against the alert
+lines*: the 6 h line against 6. If the probes are green now, the question is
+what the outage cost: *Error budget left, 30 days*.
+**Fix:** the cause. Nothing to do if it is already fixed: it clears when the
+30-minute window is clean. An outage worth keeping gets a note under
+`docs/incidents/`.
+
+### KubelettoErrorBudgetBurnSlow
+**Meaning:** over the last 3 days the probes failed more often than 99.5 %
+allows (burn over 1, more than 10 % of the budget in 3 days) and the last 6
+hours are no better, so at this pace the 30-day budget runs out before the 30
+days do. A warning (held 23:00-07:00 WIB): a leak, not an outage. It fires
+once the outages of 3 days add up to 22 minutes or more, so one 25-minute
+outage is enough, and it then clears about 6 hours after the last failure.
+**Check:** *Burn rate against the alert lines*: the 3 d line against 1. The
+*Public probes* panel with the time range at 3 days: holes at the same time of
+day point to a schedule (a restart, a backup filling the line), random holes to
+the path. The ISP quota throttle (`WanQuotaPaceHigh`, *Router and WAN*) slows
+the line that the probes cross twice.
+**Fix:** remove the cause of the leak. If the cause cannot be removed and the
+objective is wrong for this setup, change the objective with a new ADR; do not
+silence the alert.

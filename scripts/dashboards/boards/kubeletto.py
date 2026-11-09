@@ -1,14 +1,16 @@
 """Kubeletto: "is the PaaS working for its customers?" The platform as a service, from what
 Prometheus can see today. Method RED (rate, errors, duration) for the edge and the public
-probes; the SLO tag is on it because a burn-rate row is added later (ADR 0036).
+probes; the SLO tag is on it because it carries the error-budget and burn-rate row (ADR 0036,
+decision 6; the rules are rules/slo.yml).
 
 Top row = the answer, with the thresholds of the alert rules it mirrors:
 KubelettoPublicPathDown (network.yml), HttpProbeFailed on the k3s health URL (network.yml),
 KubelettoUsageMeterStale and KubelettoUsageMeterMissing, K8sPlatformPodNotReady,
 K8sTenantLogsThrottled and K8sLogsDropped (k8s.yml). The rows below: the public path
-(availability against the 99.5 % objective, probe time), the core and its usage meters, the
-Traefik edge by service group, the log pipeline, the platform pods, and a plain statement of
-what is not instrumented.
+(availability against the 99.5 % objective, probe time), the error budget and burn rate
+(mirrors KubelettoErrorBudgetBurnFast, Medium and Slow in rules/slo.yml: the same expression,
+the same 14.4 / 6 / 1 lines), the core and its usage meters, the Traefik edge by service
+group, the log pipeline, the platform pods, and a plain statement of what is not instrumented.
 
 Provenance: no upstream mixin or vendor board was consulted. Every query is derived from the
 live metric names (blackbox_public and blackbox_http probes; service_dmz ports 30080 core
@@ -63,6 +65,9 @@ METER_STALE_S = 1800
 METER_NOTE_S = 900
 
 AVAILABILITY_OBJECTIVE = 0.995  # ADR 0036: 99.5 % (the SLO window there is 30 days)
+ERROR_BUDGET = 0.005            # 1 - the objective; rules/slo.yml divides by the same number
+# The SLI of ADR 0036 decision 6: the service is up when BOTH public probes answer.
+SLI = f'min(probe_success{{{PUBLIC}}})'
 
 def req(extra: str = "") -> str:
     """Traefik's per-route request counter, optionally narrowed (', code=~"5.."')."""
@@ -112,9 +117,10 @@ def boards():
     b = board(
         uid="homelab-apps-kubeletto", title="Kubeletto", folder="Applications",
         description="Is Kubeletto working for its customers? The public path (availability "
-                    "against 99.5 %, probe time), the core and its usage meters, the Traefik "
-                    "edge by route, the log pipeline and the platform pods. Open it after "
-                    "KubelettoPublicPathDown, KubelettoUsageMeter*, K8sPlatformPod*, "
+                    "against 99.5 %, probe time), the error budget and its burn rate, the core "
+                    "and its usage meters, the Traefik edge by route, the log pipeline and the "
+                    "platform pods. Open it after KubelettoPublicPathDown, "
+                    "KubelettoErrorBudgetBurn*, KubelettoUsageMeter*, K8sPlatformPod*, "
                     "K8sTenantLogsThrottled or K8sLogsDropped, or on the weekly review.",
         method="red", filename="kubeletto", time_from="now-24h", extra_tags=("slo",),
     )
@@ -229,8 +235,8 @@ def boards():
                  "the 99.5 % objective of ADR 0036 (whose window is 30 days): a line under it "
                  "is spending the budget faster than the objective allows. The 24-hour line "
                  "drops sharply in an outage and recovers a day later; the 7-day line moves "
-                 "slowly. No alert fires on it. An error-budget and burn-rate row follows "
-                 "this one in a later phase."), 0.99, 1),
+                 "slowly. No alert fires on it. The row below reads the same probes as an "
+                 "error budget: each probe on its own here, the two together there."), 0.99, 1),
         timeseries(
             "Public probe time",
             [(f'probe_duration_seconds{{{PUBLIC}}}', "{{instance}} total"),
@@ -246,6 +252,66 @@ def boards():
                  "the line is shared and, after the ISP quota, throttled (Router and WAN "
                  "board). A band that stays high for hours is the line. No alert rule "
                  "watches latency."),
+    ])
+
+    # --- the error budget (ADR 0036, decision 6; rules/slo.yml) -----------------------
+    # Every query is the rules' own expression: a subquery of the SLI at the probe's own 1 m
+    # step. 1 m, not 5 m: at 5 m the 30-day figure samples one probe in five, and on
+    # 2026-11-09 read 24 % of the budget left where every probe says 19 %.
+    # The range panels run a 30-day (or 3-day) subquery at every point, so they carry a
+    # minimum step ("interval") that keeps a 24 h view at about 100 evaluations.
+    b.row("Error budget and burn rate", [
+        timeseries(
+            "Error budget left, 30 days",
+            [(f'clamp_min(100 * (1 - (1 - avg_over_time({SLI}[30d:1m])) / {ERROR_BUDGET}), 0)',
+              "budget left", {"interval": "15m"})],
+            unit="percent", decimals=1, w=8, h=8, max=100, legend="hidden",
+            thresholds=lo_bad(50, 25), threshold_style="dashed",
+            desc="Share of the 30-day error budget still unspent, over time: 100 % minus the "
+                 "failure share of the last 30 days (the service counts as failed when either "
+                 "public probe fails) as a share of the 0.5 % that the 99.5 % objective "
+                 "allows (3 h 36 min; ADR 0036). Dashed lines at 50 % and 25 %, the "
+                 "orange and red of the Overview tile. 0 % is clamped: the objective is "
+                 "missed. The probes exist since the cutover (2026-10-14), so until they have "
+                 "30 days of history the figure is of the history that exists. The line falls "
+                 "in steps during an outage and rises slowly as old failures leave the "
+                 "window. No alert fires on the level: KubelettoErrorBudgetBurn* fire on "
+                 "the rate."),
+        timeseries(
+            "Burn rate against the alert lines",
+            [(f'(1 - avg_over_time({SLI}[1h:1m])) / {ERROR_BUDGET}',
+              "1 h (Fast: over 14.4)"),
+             (f'(1 - avg_over_time({SLI}[6h:1m])) / {ERROR_BUDGET}',
+              "6 h (Medium: over 6)"),
+             (f'(1 - avg_over_time({SLI}[3d:1m])) / {ERROR_BUDGET}',
+              "3 d (Slow: over 1)", {"interval": "5m"})],
+            unit="suffix:x", decimals=1, w=8, h=8, max=20,
+            thresholds=steps(("green", None), ("orange", 1), ("red", 6), ("dark-red", 14.4)),
+            threshold_style="dashed",
+            desc="How fast the error budget is being spent, over the last hour, 6 hours and "
+                 "3 days: the failure share of the window divided by the 0.5 % budget, so 1 "
+                 "spends exactly the budget over 30 days. The dashed lines are the alert "
+                 "thresholds: 14.4 for the 1 h line (KubelettoErrorBudgetBurnFast: 2 % of the "
+                 "budget in an hour), 6 for the 6 h line (Medium: 5 % in 6 hours), 1 for the 3 d "
+                 "line (Slow: 10 % in 3 days). An alert also needs its short window (5 min, "
+                 "30 min, 6 h) over the same line, which is not drawn: a line over its "
+                 "threshold that the alert has not fired on is an outage already over. The "
+                 "top of the chart is clipped at 20; hover for the number (a total outage is "
+                 "200 on the 1 h line)."),
+        _soft_range(timeseries(
+            "Availability, 30 days, against the objective",
+            [(f'avg_over_time({SLI}[30d:1m])', "both probes up", {"interval": "15m"})],
+            unit="percentunit", decimals=2, min=None, w=8, h=8, legend="hidden",
+            thresholds=_line_at(AVAILABILITY_OBJECTIVE), threshold_style="dashed",
+            desc="The share of the last 30 days in which both public probes answered "
+                 "correctly (the SLI of ADR 0036), against the 99.5 % objective (dashed red "
+                 "line). The same history as the budget panel, as a percentage. It is lower "
+                 "than the Availability tiles at the top of the board whenever the two probes "
+                 "fail at different times, because those average each probe on its own and "
+                 "take the weaker, while this counts a minute as failed when either fails. "
+                 "Probes exist since the cutover (2026-10-14): until they have 30 days the "
+                 "figure is of the history that exists. No alert fires on the level."),
+            0.99, 1),
     ])
 
     # --- the core and its meters ---------------------------------------------------

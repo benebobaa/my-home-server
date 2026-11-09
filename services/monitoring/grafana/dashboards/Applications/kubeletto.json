@@ -1,7 +1,7 @@
 {
   "uid": "homelab-apps-kubeletto",
   "title": "Kubeletto",
-  "description": "Is Kubeletto working for its customers? The public path (availability against 99.5 %, probe time), the core and its usage meters, the Traefik edge by route, the log pipeline and the platform pods. Open it after KubelettoPublicPathDown, KubelettoUsageMeter*, K8sPlatformPod*, K8sTenantLogsThrottled or K8sLogsDropped, or on the weekly review.",
+  "description": "Is Kubeletto working for its customers? The public path (availability against 99.5 %, probe time), the error budget and its burn rate, the core and its usage meters, the Traefik edge by route, the log pipeline and the platform pods. Open it after KubelettoPublicPathDown, KubelettoErrorBudgetBurn*, KubelettoUsageMeter*, K8sPlatformPod*, K8sTenantLogsThrottled or K8sLogsDropped, or on the weekly review.",
   "tags": [
     "homelab",
     "applications",
@@ -773,7 +773,7 @@
     {
       "type": "timeseries",
       "title": "Availability against the 99.5 % objective",
-      "description": "Rolling availability of each public probe over the last 24 hours and 7 days: the share of probes that answered correctly. The dashed red line is the 99.5 % objective of ADR 0036 (whose window is 30 days): a line under it is spending the budget faster than the objective allows. The 24-hour line drops sharply in an outage and recovers a day later; the 7-day line moves slowly. No alert fires on it. An error-budget and burn-rate row follows this one in a later phase.",
+      "description": "Rolling availability of each public probe over the last 24 hours and 7 days: the share of probes that answered correctly. The dashed red line is the 99.5 % objective of ADR 0036 (whose window is 30 days): a line under it is spending the budget faster than the objective allows. The 24-hour line drops sharply in an outage and recovers a day later; the 7-day line moves slowly. No alert fires on it. The row below reads the same probes as an error budget: each probe on its own here, the two together there.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -956,11 +956,312 @@
     {
       "id": 14,
       "type": "row",
-      "title": "Is the core ready, and is metering on time?",
+      "title": "Error budget and burn rate",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Error budget left, 30 days",
+      "description": "Share of the 30-day error budget still unspent, over time: 100 % minus the failure share of the last 30 days (the service counts as failed when either public probe fails) as a share of the 0.5 % that the 99.5 % objective allows (3 h 36 min; ADR 0036). Dashed lines at 50 % and 25 %, the orange and red of the Overview tile. 0 % is clamped: the objective is missed. The probes exist since the cutover (2026-10-14), so until they have 30 days of history the figure is of the history that exists. The line falls in steps during an outage and rises slowly as old failures leave the window. No alert fires on the level: KubelettoErrorBudgetBurn* fire on the rate.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "clamp_min(100 * (1 - (1 - avg_over_time(min(probe_success{job=\"blackbox_public\"})[30d:1m])) / 0.005), 0)",
+          "legendFormat": "budget left",
+          "instant": false,
+          "range": true,
+          "interval": "15m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 25
+              },
+              {
+                "color": "green",
+                "value": 50
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Burn rate against the alert lines",
+      "description": "How fast the error budget is being spent, over the last hour, 6 hours and 3 days: the failure share of the window divided by the 0.5 % budget, so 1 spends exactly the budget over 30 days. The dashed lines are the alert thresholds: 14.4 for the 1 h line (KubelettoErrorBudgetBurnFast: 2 % of the budget in an hour), 6 for the 6 h line (Medium: 5 % in 6 hours), 1 for the 3 d line (Slow: 10 % in 3 days). An alert also needs its short window (5 min, 30 min, 6 h) over the same line, which is not drawn: a line over its threshold that the alert has not fired on is an outage already over. The top of the chart is clipped at 20; hover for the number (a total outage is 200 on the 1 h line).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(1 - avg_over_time(min(probe_success{job=\"blackbox_public\"})[1h:1m])) / 0.005",
+          "legendFormat": "1 h (Fast: over 14.4)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(1 - avg_over_time(min(probe_success{job=\"blackbox_public\"})[6h:1m])) / 0.005",
+          "legendFormat": "6 h (Medium: over 6)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(1 - avg_over_time(min(probe_success{job=\"blackbox_public\"})[3d:1m])) / 0.005",
+          "legendFormat": "3 d (Slow: over 1)",
+          "instant": false,
+          "range": true,
+          "interval": "5m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:x",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 6
+              },
+              {
+                "color": "dark-red",
+                "value": 14.4
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "max": 20,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 8,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Availability, 30 days, against the objective",
+      "description": "The share of the last 30 days in which both public probes answered correctly (the SLI of ADR 0036), against the 99.5 % objective (dashed red line). The same history as the budget panel, as a percentage. It is lower than the Availability tiles at the top of the board whenever the two probes fail at different times, because those average each probe on its own and take the weaker, while this counts a minute as failed when either fails. Probes exist since the cutover (2026-10-14): until they have 30 days the figure is of the history that exists. No alert fires on the level.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg_over_time(min(probe_success{job=\"blackbox_public\"})[30d:1m])",
+          "legendFormat": "both probes up",
+          "instant": false,
+          "range": true,
+          "interval": "15m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMin": 0.99,
+            "axisSoftMax": 1
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.995
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 17,
+      "gridPos": {
+        "x": 16,
+        "y": 20,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Is the core ready, and is metering on time?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
         "w": 24,
         "h": 1
       },
@@ -1053,10 +1354,10 @@
           "mode": "single"
         }
       },
-      "id": 15,
+      "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 29,
         "w": 8,
         "h": 7
       }
@@ -1135,10 +1436,10 @@
         }
       },
       "links": [],
-      "id": 16,
+      "id": 20,
       "gridPos": {
         "x": 8,
-        "y": 20,
+        "y": 29,
         "w": 8,
         "h": 7
       }
@@ -1282,22 +1583,22 @@
         }
       ],
       "links": [],
-      "id": 17,
+      "id": 21,
       "gridPos": {
         "x": 16,
-        "y": 20,
+        "y": 29,
         "w": 8,
         "h": 7
       }
     },
     {
-      "id": 18,
+      "id": 22,
       "type": "row",
       "title": "What does the edge see? (rate, errors, duration)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 36,
         "w": 24,
         "h": 1
       },
@@ -1374,10 +1675,10 @@
         }
       },
       "links": [],
-      "id": 19,
+      "id": 23,
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 37,
         "w": 8,
         "h": 8
       }
@@ -1453,10 +1754,10 @@
         }
       },
       "links": [],
-      "id": 20,
+      "id": 24,
       "gridPos": {
         "x": 8,
-        "y": 28,
+        "y": 37,
         "w": 8,
         "h": 8
       }
@@ -1532,10 +1833,10 @@
         }
       },
       "links": [],
-      "id": 21,
+      "id": 25,
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 37,
         "w": 8,
         "h": 8
       }
@@ -1622,22 +1923,22 @@
         }
       },
       "links": [],
-      "id": 22,
+      "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 45,
         "w": 24,
         "h": 7
       }
     },
     {
-      "id": 23,
+      "id": 27,
       "type": "row",
       "title": "Do tenant logs reach the log store?",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 43,
+        "y": 52,
         "w": 24,
         "h": 1
       },
@@ -1723,10 +2024,10 @@
             }
           },
           "links": [],
-          "id": 24,
+          "id": 28,
           "gridPos": {
             "x": 0,
-            "y": 44,
+            "y": 53,
             "w": 8,
             "h": 7
           }
@@ -1801,10 +2102,10 @@
             }
           },
           "links": [],
-          "id": 25,
+          "id": 29,
           "gridPos": {
             "x": 8,
-            "y": 44,
+            "y": 53,
             "w": 8,
             "h": 7
           }
@@ -1880,10 +2181,10 @@
             }
           },
           "links": [],
-          "id": 26,
+          "id": 30,
           "gridPos": {
             "x": 16,
-            "y": 44,
+            "y": 53,
             "w": 8,
             "h": 7
           }
@@ -1975,10 +2276,10 @@
               "mode": "single"
             }
           },
-          "id": 27,
+          "id": 31,
           "gridPos": {
             "x": 0,
-            "y": 51,
+            "y": 60,
             "w": 24,
             "h": 7
           }
@@ -1986,13 +2287,13 @@
       ]
     },
     {
-      "id": 28,
+      "id": 32,
       "type": "row",
       "title": "Are the platform pods ready?",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 67,
         "w": 24,
         "h": 1
       },
@@ -2057,10 +2358,10 @@
               "fields": ""
             }
           },
-          "id": 29,
+          "id": 33,
           "gridPos": {
             "x": 0,
-            "y": 59,
+            "y": 68,
             "w": 8,
             "h": 8
           }
@@ -2140,10 +2441,10 @@
             }
           },
           "links": [],
-          "id": 30,
+          "id": 34,
           "gridPos": {
             "x": 8,
-            "y": 59,
+            "y": 68,
             "w": 8,
             "h": 8
           }
@@ -2238,10 +2539,10 @@
             }
           ],
           "links": [],
-          "id": 31,
+          "id": 35,
           "gridPos": {
             "x": 16,
-            "y": 59,
+            "y": 68,
             "w": 8,
             "h": 8
           }
@@ -2249,13 +2550,13 @@
       ]
     },
     {
-      "id": 32,
+      "id": 36,
       "type": "row",
       "title": "What this board cannot see yet",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 76,
         "w": 24,
         "h": 1
       },
@@ -2269,10 +2570,10 @@
         "mode": "markdown",
         "content": "**There are no application-level request, latency or error metrics for Kubeletto core or for the larasrouter app in Prometheus.** Everything above is the edge (Traefik sees every request, by route, not by customer or endpoint), synthetic probes of the public path, kube-state-metrics, Vector's own counters and core's two usage-meter gauges. This board has no larasrouter panels on purpose: none of its series reach Prometheus, and a panel built from the edge would pass for app health that nobody measures.\n\n**Planned follow-up:** instrument core and larasrouter (request rate, errors, latency histograms) and scrape them from the DMZ, then add the error-budget and burn-rate row for the 99.5 % objective. Also missing, and named in the panels that need them: the in-cluster VictoriaLogs is not scraped, so the 7-day log retention customers are promised is unmeasured, and there are no kubelet or cAdvisor series, so no per-pod CPU or memory."
       },
-      "id": 33,
+      "id": 37,
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 77,
         "w": 24,
         "h": 7
       }
