@@ -8,7 +8,9 @@ disks, the registry's blobs on `scsi1` included) is backed up nightly to
 `pbs-replica` on pve1 instead ([ADR 0025](../decisions/0025-replica-backup-of-vm-300-on-pve1.md),
 amending [ADR 0021](../decisions/0021-registry-on-the-k3s-servers-own-disk.md));
 checked 2026-11-06, latest copy that morning. That is the same house: no
-off-site copy yet ([ADR 0032](../decisions/0032-off-site-copies-for-kubeletto-data.md)).
+off-site copy of VM 300 ([ADR 0032](../decisions/0032-off-site-copies-for-kubeletto-data.md);
+[ADR 0034](../decisions/0034-postgres-off-site-on-b2-with-pgbackrest.md) keeps the
+registry on-site and sends only Postgres off-site, below).
 Restoring VM 300: [k3s-rebuild.md](k3s-rebuild.md). Service:
 [`services/pbs/`](../../services/pbs/README.md).
 
@@ -95,6 +97,122 @@ the backup's to restore if needed.
 Postgres (CT 130) also keeps a nightly logical dump per database on its disk,
 which restores one app without touching the others:
 [services/postgres → Backups and restore](../../services/postgres/README.md#backups-and-restore).
+
+## Postgres off-site: pgBackRest in B2
+
+The shared Postgres (CT 130) also archives WAL and takes a full backup every
+3 days into a private Backblaze B2 bucket, encrypted in the CT
+([ADR 0034](../decisions/0034-postgres-off-site-on-b2-with-pgbackrest.md)).
+It survives losing the house; the restore window is 3-6 days, to any point
+inside it, at most ~15 min of commits lost. Built by
+`services/postgres/offsite.sh` (config, timers) and `offsite-job.sh`
+(installed as `pg-offsite`: metrics every 5 min, a full when due at
+04:00 WIB, the 10 GB guard). Stanza `main`, repo path `/pgbackrest`.
+
+### Turn it on (once)
+
+1. **B2 (operator, in the web UI):** an account on the free tier, no card.
+   *Caps & Alerts*: every cap (storage, download, class B, class C) at **$0**.
+   *Buckets → Create*: private, default encryption off (pgBackRest encrypts),
+   object lock off. Its *Lifecycle Settings*: **Keep only the last version**.
+   *Application Keys → Add*: one key with access to **this bucket only**,
+   **Read and Write**, no file-name prefix (for CT 130); a second, same
+   bucket, **Read Only** (for restores; it stays on the Mac). Note the
+   bucket's endpoint (`s3.<region>.backblazeb2.com`).
+2. **Secrets:** [secrets.md → the off-site backup](secrets.md#the-off-site-backup-b2-keys-and-the-cipher-passphrase).
+3. **hEX:** the scrape rule for CT 130 gains port 9100 (its freshness
+   metrics). Snapshot, `tofu apply` in `network/routeros`, snapshot.
+4. **CT 130:** `apt-cache policy postgresql-18` in the CT first: if a new
+   minor is waiting, this apply restarts Postgres too (setup.sh installs it),
+   so do it in the window of step 5. Then `tofu apply` in `proxmox/opentofu`:
+   `setup.sh` runs again (node_exporter on 9100, nftables; a reload), then
+   `offsite.sh` writes the config and runs `stanza-create` against the
+   bucket. It ends with `PENDING: archive_mode needs a PostgreSQL restart`.
+5. **In an approved window** (a few seconds of refused connections):
+
+   ```bash
+   ssh root@10.10.10.12 'pct exec 130 -- bash /root/postgres/offsite.sh --restart-ok' </dev/null
+   ```
+
+   It turns `archive_mode` on, restarts, runs `pgbackrest check` (rolls back
+   and restarts again if that fails), enables the timers and starts the first
+   full backup in the background (`journalctl -u pg-offsite-daily -f`).
+6. **Verify:** `pct exec 130 -- runuser -u postgres -- pgbackrest --stanza=main info`
+   shows the full; Prometheus has `pg_offsite_repo_bytes` and
+   `pg_offsite_archive_last_success_timestamp_seconds`; then a restore drill
+   (below).
+
+### Point-in-time restore into a scratch Postgres
+
+Works anywhere with Docker and the age key (the operator Mac; after losing
+the house, any machine). Uses the **read-only** key: the scratch copy cannot
+write to the bucket. Tested locally 2026-11-09
+([experiment](../experiments/2026-11-09-pgbackrest-offsite-local.md)).
+
+```bash
+# 1. A Debian 13 with PostgreSQL 18 and pgBackRest from PGDG, no cluster of its own.
+docker run -d --name pg-restore debian:trixie sleep infinity
+docker exec -e DEBIAN_FRONTEND=noninteractive pg-restore bash -c '
+  apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl postgresql-common
+  /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+  echo "create_main_cluster = false" >> /etc/postgresql-common/createcluster.conf
+  apt-get install -y -qq --no-install-recommends postgresql-18 pgbackrest'
+
+# 2. Its config, from SOPS straight into the container (never on the Mac's disk).
+cd ~/Documents/benelabs/homeserver/proxmox/opentofu
+sops exec-env secrets.sops.env 'printf "[global]\nrepo1-type=s3\nrepo1-path=/pgbackrest\nrepo1-s3-bucket=%s\nrepo1-s3-endpoint=%s\nrepo1-s3-region=%s\nrepo1-s3-key=%s\nrepo1-s3-key-secret=%s\nrepo1-cipher-type=aes-256-cbc\nrepo1-cipher-pass=%s\nprocess-max=4\nlog-level-console=info\nlog-level-file=off\n[main]\npg1-path=/var/lib/postgresql/restore\n" \
+    "$TF_VAR_postgres_b2_bucket" "$TF_VAR_postgres_b2_endpoint" "$TF_VAR_postgres_b2_region" \
+    "$POSTGRES_B2_RESTORE_KEY_ID" "$POSTGRES_B2_RESTORE_APP_KEY" "$TF_VAR_postgres_offsite_cipher_pass"' \
+  | docker exec -i pg-restore bash -c 'install -d -m 0750 -o postgres /etc/pgbackrest && cat > /etc/pgbackrest/pgbackrest.conf && chown postgres /etc/pgbackrest/pgbackrest.conf && chmod 0600 /etc/pgbackrest/pgbackrest.conf'
+
+# 3. What is there, then restore to a moment (WIB here; omit --type/--target for "latest").
+docker exec pg-restore runuser -u postgres -- pgbackrest --stanza=main info
+docker exec pg-restore runuser -u postgres -- pgbackrest --stanza=main \
+  --type=time --target='2026-11-09 18:30:00+07' --target-action=promote restore
+
+# 4. Start it on its own: Debian keeps the config outside the data
+#    directory, so give it an empty one; archiving off, no network listener.
+docker exec pg-restore bash -c '
+  cd /var/lib/postgresql/restore && touch postgresql.conf pg_ident.conf
+  echo "local all all peer" > pg_hba.conf && chown postgres: postgresql.conf pg_ident.conf pg_hba.conf
+  runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_ctl -D . -w -t 3600 -l /tmp/restore.log \
+    -o "-c archive_mode=off -c listen_addresses= -c unix_socket_directories=/tmp" start'
+docker exec pg-restore runuser -u postgres -- psql -h /tmp -XAtc 'SELECT pg_is_in_recovery(), now()'
+docker exec pg-restore runuser -u postgres -- psql -h /tmp -d kubeletto -XAtc 'SELECT count(*) FROM <a table>'
+
+# 5. Done (a drill): remove it.
+docker rm -f pg-restore
+```
+
+- **Drill monthly** (ADR 0032): restore to "a few minutes ago", find a row
+  written after the newest full, note the time it took and the download
+  size here. A restore pulls a full and its WAL (1-3 GB): if B2 refuses with
+  a cap error, raise the download cap for that day.
+- **Getting one database back into CT 130:** `pg_dump --format=custom -d <db>`
+  in the scratch copy, copy the dump into CT 130, `pg_restore --clean --if-exists -d <db>`
+  (as for the [local dump](../../services/postgres/README.md#backups-and-restore)).
+- **The whole house is gone:** build a new CT 130 (`tofu apply`, or by hand
+  on any Debian 13), restore as above into `/var/lib/postgresql/18/main`
+  with the cluster stopped (`--delta` to reuse files, `--type=default` for
+  the newest), start it, then re-run `offsite.sh` (with `--restart-ok`).
+  The promoted cluster has the same system id on a new timeline, so it
+  archives into the same stanza; `pgbackrest check` must pass before the
+  copy counts again. (Not drilled yet.)
+
+### After a PBS restore of CT 130
+
+A PBS copy of CT 130 holds the archive config. A **test** copy must never
+reach B2 (restore it without a NIC, as above, and
+`systemctl disable --now pg-offsite-metrics.timer pg-offsite-daily.timer` in
+it). After a **real** PBS restore over CT 130, its WAL position is behind
+what the bucket already has, and `archive-push` fails ("already exists with
+a different checksum"): the database is fine, the off-site copy is not.
+Then, once the restored CT is confirmed good: in the CT as `postgres`,
+`pgbackrest --stanza=main stop`, `pgbackrest --stanza=main stanza-delete --force`,
+`pgbackrest --stanza=main start`, then re-run `offsite.sh` (it recreates the
+stanza, runs `check` and, finding no full, starts one; `--restart-ok` is not
+needed, archiving is already on). This deletes the bucket's older history:
+PBS holds that.
 
 ## Restore single files
 

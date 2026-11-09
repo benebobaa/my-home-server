@@ -43,7 +43,7 @@ Proxmox token has a `!`) need no shell quoting.
 
 | File | Holds |
 | --- | --- |
-| `proxmox/opentofu/secrets.sops.env` | `PROXMOX_VE_API_TOKEN`, `TF_VAR_state_passphrase`, archive passwords, `TF_VAR_monitoring_*` (Grafana admin, SNMPv3 auth/priv, Telegram bot token + chat id, healthchecks.io ping URL) |
+| `proxmox/opentofu/secrets.sops.env` | `PROXMOX_VE_API_TOKEN`, `TF_VAR_state_passphrase`, archive passwords, `TF_VAR_monitoring_*` (Grafana admin, SNMPv3 auth/priv, Telegram bot token + chat id, healthchecks.io ping URL), the Postgres off-site backup: `TF_VAR_postgres_b2_*`, `TF_VAR_postgres_offsite_cipher_pass` and the restore-only `POSTGRES_B2_RESTORE_*` (below) |
 | `network/routeros/secrets.sops.env` | `ROS_USERNAME`, `ROS_PASSWORD`, `TF_VAR_state_passphrase`, `TF_VAR_snmp_auth_password`, `TF_VAR_snmp_priv_password` |
 
 The SNMPv3 pair is deliberately in **both** files: the router stack sets it,
@@ -80,6 +80,70 @@ once the age key is backed up** (`rm proxmox/opentofu/.env network/routeros/.env
 - **A state passphrase**: add the new one as a second `key_provider` +
   `fallback` in `encryption.tf`, `tofu apply -refresh-only`, then remove the
   old one. (The same pattern used for the plaintext → encrypted migration.)
+
+## The off-site backup: B2 keys and the cipher passphrase
+
+The shared Postgres archives to a Backblaze B2 bucket with pgBackRest
+([ADR 0034](../decisions/0034-postgres-off-site-on-b2-with-pgbackrest.md),
+[backup-restore.md](backup-restore.md#postgres-off-site-pgbackrest-in-b2)).
+All of it in `proxmox/opentofu/secrets.sops.env`:
+
+| Key | What | Where it goes |
+| --- | --- | --- |
+| `TF_VAR_postgres_b2_key_id` | B2 application key ID, **read and write, this bucket only** | CT 130 `/etc/pgbackrest/pgbackrest.conf` (root:postgres 0640), via `terraform_data.postgres_offsite` on stdin |
+| `TF_VAR_postgres_b2_app_key` | that key's secret | same |
+| `TF_VAR_postgres_b2_bucket` | the bucket's name (private) | same |
+| `TF_VAR_postgres_b2_endpoint` | `s3.<region>.backblazeb2.com`, no `https://` | same |
+| `TF_VAR_postgres_b2_region` | `<region>` from the endpoint | same |
+| `TF_VAR_postgres_offsite_cipher_pass` | pgBackRest's `repo1-cipher-pass` (aes-256-cbc), 32+ characters | same. **Also in the password manager**: without it every off-site backup is unreadable |
+| `POSTGRES_B2_RESTORE_KEY_ID` | a second B2 key, **read only, this bucket only** | nowhere in the lab: restores and drills only (no `TF_VAR_` prefix, Tofu ignores it) |
+| `POSTGRES_B2_RESTORE_APP_KEY` | its secret | same |
+
+Adding them the first time (the file exists; `sops edit` opens it decrypted
+in `$EDITOR` and re-encrypts on save):
+
+```bash
+openssl rand -base64 48 | tr -d '\n'; echo     # the cipher passphrase: paste it into the file AND the password manager
+sops edit proxmox/opentofu/secrets.sops.env
+#   TF_VAR_postgres_b2_key_id=...
+#   TF_VAR_postgres_b2_app_key=...
+#   TF_VAR_postgres_b2_bucket=...
+#   TF_VAR_postgres_b2_endpoint=s3.<region>.backblazeb2.com
+#   TF_VAR_postgres_b2_region=<region>
+#   TF_VAR_postgres_offsite_cipher_pass=...
+#   POSTGRES_B2_RESTORE_KEY_ID=...
+#   POSTGRES_B2_RESTORE_APP_KEY=...
+```
+
+Until `TF_VAR_postgres_b2_key_id` is set, `terraform_data.postgres_offsite`
+has `count = 0` and the plan does not change.
+
+**Rotate the B2 key** (CT 130's, read and write; e.g. once a year or if CT
+130 or the file may have leaked): B2 → *Application Keys* → add a new key
+with the same settings → `sops edit` the two `TF_VAR_postgres_b2_key*` values
+→ `tofu apply` in `proxmox/opentofu` (`offsite.sh` rewrites the config and
+runs `stanza-create`, a no-op on the existing stanza; no restart) →
+`pct exec 130 -- runuser -u postgres -- pgbackrest --stanza=main check` →
+delete the old key in B2. Archiving stalls only between deleting the old key
+and the apply, so delete it last. The read-only key: the same in B2 and
+`sops edit`, nothing in the lab to apply.
+
+**Rotate the cipher passphrase:** pgBackRest cannot re-encrypt a repo, and
+every file in it was encrypted with the old one. So rotation is a new repo:
+
+1. Generate a new passphrase (above); keep the old one in the password
+   manager until step 4.
+2. `sops edit`: the new `TF_VAR_postgres_offsite_cipher_pass`.
+3. In CT 130 as `postgres`: `pgbackrest --stanza=main stop`, then
+   `pgbackrest --stanza=main stanza-delete --force` (the bucket's history is
+   gone from here on; PBS keeps the home history), `pgbackrest --stanza=main start`.
+   Then `tofu apply` in `proxmox/opentofu`: `offsite.sh` writes the new
+   passphrase, creates the stanza afresh, runs `check` and starts a full.
+   WAL written during these minutes waits in `pg_wal` and is pushed after.
+4. Once `pgbackrest info` shows the new full: drop the old passphrase.
+
+Rotate it only if it may have leaked: the new repo starts with no restore
+window until its first full is done.
 
 ## Adding a machine or CI later
 
