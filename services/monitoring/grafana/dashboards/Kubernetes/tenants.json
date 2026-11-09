@@ -1,7 +1,7 @@
 {
   "uid": "homelab-k8s-tenants",
   "title": "Tenants",
-  "description": "Is any Kubeletto tenant misbehaving or costing the platform? Namespace and pod counts, cold-start churn, crash loops, throttled logs, the network fence and the worker's inbound traffic. Open it after K8sTenant* or TenantWorkerInboundSustained, and on the weekly tenant review. Tenants are opaque ids (kl-<id>-<id>), so the per-tenant views are top-10 tables; per-tenant bytes are not measurable yet.",
+  "description": "Is any Kubeletto tenant misbehaving or costing the platform? Namespace and pod counts, cold-start churn, crash loops, throttled logs, the network fence and the worker's inbound traffic, and which tenants send, receive and use the most (network, CPU and memory from the kubelet's cAdvisor). Open it after K8sTenant* or TenantWorkerInboundSustained, and on the weekly tenant review. Tenants are opaque ids (kl-<id>-<id>), so the per-tenant views are top-10 tables. Per-tenant request counts are not in Prometheus.",
   "tags": [
     "homelab",
     "kubernetes",
@@ -489,8 +489,8 @@
     },
     {
       "type": "stat",
-      "title": "Tenant namespaces",
-      "description": "Active tenant namespaces (kl-*). One per tenant; most of them hold no pod at any moment because the apps scale to zero. No alert rule: a context number.",
+      "title": "Tenant inbound, total",
+      "description": "Bit rate received by all tenant pods together (kl-*), summed over their eth0 as the kubelet's cAdvisor counts it, with the trend behind the number. It is what the tenants' apps take in, from customers and from the internet; the 'Worker inbound, 30 min' tile is the whole node's eth0 and the one the alert watches. No alert rule: a context number. These series exist since 2026-11-09, and a pod's first seconds are not counted, so a tenant that is mostly cold starts reads low. The tenant namespace count is on the fence row.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -502,15 +502,15 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(kube_namespace_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Active\"} == 1)",
-          "legendFormat": "namespaces",
-          "instant": true,
-          "range": false
+          "expr": "sum (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[$__rate_interval])) * 8",
+          "legendFormat": "tenant pods inbound",
+          "instant": false,
+          "range": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "bps",
           "color": {
             "mode": "thresholds"
           },
@@ -524,13 +524,14 @@
             ]
           },
           "mappings": [],
-          "noValue": "n/a"
+          "noValue": "n/a",
+          "decimals": 1
         },
         "overrides": []
       },
       "options": {
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "textMode": "auto",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -738,7 +739,7 @@
     {
       "type": "timeseries",
       "title": "Worker inbound against what customers send in",
-      "description": "The worker's inbound next to the bytes customers upload through the public edge (Traefik request bodies) and the router's WAN inbound. The gap between the worker line and the Traefik line is what pods download on their own: image pulls and whatever a tenant app fetches from the internet. At the time of writing customers' uploads are a rounding error against the worker's several Mbit/s, which is why the hog is a pod pulling data, not traffic to it.",
+      "description": "The worker's inbound next to the bytes customers upload through the public edge (Traefik request bodies) and the router's WAN inbound. The gap between the worker line and the Traefik line is what the worker receives besides customers' uploads: image pulls, what tenant apps fetch from the internet and the platform's own pods (the next panel shows how much of it tenant pods account for). At the time of writing customers' uploads are a rounding error against the worker's several Mbit/s, which is why the hog is a pod pulling data, not traffic to it.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -840,8 +841,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Tenant pods started per hour",
-      "description": "Distinct tenant pods created in the trailing hour (kube_pod_created of every pod that left a series). The available proxy for network cost: a woken scale-to-zero app starts a pod every time, and each start pulls or checks its image. At the time of writing it sits near 150 an hour: five tenants woken every 2 minutes (the churn table below names them). A pod that lived less than one scrape interval is missed.",
+      "title": "Worker inbound: tenant pods against the whole node",
+      "description": "The worker's inbound bit rate from three angles: the node's own eth0 as the kubelet counts it (the series with no namespace and no pod), the same interface from node_exporter (a cross-check: over 15 minutes they agree within a few percent, a wider gap means one source is stale) and the sum of all tenant pods. 'Node minus tenant pods' (kubelet node line minus tenants) is how much of the line tenants do not account for: platform pods on the worker, image pulls and other host traffic. Read it as an estimate, not an exact subtraction: a pod's counter also holds traffic that never leaves the node (the local DNS), and the node's counter holds the overlay's headers. A tenant line close to the node line would point at the tenants; a tenant line far below it means most of the node's traffic is not tenant pods. The series exist since 2026-11-09: wait for an hour of history before reading a pattern. Outbound is in the tables below.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -853,15 +854,48 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(last_over_time(kube_pod_created{job=\"service_dmz\", namespace=~\"kl-.*\"}[1h]) > time() - 3600)",
-          "legendFormat": "pods started in the trailing hour",
+          "expr": "sum(rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", instance=\"k3s-worker\", namespace=\"\", pod=\"\"}[$__rate_interval])) * 8",
+          "legendFormat": "node eth0 (kubelet)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_receive_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[$__rate_interval]) * 8",
+          "legendFormat": "node eth0 (node_exporter, cross-check)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\", instance=\"k3s-worker\"}[$__rate_interval])) * 8",
+          "legendFormat": "tenant pods (all kl-*)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", instance=\"k3s-worker\", namespace=\"\", pod=\"\"}[$__rate_interval])) * 8 - sum (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\", instance=\"k3s-worker\"}[$__rate_interval])) * 8",
+          "legendFormat": "node minus tenant pods",
           "instant": false,
           "range": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "bps",
           "color": {
             "mode": "palette-classic"
           },
@@ -898,9 +932,12 @@
       "options": {
         "legend": {
           "showLegend": true,
-          "displayMode": "list",
+          "displayMode": "table",
           "placement": "bottom",
-          "calcs": []
+          "calcs": [
+            "mean",
+            "max"
+          ]
         },
         "tooltip": {
           "mode": "multi",
@@ -917,29 +954,756 @@
       }
     },
     {
-      "type": "text",
-      "title": "Per-tenant bytes: not measurable yet",
-      "description": "Reading guide.",
-      "options": {
-        "mode": "markdown",
-        "content": "**No tenant owns a byte count in Prometheus.** cAdvisor and the kubelet are not scraped, so there is no `container_network_*` per pod. Until they are (planned), the ranking comes from `services/kubeletto/tenant-bandwidth.sh`, which reads the kubelet's per-pod counters over SSH, and from `services/kubeletto/weekly-review.sh`. Proxies on this board: the worker's node-level network above and the per-tenant pod churn below. Request counts per tenant are in Postgres `usage_samples` (`http_requests`), not in Traefik: every tenant app shares one wildcard route."
-      },
       "id": 14,
+      "type": "row",
+      "title": "Which tenants send and receive the most? (network, bit/s)",
+      "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 14,
         "w": 24,
-        "h": 4
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by inbound network",
+      "description": "The 10 tenant namespaces that received the most bits per second over the last 5 minutes, with their 15-minute average and their share of all tenants' inbound. Inbound is what the tenant's pods take in: customers' requests and whatever the app downloads. Read it next to the worker panel above: the tenants are one part of the node's line. A tenant near the top for a long time, with a high share, is the one to look at (services/kubeletto/tenant-bandwidth.sh names the slug). The series exist since 2026-11-09 and a pod's first seconds are not counted, so a tenant that is mostly cold starts is read low. A literal 5 and 15 minute window, not the dashboard range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[15m])) * 8) and on (namespace) topk(10, sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8) / scalar(sum (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8) and on (namespace) topk(10, sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inbound, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inbound, 15 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share of all tenants, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Inbound, 5 min",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value #A": "Inbound, 5 min",
+              "Value #B": "Inbound, 15 min",
+              "Value #C": "Share of all tenants, 5 min"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 10
       }
     },
     {
-      "id": 15,
+      "type": "table",
+      "title": "Top 10 tenants by outbound network",
+      "description": "The 10 tenant namespaces that sent the most bits per second over the last 5 minutes, with their 15-minute average and their share of all tenants' outbound: responses to customers and whatever the app uploads. The same reading as the inbound table; a tenant high in both is busy, high only in outbound is serving content. The series exist since 2026-11-09. A literal 5 and 15 minute window, not the dashboard range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[15m])) * 8) and on (namespace) topk(10, sum by (namespace) (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8) / scalar(sum (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8) and on (namespace) topk(10, sum by (namespace) (rate(container_network_transmit_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])) * 8)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outbound, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outbound, 15 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share of all tenants, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Outbound, 5 min",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value #A": "Outbound, 5 min",
+              "Value #B": "Outbound, 15 min",
+              "Value #C": "Share of all tenants, 5 min"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 10
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Top 5 tenants by inbound, over time",
+      "description": "Inbound bit rate of the 5 tenants that rank highest at the right edge of the dashboard's range, one line per tenant namespace over the whole range (fixed set: a tenant that was busy earlier but is quiet now is not drawn, the table is for now). Spikes are a pod pulling data or a burst of traffic; a flat line is a steady consumer. Start with the legend's mean. The data starts at 2026-11-09, so a long range is mostly empty until the history grows.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[$__rate_interval])) * 8) and on (namespace) topk(5, sum by (namespace) (rate(container_network_receive_bytes_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[$__rate_interval] @ end())))",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 17,
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 8,
+        "h": 10
+      }
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "Which tenants use the most CPU and memory?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by CPU (cores)",
+      "description": "CPU time the 10 busiest tenant namespaces used per second (1.0 = one full core), as a 5-minute and a 15-minute average, with their share of all tenants' CPU. Includes both containers of every pod, the app and its queue-proxy. A scale-to-zero app woken every couple of minutes shows its cold starts here as CPU. A tenant sustained at a core or more is a runaway or a heavy app. The worker has 3.5 cores to hand out. A literal 5 and 15 minute window: the series exist since 2026-11-09.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[15m]))) and on (namespace) topk(10, sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m]))) / scalar(sum(sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])))) and on (namespace) topk(10, sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}[5m])))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cores, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cores, 15 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share of all tenants, 5 min"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Cores, 5 min",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value #A": "Cores, 5 min",
+              "Value #B": "Cores, 15 min",
+              "Value #C": "Share of all tenants, 5 min"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 10,
+        "h": 10
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by memory used and requested",
+      "description": "The 10 tenant namespaces with the largest memory working set right now (what the kernel cannot reclaim: the number the OOM killer and the kubelet's eviction act on), next to what their pods reserve by request and the ratio. The worker hands out about 3.6 GB; the node-level version of the request side is rule K8sNodeMemoryRequestsHigh (90 %). Requests are overcommitted by design, so a ratio above 100 % is normal for an app bursting past its small request; a tenant with a large working set and a small request is the one that squeezes the node first. A tenant that scales to zero uses and reserves nothing, so the table moves with the traffic. A blank Requested is a pod that kube-state-metrics no longer lists (it just scaled down) while the kubelet still reports its last memory.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", namespace=~\"kl-.*\", resource=\"memory\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))) and on (namespace) topk(10, sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"})) / on (namespace) (sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", namespace=~\"kl-.*\", resource=\"memory\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))) and on (namespace) topk(10, sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace=~\"kl-.*\", pod!=\"\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Working set"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used / requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Working set",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value #A": "Working set",
+              "Value #B": "Requested",
+              "Value #C": "Used / requested"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 10,
+        "y": 26,
+        "w": 14,
+        "h": 10
+      }
+    },
+    {
+      "id": 21,
       "type": "row",
       "title": "Which tenants churn pods? (cold starts)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 36,
         "w": 24,
         "h": 1
       },
@@ -948,7 +1712,7 @@
     {
       "type": "table",
       "title": "Top 10 tenants by pods in 24 h (K8sTenantColdStartChurn)",
-      "description": "Distinct pods each tenant namespace started in the last 24 hours, the 10 highest (rule K8sTenantColdStartChurn, severity info: orange above 200). 200 is a pod every 7 minutes; about 715 means a request every 2 minutes. The 8 digits after kl- are the tenant id prefix: services/kubeletto/weekly-review.sh maps them to a slug and plan. Next: tenant-bandwidth.sh for whether the churn costs bandwidth (TenantWorkerInboundSustained says so).",
+      "description": "Distinct pods each tenant namespace started in the last 24 hours, the 10 highest (rule K8sTenantColdStartChurn, severity info: orange above 200). 200 is a pod every 7 minutes; about 715 means a request every 2 minutes. The 8 digits after kl- are the tenant id prefix: services/kubeletto/weekly-review.sh maps them to a slug and plan. Next: the network and CPU tables above, for whether the churn costs bandwidth or CPU (TenantWorkerInboundSustained says so for the line).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1054,18 +1818,18 @@
         }
       ],
       "links": [],
-      "id": 16,
+      "id": 22,
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 37,
         "w": 12,
         "h": 9
       }
     },
     {
-      "type": "table",
-      "title": "Top 10 tenants by memory requested",
-      "description": "Memory the Pending and Running pods of each tenant reserve by request, the 10 highest: what a tenant costs the scheduler, not what it uses (no memory usage series exists yet). The worker has about 3.6 GB to hand out; the node-level version of this number is rule K8sNodeMemoryRequestsHigh (90 %). A tenant that scales to zero reserves nothing, so the table moves with the traffic.",
+      "type": "timeseries",
+      "title": "Tenant pods started per hour",
+      "description": "Distinct tenant pods created in the trailing hour (kube_pod_created of every pod that left a series). An indirect cost signal: a woken scale-to-zero app starts a pod every time, and each start makes the node pull or check the image. Image pulls are the node's own traffic, so they are in the worker's line and in no tenant's pod counters. At the time of writing it sits near 150 an hour: five tenants woken every 2 minutes (the churn table beside it names them). A pod that lived less than one scrape interval is missed.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1077,80 +1841,65 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(10, sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", namespace=~\"kl-.*\", resource=\"memory\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))",
-          "legendFormat": "",
-          "instant": true,
-          "range": false,
-          "format": "table"
+          "expr": "count(last_over_time(kube_pod_created{job=\"service_dmz\", namespace=~\"kl-.*\"}[1h]) > time() - 3600)",
+          "legendFormat": "pods started in the trailing hour",
+          "instant": false,
+          "range": true
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Memory requested"
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
             },
-            "properties": [
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "unit",
-                "value": "bytes"
-              },
-              {
-                "id": "decimals",
-                "value": 0
+                "color": "green",
+                "value": null
               }
             ]
-          }
-        ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
       },
       "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "sortBy": [
-          {
-            "displayName": "Memory requested",
-            "desc": true
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "namespace",
-                "Value"
-              ]
-            }
-          }
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
         },
-        {
-          "id": "organize",
-          "options": {
-            "renameByName": {
-              "namespace": "Tenant namespace",
-              "Value": "Memory requested"
-            },
-            "indexByName": {
-              "namespace": 0,
-              "Value": 1
-            }
-          }
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
-      ],
+      },
       "links": [],
-      "id": 17,
+      "id": 23,
       "gridPos": {
         "x": 12,
-        "y": 19,
+        "y": 37,
         "w": 12,
         "h": 9
       }
@@ -1158,7 +1907,7 @@
     {
       "type": "timeseries",
       "title": "Tenant pods and awake tenants",
-      "description": "Tenant pods Running and Pending, and how many tenant namespaces hold any pod. Pending is normal for a few seconds at a cold start; a Pending line that stays above 0 is a tenant that cannot start (rule K8sPodUnschedulable counts the unschedulable ones). The gap between tenants-with-a-pod and the 250-odd tenant namespaces (first tiles) is the scale-to-zero saving.",
+      "description": "Tenant pods Running and Pending, and how many tenant namespaces hold any pod. Pending is normal for a few seconds at a cold start; a Pending line that stays above 0 is a tenant that cannot start (rule K8sPodUnschedulable counts the unschedulable ones). The gap between tenants-with-a-pod and the 250-odd tenant namespaces (the fence row counts them) is the scale-to-zero saving.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1247,22 +1996,22 @@
         }
       },
       "links": [],
-      "id": 18,
+      "id": 24,
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 46,
         "w": 24,
         "h": 7
       }
     },
     {
-      "id": 19,
+      "id": 25,
       "type": "row",
       "title": "Are tenant containers crashing?",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 53,
         "w": 24,
         "h": 1
       },
@@ -1408,10 +2157,10 @@
         }
       ],
       "links": [],
-      "id": 20,
+      "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 54,
         "w": 12,
         "h": 8
       }
@@ -1502,10 +2251,10 @@
         }
       },
       "links": [],
-      "id": 21,
+      "id": 27,
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 54,
         "w": 12,
         "h": 8
       }
@@ -1576,22 +2325,22 @@
           "fields": ""
         }
       },
-      "id": 22,
+      "id": 28,
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 62,
         "w": 24,
         "h": 6
       }
     },
     {
-      "id": 23,
+      "id": 29,
       "type": "row",
       "title": "Are tenant logs throttled or lost?",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 68,
         "w": 24,
         "h": 1
       },
@@ -1667,10 +2416,10 @@
             }
           },
           "links": [],
-          "id": 24,
+          "id": 30,
           "gridPos": {
             "x": 0,
-            "y": 51,
+            "y": 69,
             "w": 8,
             "h": 7
           }
@@ -1757,10 +2506,10 @@
             }
           },
           "links": [],
-          "id": 25,
+          "id": 31,
           "gridPos": {
             "x": 8,
-            "y": 51,
+            "y": 69,
             "w": 8,
             "h": 7
           }
@@ -1835,10 +2584,10 @@
             }
           },
           "links": [],
-          "id": 26,
+          "id": 32,
           "gridPos": {
             "x": 16,
-            "y": 51,
+            "y": 69,
             "w": 8,
             "h": 7
           }
@@ -1919,10 +2668,10 @@
               "mode": "single"
             }
           },
-          "id": 27,
+          "id": 33,
           "gridPos": {
             "x": 0,
-            "y": 58,
+            "y": 76,
             "w": 24,
             "h": 4
           }
@@ -1930,13 +2679,13 @@
       ]
     },
     {
-      "id": 28,
+      "id": 34,
       "type": "row",
       "title": "Is every tenant fenced off from the lab network?",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 62,
+        "y": 80,
         "w": 24,
         "h": 1
       },
@@ -2022,10 +2771,10 @@
             }
           ],
           "links": [],
-          "id": 29,
+          "id": 35,
           "gridPos": {
             "x": 0,
-            "y": 63,
+            "y": 81,
             "w": 12,
             "h": 7
           }
@@ -2112,10 +2861,10 @@
             }
           },
           "links": [],
-          "id": 30,
+          "id": 36,
           "gridPos": {
             "x": 12,
-            "y": 63,
+            "y": 81,
             "w": 12,
             "h": 7
           }
@@ -2123,29 +2872,29 @@
       ]
     },
     {
-      "id": 31,
+      "id": 37,
       "type": "row",
       "title": "Requests to tenant apps",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 70,
+        "y": 88,
         "w": 24,
         "h": 1
       },
       "panels": [
         {
           "type": "text",
-          "title": "Requests per tenant: not in Prometheus",
+          "title": "Requests, disk and I/O per tenant: not in Prometheus",
           "description": "Reading guide.",
           "options": {
             "mode": "markdown",
-            "content": "Traefik reports one service for all tenant apps (`traefik-user-apps-...`), so this board can show **all tenants together** but not one tenant. The per-tenant request count is Kubeletto's `usage_samples` (metric `http_requests`, 5-minute windows) in Postgres; `services/kubeletto/weekly-review.sh` section 4 prints the top five with their error share. The Ingress (Traefik) board has the edge's rates, errors and latency by route."
+            "content": "Traefik reports one service for all tenant apps (`traefik-user-apps-...`), so this board can show **all tenants together** but not one tenant. The per-tenant request count is Kubeletto's `usage_samples` (metric `http_requests`, 5-minute windows) in Postgres; `services/kubeletto/weekly-review.sh` section 4 prints the top five with their error share. The Ingress (Traefik) board has the edge's rates, errors and latency by route. **Per-pod disk and I/O** are not exported either: the kubelet exporter keeps only CPU, memory and network."
           },
-          "id": 32,
+          "id": 38,
           "gridPos": {
             "x": 0,
-            "y": 71,
+            "y": 89,
             "w": 10,
             "h": 8
           }
@@ -2264,10 +3013,10 @@
             }
           },
           "links": [],
-          "id": 33,
+          "id": 39,
           "gridPos": {
             "x": 10,
-            "y": 71,
+            "y": 89,
             "w": 14,
             "h": 8
           }

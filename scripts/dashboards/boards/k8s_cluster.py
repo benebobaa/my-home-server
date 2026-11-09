@@ -6,8 +6,9 @@ as kube-state-metrics (:30931) and node_exporter (:9100, job service_dmz) report
 Top row = the answer, one tile per K8s node alert, same numbers as rules/k8s.yml:
 K8sNodeMemoryPressure, K8sPodUnschedulable, K8sNodeMemoryRequestsHigh (90 %) and
 K8sNodeCapacityTrigger (85 % for 7 days), plus HostMemoryLow and TargetDown for the VMs.
-Below: the scheduler's room (memory and CPU requests against allocatable), the 7-day trigger
-trend (collapsed), pods and namespaces, the two VMs' USE, and the telemetry's own health.
+Below: the scheduler's room (memory and CPU requests against allocatable), what the pods
+really use next to it (the kubelet's cAdvisor), the 7-day trigger trend (collapsed), pods and
+namespaces, the two VMs' USE, and the telemetry's own health.
 
 Provenance: the queries are derived from the live metric names and labels (checked against
 the lab's Prometheus on 2026-11-09) and from the alert rules above. No upstream mixin or
@@ -35,8 +36,18 @@ Facts that shaped the queries:
   ALERTS state (free), and the 7-day trend lives in a collapsed row (Grafana does not query a
   collapsed row until it is opened) with a 7-day panel time range at the rule's 30-minute step.
   A recording rule for the ratio would make the rule and the panel cheap; none exists yet.
-- Missing data: there are no kubelet or cAdvisor series (container_*), so no CPU or memory
-  USE per pod or per node from the cluster side: the VM's node_exporter is the only usage view.
+- Since 2026-11-09 (ADR 0036) the kubelet-metrics exporter (:30599, job service_dmz) gives the
+  pods' real use: container_memory_working_set_bytes (gauge) and container_cpu_usage_seconds_total
+  (counter) per {namespace, pod, container}. Its series carry `instance` = the Kubernetes node
+  (k3s, k3s-worker), where kube-state-metrics' carry `exported_node` (and `instance` k3s on both):
+  the use side is summed by `instance` and relabelled to `exported_node` to meet requests and
+  allocatable, and `$node` filters both because the values are the same two names. The label
+  `node` is the Proxmox host, never the Kubernetes node. The sum covers the pods' containers
+  only: kubelet, containerd, k3s and the kernel are not in it, so it sits below the VM's own
+  used memory (node_exporter). The history grows from that day; the instant bars use a fixed
+  5 minute CPU window.
+- Still missing: per-pod disk and I/O (the exporter keeps CPU, memory and network only), and
+  container limits (dropped at ingest), so "distance to an OOM kill" is not on this board.
 """
 from lib import (
     board, stat, problem_stat, timeseries, bargauge, table, state_timeline,
@@ -69,6 +80,40 @@ def allocatable(resource: str, flt: str = "") -> str:
 def ratio(resource: str, flt: str = "") -> str:
     """Requests / allocatable per node: K8sNodeMemoryRequestsHigh's expression, verbatim for memory."""
     return f'{requested(resource, flt)} / on (exported_node) {allocatable(resource, flt)}'
+
+
+KM = f'{D}, port="30599"'   # the kubelet-metrics exporter (cAdvisor)
+
+
+def used(kind: str) -> str:
+    """What the pods of each node use, by `instance` (= the Kubernetes node on the cAdvisor series)."""
+    if kind == "memory":
+        return f'sum by (instance) (container_memory_working_set_bytes{{{KM}, instance=~"$node"}})'
+    return f'sum by (instance) (rate(container_cpu_usage_seconds_total{{{KM}, instance=~"$node"}}[$__rate_interval]))'
+
+
+# A fixed 5 minute window for the instant bars (lint_ok rate-literal on the panel): the history is young.
+CPU_NOW = f'sum by (instance) (rate(container_cpu_usage_seconds_total{{{KM}, instance=~"$node"}}[5m]))'
+
+
+def as_node(expr: str) -> str:
+    """Relabel `instance` to `exported_node`, the label requests and allocatable are keyed by."""
+    return f'label_replace({expr}, "exported_node", "$1", "instance", "(.*)")'
+
+
+def _node_style():
+    """Overrides for the use/requested/allocatable time series: colour by node, dash by kind."""
+    def rx(pattern, *props):
+        return {"matcher": {"id": "byRegexp", "options": pattern},
+                "properties": [{"id": i, "value": v} for i, v in props]}
+    dash = {"fill": "dash", "dash": [10, 10]}
+    dots = {"fill": "dash", "dash": [2, 6]}
+    return [
+        rx("^k3s .*", ("color", {"mode": "fixed", "fixedColor": "blue"})),
+        rx("^k3s-worker .*", ("color", {"mode": "fixed", "fixedColor": "purple"})),
+        rx(".* requested$", ("custom.lineStyle", dash), ("custom.fillOpacity", 0), ("custom.lineWidth", 2)),
+        rx(".* allocatable$", ("custom.lineStyle", dots), ("custom.fillOpacity", 0), ("custom.lineWidth", 2)),
+    ]
 
 
 def zero_unless_gone(expr: str) -> str:
@@ -119,8 +164,8 @@ def boards():
         description="Is the K3s cluster healthy, and does it have room? Open it after a K8sPodUnschedulable, "
                     "K8sNodeMemoryRequestsHigh, K8sNodeMemoryPressure or K8sNodeCapacityTrigger alert, "
                     "or on the weekly review: nodes, memory and CPU requests against allocatable, "
-                    "pods and namespaces, and the two VMs. The top row is cluster-wide; the Node "
-                    "variable filters the panels below it.",
+                    "what the pods really use next to them, pods and namespaces, and the two VMs. "
+                    "The top row is cluster-wide; the Node variable filters the panels below it.",
         method="use", filename="cluster",
         variables=[var_query("node", "Node", f"label_values(kube_node_info{{{D}}}, exported_node)",
                              multi=True, include_all=True)],
@@ -222,6 +267,55 @@ def boards():
                  "to start (a build is 512 Mi). Near zero is where tenant pods go Pending "
                  "(K8sPodUnschedulable).",
             unit="bytes", w=12, h=6),
+    ])
+
+    b.row("What do the pods really use? (next to the scheduler's view)", [
+        timeseries(
+            "Memory: used by pods, requested, allocatable",
+            [(used("memory"), "{{instance}} used by pods"),
+             (requested("memory", NODE), "{{exported_node}} requested"),
+             (allocatable("memory", NODE), "{{exported_node}} allocatable")],
+            unit="bytes", w=9, h=9, overrides=_node_style(),
+            legend="table", legend_calcs=("lastNotNull",),
+            desc="Per node, three lines: the memory working set of all its pods (solid, filled: what the "
+                 "kernel cannot reclaim, summed over the pods' containers), the memory the pods request "
+                 "(dashed: the scheduler's book, rule K8sNodeMemoryRequestsHigh at 90 % of allocatable) "
+                 "and the node's allocatable memory (dotted: the ceiling). Used well under requested is "
+                 "reserved room that is not used (by design for tenants: requests are overcommitted); "
+                 "used above requested means pods take more than they reserved, so the real headroom is "
+                 "smaller than the requests ratio says. Used approaching allocatable is the node "
+                 "running out of memory (K8sNodeMemoryPressure). The pods' sum leaves out the kubelet, "
+                 "containerd and the kernel: the VM's own used memory is higher (Infrastructure > "
+                 "Nodes). The series exist since 2026-11-09."),
+        timeseries(
+            "CPU (cores): used by pods, requested, allocatable",
+            [(used("cpu"), "{{instance}} used by pods"),
+             (requested("cpu", NODE), "{{exported_node}} requested"),
+             (allocatable("cpu", NODE), "{{exported_node}} allocatable")],
+            unit="short", decimals=2, w=9, h=9, overrides=_node_style(),
+            legend="table", legend_calcs=("lastNotNull",),
+            desc="Per node, in cores: the CPU time its pods use per second (solid, filled), what they "
+                 "request (dashed) and the node's allocatable cores (dotted). CPU is compressible: "
+                 "used above requested is fine while the node has spare cores; used near allocatable "
+                 "is a node that is CPU-bound, and pods slow down rather than die. The pods' "
+                 "sum leaves out the kubelet, containerd and the k3s server: the VM's CPU "
+                 "utilisation (the compact VM row below) is higher. No alert rule. The series exist "
+                 "since 2026-11-09."),
+        bargauge(
+            "Pods' use and requests, share of allocatable",
+            [(f'({as_node(used("memory"))}) / on (exported_node) {allocatable("memory", NODE)}',
+              "{{exported_node}} memory used"),
+             (ratio("memory", NODE), "{{exported_node}} memory requested"),
+             (f'({as_node(CPU_NOW)}) / on (exported_node) {allocatable("cpu", NODE)}',
+              "{{exported_node}} CPU used"),
+             (ratio("cpu", NODE), "{{exported_node}} CPU requested")],
+            unit="percentunit", max=1, w=6, h=9, thresholds=hi_bad(0.85, 0.90), lint_ok=("rate-literal",),
+            desc="Right now, per node, as a share of what the node can hand out: the pods' memory "
+                 "working set and memory requests, and the pods' CPU use (a 5-minute average) and "
+                 "CPU requests. The colours are the 85 % and 90 % of K8sNodeCapacityTrigger and "
+                 "K8sNodeMemoryRequestsHigh: they apply to the 'memory requested' bars (the "
+                 "rule) and are only a reading aid on the other three. Requested above used is "
+                 "overcommit headroom the tenants share; used above requested is the squeeze."),
     ])
 
     # The trigger trend. Collapsed on purpose: see the module docstring (cost). The panel

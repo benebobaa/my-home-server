@@ -24,8 +24,22 @@ Facts that shaped the queries:
   entirely would need those workload series.
 - prometheus.yml drops kube_pod_status_{reason,ready,scheduled,qos_class},
   kube_pod_container_info, kube_pod_tolerations and kube_pod_container_resource_limits at
-  ingest: nothing here may use them. There are no kubelet or cAdvisor series either (no CPU or
-  memory USE per pod); requests are the only resource figure.
+  ingest: nothing here may use them (so no limits: a container's headroom against its limit is
+  not shown).
+- Since 2026-11-09 (ADR 0036) the kubelet-metrics exporter (:30599, job service_dmz) gives the
+  pods' real use: container_cpu_usage_seconds_total (a counter, rate it) and
+  container_memory_working_set_bytes (a gauge) per {namespace, pod, container}, real containers
+  only. The cAdvisor series carry `instance` = the Kubernetes node (k3s, k3s-worker), kube-state-
+  metrics carries it as `exported_node`; the label `node` is the Proxmox host in both. Use and
+  request join on (namespace, pod, container). The history grows from that day: the "right now"
+  tables use a fixed 5 minute window, the time series $__rate_interval.
+- The kubelet-metrics pods themselves (namespace logs, container `vector`, one per node) are
+  platform pods and count in the `logs` namespace like Vector does: the exporter is the largest
+  pod-level network receiver on both nodes. A container without a memory request
+  (kube-system/local-path-provisioner today) has usage but no share of request, so it is absent
+  from the share gauge and shows a blank request in the container table.
+- Per-pod disk and I/O are not exported (the filter keeps four families: CPU, memory, network
+  in and out), so the platform's disk use is only on the Cluster board (node level).
 - kube_pod_container_status_waiting_reason exists only while a container waits. A pod stuck in
   an INIT container has phase Pending and its main containers wait with reason PodInitializing:
   K8sPlatformPodNotReady (needs phase Running) and K8sPlatformPodWaiting (a fixed reason list
@@ -53,6 +67,7 @@ PLAT = 'namespace!~"kl-.*|kubeletto-builds"'
 TENANTS = 'namespace=~"kl-.*"'
 BUILDS = 'namespace="kubeletto-builds"'
 VECTOR_UP = f'up{{{D}, port="30598"}}'
+KM = f'{D}, port="30599"'   # the kubelet-metrics exporter (cAdvisor, per pod and container)
 
 # K8sNodeMemoryRequestsHigh's phase join: kube-state-metrics keeps the request series of
 # Succeeded/Failed pods, only Pending|Running pods hold a reservation.
@@ -102,6 +117,28 @@ def reserved(resource: str, selector: str, by: str = "") -> str:
     """Requests of Pending|Running pods in `selector` namespaces, optionally by a label."""
     agg = f"sum by ({by})" if by else "sum"
     return (f'{agg} (kube_pod_container_resource_requests{{{D}, resource="{resource}", {selector}}} {HOLDS})')
+
+
+def per_container(resource: str) -> str:
+    """Requests of the Pending|Running platform pods, one value per container (the key of the
+    use/request join: (namespace, pod, container))."""
+    return (f'max by (namespace, pod, container)'
+            f' (kube_pod_container_resource_requests{{{D}, resource="{resource}", {PLAT}}} {HOLDS})')
+
+
+WS_C = f'max by (namespace, pod, container) (container_memory_working_set_bytes{{{KM}, {PLAT}}})'
+CPU_C = f'sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{{{KM}, {PLAT}}}[5m]))'
+WS_NS = f'sum by (namespace) (container_memory_working_set_bytes{{{KM}, {PLAT}}})'
+CPU_NS = f'sum by (namespace) (rate(container_cpu_usage_seconds_total{{{KM}, {PLAT}}}[5m]))'
+KEY = "on (namespace, pod, container)"
+
+
+def _requested_line(name: str):
+    """Override: the requested total is a dashed line over the stack, not one more layer of it."""
+    return _col(name, ("custom.stacking", {"mode": "none", "group": "A"}),
+                ("custom.fillOpacity", 0), ("custom.lineWidth", 2),
+                ("custom.lineStyle", {"fill": "dash", "dash": [10, 10]}),
+                ("color", {"mode": "fixed", "fixedColor": "red"}))
 
 
 def boards():
@@ -280,13 +317,118 @@ def boards():
             sort_by="Done", descending=False, w=12, h=6),
     ])
 
+    # Use against request. The kubelet series are young (2026-11-09): the tables read a fixed 5
+    # minute window (lint_ok rate-literal), the time series $__rate_interval.
+    b.row("What the platform uses against what it asks for", [
+        timeseries(
+            "Memory used by namespace, against requested",
+            [(f'sum by (namespace) (container_memory_working_set_bytes{{{KM}, {PLAT}}})', "{{namespace}}"),
+             (reserved("memory", PLAT), "requested (all platform pods)")],
+            unit="bytes", stack=True, w=12, h=9,
+            overrides=[_requested_line("requested (all platform pods)")],
+            desc="Memory working set of the platform's pods (what the kernel cannot reclaim: the number "
+                 "the OOM killer and the kubelet's eviction act on), stacked by namespace, under the "
+                 "dashed red line of what all platform pods reserve by request. Used above the "
+                 "line means the platform takes more than the scheduler set aside for it, so the "
+                 "node has less room than the Cluster board's requests ratio says; far below "
+                 "means over-reserved. The `logs` layer includes the kubelet-metrics exporters, "
+                 "one per node. Container limits are not in Prometheus, so this does not show "
+                 "distance to an OOM kill. No alert rule."),
+        timeseries(
+            "CPU used by namespace, against requested (cores)",
+            [(f'sum by (namespace) (rate(container_cpu_usage_seconds_total{{{KM}, {PLAT}}}[$__rate_interval]))',
+              "{{namespace}}"),
+             (reserved("cpu", PLAT), "requested (all platform pods)")],
+            unit="short", decimals=2, stack=True, w=12, h=9,
+            overrides=[_requested_line("requested (all platform pods)")],
+            desc="CPU time the platform's pods use per second (1.0 = one core), stacked by namespace, "
+                 "under the dashed red line of the cores they request. CPU is compressible: above "
+                 "the line only means the pods run on the node's spare cores, and it turns into "
+                 "slowness, not a kill, when the node is full. A namespace that dominates the "
+                 "stack and stays there is the platform's real CPU consumer. No alert rule. The "
+                 "series exist since 2026-11-09."),
+        table(
+            "Platform namespaces: use against request",
+            [(CPU_NS, "", {}),
+             (reserved("cpu", PLAT, "namespace"), "", {}),
+             (WS_NS, "", {}),
+             (reserved("memory", PLAT, "namespace"), "", {}),
+             (f'({WS_NS}) / on (namespace) ({reserved("memory", PLAT, "namespace")})', "", {}),
+             (f'({CPU_NS}) / on (namespace) ({reserved("cpu", PLAT, "namespace")})', "", {})],
+            columns=[("namespace", "Namespace"), ("Value #A", "CPU used (cores)"), ("Value #B", "CPU requested (cores)"),
+                     ("Value #F", "CPU used / requested"), ("Value #C", "Memory used"),
+                     ("Value #D", "Memory requested"), ("Value #E", "Memory used / requested")],
+            overrides=[
+                _col("CPU used (cores)", ("unit", "short"), ("decimals", 3)),
+                _col("CPU requested (cores)", ("unit", "short"), ("decimals", 3)),
+                _col("CPU used / requested", ("unit", "percentunit"), ("decimals", 0),
+                     ("color", {"mode": "thresholds"}), ("thresholds", steps(("green", None), ("orange", 1))),
+                     ("custom.cellOptions", {"type": "color-text"})),
+                _col("Memory used", ("unit", "bytes"), ("decimals", 0)),
+                _col("Memory requested", ("unit", "bytes"), ("decimals", 0)),
+                _col("Memory used / requested", ("unit", "percentunit"), ("decimals", 0),
+                     ("color", {"mode": "thresholds"}), ("thresholds", steps(("green", None), ("orange", 1))),
+                     ("custom.cellOptions", {"type": "color-text"})),
+            ],
+            sort_by="Memory used", w=14, h=10, lint_ok=("rate-literal",),
+            desc="One row per platform namespace: CPU in cores (a 5-minute average, a fixed window "
+                 "because the history is short) and memory working set, each next to what the "
+                 "namespace's pods request, and the ratio (orange above 100 %: it uses more than it "
+                 "reserved). Compare a namespace with its own request, not with the others: "
+                 "requests are small by design. The `logs` row includes the kubelet-metrics "
+                 "exporters. A ratio far above 100 % on a namespace the platform depends on "
+                 "(platform, registry, nats) is a request to raise; one far below is reserved room "
+                 "tenants could use. No alert rule."),
+        bargauge(
+            "Memory used as a share of request, per pod",
+            [(f'sort_desc(topk(15, ({WS_C}) / {KEY} ({per_container("memory")})))',
+              "{{namespace}} / {{pod}}")],
+            unit="percentunit", max=2, w=10, h=10,
+            thresholds=steps(("green", None), ("orange", 1), ("red", 1.5)),
+            desc="The 15 platform containers that use the most memory relative to what they request "
+                 "(working set over request; the bar is full at 200 %). Green is within the "
+                 "request; orange (above 100 %) is using more than the scheduler reserved, red above "
+                 "150 % is a request that is too low for what the container does. Over-request is "
+                 "not an error, but when the node fills those are the pods that make the real use "
+                 "exceed the books. The colours are a reading aid, not an alert. A container without "
+                 "a memory request has no share and is absent here (the container table shows a "
+                 "blank request)."),
+        table(
+            "Top 12 containers by memory (with their request)",
+            [(f'topk(12, {WS_C})', "", {}),
+             (f'({per_container("memory")}) and {KEY} topk(12, {WS_C})', "", {}),
+             (f'(({WS_C}) / {KEY} ({per_container("memory")})) and {KEY} topk(12, {WS_C})', "", {}),
+             (f'({CPU_C}) and {KEY} topk(12, {WS_C})', "", {}),
+             (f'({per_container("cpu")}) and {KEY} topk(12, {WS_C})', "", {})],
+            columns=[("namespace", "Namespace"), ("pod", "Pod"), ("container", "Container"),
+                     ("Value #A", "Memory used"), ("Value #B", "Memory requested"),
+                     ("Value #C", "Used / requested"), ("Value #D", "CPU used (cores)"),
+                     ("Value #E", "CPU requested (cores)")],
+            overrides=[
+                _col("Memory used", ("unit", "bytes"), ("decimals", 0)),
+                _col("Memory requested", ("unit", "bytes"), ("decimals", 0)),
+                _col("Used / requested", ("unit", "percentunit"), ("decimals", 0),
+                     ("color", {"mode": "thresholds"}), ("thresholds", steps(("green", None), ("orange", 1))),
+                     ("custom.cellOptions", {"type": "color-text"})),
+                _col("CPU used (cores)", ("unit", "short"), ("decimals", 3)),
+                _col("CPU requested (cores)", ("unit", "short"), ("decimals", 3)),
+            ],
+            sort_by="Memory used", w=24, h=9, lint_ok=("rate-literal",),
+            desc="The 12 platform containers with the largest memory working set right now, with their "
+                 "request, the ratio, and their CPU (cores, a 5-minute average) against its "
+                 "request. At the time of writing VictoriaLogs leads, then Traefik and the Vector pods "
+                 "(the log shippers and the kubelet-metrics exporters are both Vector, in the "
+                 "`logs` namespace). A blank request is a container with none set. Pods are named with their ReplicaSet hash: a young pod "
+                 "after a rollout starts a fresh row. No alert rule; the series exist since 2026-11-09."),
+    ])
+
     b.row("What the platform reserves", [
         timeseries(
             "Memory requested, by platform namespace",
             [(reserved("memory", PLAT, "namespace"), "{{namespace}}")],
             desc="Memory requests of Running and scheduled Pending platform pods, per namespace, "
                  "stacked into the platform's total reservation. Requests are what the scheduler "
-                 "counts, not what the pods use (there are no per-pod usage series). The "
+                 "counts, not what the pods use (the row above sets use next to it). The "
                  "platform sits on the k3s server node; its total against that node's allocatable "
                  "is the fullest-node tile on the Cluster board. A step is a rollout or a "
                  "new component.",

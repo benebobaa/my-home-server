@@ -1488,7 +1488,7 @@
     {
       "id": 19,
       "type": "row",
-      "title": "What the platform reserves",
+      "title": "What the platform uses against what it asks for",
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -1500,8 +1500,917 @@
     },
     {
       "type": "timeseries",
+      "title": "Memory used by namespace, against requested",
+      "description": "Memory working set of the platform's pods (what the kernel cannot reclaim: the number the OOM killer and the kubelet's eviction act on), stacked by namespace, under the dashed red line of what all platform pods reserve by request. Used above the line means the platform takes more than the scheduler set aside for it, so the node has less room than the Cluster board's requests ratio says; far below means over-reserved. The `logs` layer includes the kubelet-metrics exporters, one per node. Container limits are not in Prometheus, so this does not show distance to an OOM kill. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "requested (all platform pods)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requested (all platform pods)"
+            },
+            "properties": [
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU used by namespace, against requested (cores)",
+      "description": "CPU time the platform's pods use per second (1.0 = one core), stacked by namespace, under the dashed red line of the cores they request. CPU is compressible: above the line only means the pods run on the node's spare cores, and it turns into slowness, not a kill, when the node is full. A namespace that dominates the stack and stays there is the platform's real CPU consumer. No alert rule. The series exist since 2026-11-09.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}[$__rate_interval]))",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "requested (all platform pods)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requested (all platform pods)"
+            },
+            "properties": [
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 21,
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Platform namespaces: use against request",
+      "description": "One row per platform namespace: CPU in cores (a 5-minute average, a fixed window because the history is short) and memory working set, each next to what the namespace's pods request, and the ratio (orange above 100 %: it uses more than it reserved). Compare a namespace with its own request, not with the others: requests are small by design. The `logs` row includes the kubelet-metrics exporters. A ratio far above 100 % on a namespace the platform depends on (platform, registry, nats) is a request to raise; one far below is reserved room tenants could use. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}[5m]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"})) / on (namespace) (sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}[5m]))) / on (namespace) (sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU used (cores)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU requested (cores)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU used / requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory used"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory used / requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Memory used",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B",
+                "Value #F",
+                "Value #C",
+                "Value #D",
+                "Value #E"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "Value #A": "CPU used (cores)",
+              "Value #B": "CPU requested (cores)",
+              "Value #F": "CPU used / requested",
+              "Value #C": "Memory used",
+              "Value #D": "Memory requested",
+              "Value #E": "Memory used / requested"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #F": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 14,
+        "h": 10
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Memory used as a share of request, per pod",
+      "description": "The 15 platform containers that use the most memory relative to what they request (working set over request; the bar is full at 200 %). Green is within the request; orange (above 100 %) is using more than the scheduler reserved, red above 150 % is a request that is too low for what the container does. Over-request is not an error, but when the node fills those are the pods that make the real use exceed the books. The colours are a reading aid, not an alert. A container without a memory request has no share and is absent here (the container table shows a blank request).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sort_desc(topk(15, (max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"})) / on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))))",
+          "legendFormat": "{{namespace}} / {{pod}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 1.5
+              }
+            ]
+          },
+          "mappings": [],
+          "max": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "id": 23,
+      "gridPos": {
+        "x": 14,
+        "y": 49,
+        "w": 10,
+        "h": 10
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top 12 containers by memory (with their request)",
+      "description": "The 12 platform containers with the largest memory working set right now, with their request, the ratio, and their CPU (cores, a 5-minute average) against its request. At the time of writing VictoriaLogs leads, then Traefik and the Vector pods (the log shippers and the kubelet-metrics exporters are both Vector, in the `logs` namespace). A blank request is a container with none set. Pods are named with their ReplicaSet hash: a young pod after a rollout starts a fresh row. No alert rule; the series exist since 2026-11-09.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(12, max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (namespace, pod, container) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))) and on (namespace, pod, container) topk(12, max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "((max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"})) / on (namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))) and on (namespace, pod, container) topk(12, max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}[5m]))) and on (namespace, pod, container) topk(12, max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max by (namespace, pod, container) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))) and on (namespace, pod, container) topk(12, max by (namespace, pod, container) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", namespace!~\"kl-.*|kubeletto-builds\"}))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory used"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Used / requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU used (cores)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU requested (cores)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Memory used",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "pod",
+                "container",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "pod": "Pod",
+              "container": "Container",
+              "Value #A": "Memory used",
+              "Value #B": "Memory requested",
+              "Value #C": "Used / requested",
+              "Value #D": "CPU used (cores)",
+              "Value #E": "CPU requested (cores)"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "container": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "Value #C": 5,
+              "Value #D": 6,
+              "Value #E": 7
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 9
+      }
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "What the platform reserves",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
       "title": "Memory requested, by platform namespace",
-      "description": "Memory requests of Running and scheduled Pending platform pods, per namespace, stacked into the platform's total reservation. Requests are what the scheduler counts, not what the pods use (there are no per-pod usage series). The platform sits on the k3s server node; its total against that node's allocatable is the fullest-node tile on the Cluster board. A step is a rollout or a new component.",
+      "description": "Memory requests of Running and scheduled Pending platform pods, per namespace, stacked into the platform's total reservation. Requests are what the scheduler counts, not what the pods use (the row above sets use next to it). The platform sits on the k3s server node; its total against that node's allocatable is the fullest-node tile on the Cluster board. A step is a rollout or a new component.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1568,10 +2477,10 @@
         }
       },
       "links": [],
-      "id": 20,
+      "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 69,
         "w": 12,
         "h": 8
       }
@@ -1647,10 +2556,10 @@
         }
       },
       "links": [],
-      "id": 21,
+      "id": 27,
       "gridPos": {
         "x": 12,
-        "y": 40,
+        "y": 69,
         "w": 12,
         "h": 8
       }
@@ -1741,22 +2650,22 @@
           "fields": ""
         }
       },
-      "id": 22,
+      "id": 28,
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 77,
         "w": 24,
         "h": 7
       }
     },
     {
-      "id": 23,
+      "id": 29,
       "type": "row",
       "title": "Log shipper (Vector, one per node)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 84,
         "w": 24,
         "h": 1
       },
@@ -1832,10 +2741,10 @@
         }
       },
       "links": [],
-      "id": 24,
+      "id": 30,
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 85,
         "w": 8,
         "h": 8
       }
@@ -1921,10 +2830,10 @@
         }
       },
       "links": [],
-      "id": 25,
+      "id": 31,
       "gridPos": {
         "x": 8,
-        "y": 56,
+        "y": 85,
         "w": 8,
         "h": 8
       }
@@ -2010,10 +2919,10 @@
         }
       },
       "links": [],
-      "id": 26,
+      "id": 32,
       "gridPos": {
         "x": 16,
-        "y": 56,
+        "y": 85,
         "w": 8,
         "h": 8
       }
@@ -2094,10 +3003,10 @@
           "mode": "single"
         }
       },
-      "id": 27,
+      "id": 33,
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 93,
         "w": 8,
         "h": 6
       }
@@ -2110,10 +3019,10 @@
         "mode": "markdown",
         "content": "**Not on this board:** how many events Vector reads and ships. prometheus.yml keeps only Vector's *discarded events*, *errors* and *started* counters (a metric allowlist: Vector exposes about 2,000 series a node), so there is no throughput, no sink latency and no queue depth. Whether lines arrive in VictoriaLogs is visible on *Observability → Log and trace stores*. Which tenant is throttled: *Kubernetes → Tenants*."
       },
-      "id": 28,
+      "id": 34,
       "gridPos": {
         "x": 8,
-        "y": 64,
+        "y": 93,
         "w": 16,
         "h": 6
       }

@@ -1,7 +1,7 @@
 {
   "uid": "homelab-k8s-cluster",
   "title": "Cluster",
-  "description": "Is the K3s cluster healthy, and does it have room? Open it after a K8sPodUnschedulable, K8sNodeMemoryRequestsHigh, K8sNodeMemoryPressure or K8sNodeCapacityTrigger alert, or on the weekly review: nodes, memory and CPU requests against allocatable, pods and namespaces, and the two VMs. The top row is cluster-wide; the Node variable filters the panels below it.",
+  "description": "Is the K3s cluster healthy, and does it have room? Open it after a K8sPodUnschedulable, K8sNodeMemoryRequestsHigh, K8sNodeMemoryPressure or K8sNodeCapacityTrigger alert, or on the weekly review: nodes, memory and CPU requests against allocatable, what the pods really use next to them, pods and namespaces, and the two VMs. The top row is cluster-wide; the Node variable filters the panels below it.",
   "tags": [
     "homelab",
     "kubernetes",
@@ -938,11 +938,500 @@
     {
       "id": 14,
       "type": "row",
+      "title": "What do the pods really use? (next to the scheduler's view)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory: used by pods, requested, allocatable",
+      "description": "Per node, three lines: the memory working set of all its pods (solid, filled: what the kernel cannot reclaim, summed over the pods' containers), the memory the pods request (dashed: the scheduler's book, rule K8sNodeMemoryRequestsHigh at 90 % of allocatable) and the node's allocatable memory (dotted: the ceiling). Used well under requested is reserved room that is not used (by design for tenants: requests are overcommitted); used above requested means pods take more than they reserved, so the real headroom is smaller than the requests ratio says. Used approaching allocatable is the node running out of memory (K8sNodeMemoryPressure). The pods' sum leaves out the kubelet, containerd and the kernel: the VM's own used memory is higher (Infrastructure > Nodes). The series exist since 2026-11-09.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", instance=~\"$node\"})",
+          "legendFormat": "{{instance}} used by pods",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", exported_node=~\"$node\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "{{exported_node}} requested",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} allocatable",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^k3s .*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^k3s-worker .*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* requested$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* allocatable$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    2,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 9,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU (cores): used by pods, requested, allocatable",
+      "description": "Per node, in cores: the CPU time its pods use per second (solid, filled), what they request (dashed) and the node's allocatable cores (dotted). CPU is compressible: used above requested is fine while the node has spare cores; used near allocatable is a node that is CPU-bound, and pods slow down rather than die. The pods' sum leaves out the kubelet, containerd and the k3s server: the VM's CPU utilisation (the compact VM row below) is higher. No alert rule. The series exist since 2026-11-09.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", instance=~\"$node\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}} used by pods",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", exported_node=~\"$node\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "{{exported_node}} requested",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_node_status_allocatable{job=\"service_dmz\", resource=\"cpu\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} allocatable",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^k3s .*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^k3s-worker .*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* requested$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* allocatable$"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    2,
+                    6
+                  ]
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 9,
+        "y": 21,
+        "w": 9,
+        "h": 9
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Pods' use and requests, share of allocatable",
+      "description": "Right now, per node, as a share of what the node can hand out: the pods' memory working set and memory requests, and the pods' CPU use (a 5-minute average) and CPU requests. The colours are the 85 % and 90 % of K8sNodeCapacityTrigger and K8sNodeMemoryRequestsHigh: they apply to the 'memory requested' bars (the rule) and are only a reading aid on the other three. Requested above used is overcommit headroom the tenants share; used above requested is the squeeze.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(label_replace(sum by (instance) (container_memory_working_set_bytes{job=\"service_dmz\", port=\"30599\", instance=~\"$node\"}), \"exported_node\", \"$1\", \"instance\", \"(.*)\")) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} memory used",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", exported_node=~\"$node\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} memory requested",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(label_replace(sum by (instance) (rate(container_cpu_usage_seconds_total{job=\"service_dmz\", port=\"30599\", instance=~\"$node\"}[5m])), \"exported_node\", \"$1\", \"instance\", \"(.*)\")) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"cpu\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} CPU used",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", exported_node=~\"$node\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"cpu\", exported_node=~\"$node\"}",
+          "legendFormat": "{{exported_node}} CPU requested",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "mappings": [],
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 18,
+        "y": 21,
+        "w": 6,
+        "h": 9
+      }
+    },
+    {
+      "id": 18,
+      "type": "row",
       "title": "Capacity trigger, 7 days (heavy: opens on demand)",
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 30,
         "w": 24,
         "h": 1
       },
@@ -1033,10 +1522,10 @@
           },
           "links": [],
           "timeFrom": "7d",
-          "id": 15,
+          "id": 19,
           "gridPos": {
             "x": 0,
-            "y": 21,
+            "y": 31,
             "w": 24,
             "h": 9
           }
@@ -1044,13 +1533,13 @@
       ]
     },
     {
-      "id": 16,
+      "id": 20,
       "type": "row",
       "title": "Nodes, pods and namespaces",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 40,
         "w": 24,
         "h": 1
       },
@@ -1439,10 +1928,10 @@
         }
       ],
       "links": [],
-      "id": 17,
+      "id": 21,
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 41,
         "w": 24,
         "h": 5
       }
@@ -1517,10 +2006,10 @@
         }
       },
       "links": [],
-      "id": 18,
+      "id": 22,
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 46,
         "w": 8,
         "h": 8
       }
@@ -1606,10 +2095,10 @@
         }
       },
       "links": [],
-      "id": 19,
+      "id": 23,
       "gridPos": {
         "x": 8,
-        "y": 36,
+        "y": 46,
         "w": 8,
         "h": 8
       }
@@ -1685,10 +2174,10 @@
         }
       ],
       "links": [],
-      "id": 20,
+      "id": 24,
       "gridPos": {
         "x": 16,
-        "y": 36,
+        "y": 46,
         "w": 8,
         "h": 8
       }
@@ -1785,22 +2274,22 @@
         }
       },
       "links": [],
-      "id": 21,
+      "id": 25,
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 54,
         "w": 24,
         "h": 6
       }
     },
     {
-      "id": 22,
+      "id": 26,
       "type": "row",
       "title": "The two VMs (USE, compact: Infrastructure > Nodes has the full set)",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 60,
         "w": 24,
         "h": 1
       },
@@ -1883,10 +2372,10 @@
           "targetBlank": true
         }
       ],
-      "id": 23,
+      "id": 27,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 61,
         "w": 8,
         "h": 7
       }
@@ -1966,10 +2455,10 @@
         }
       },
       "links": [],
-      "id": 24,
+      "id": 28,
       "gridPos": {
         "x": 8,
-        "y": 51,
+        "y": 61,
         "w": 8,
         "h": 7
       }
@@ -2067,10 +2556,10 @@
         }
       },
       "links": [],
-      "id": 25,
+      "id": 29,
       "gridPos": {
         "x": 16,
-        "y": 51,
+        "y": 61,
         "w": 8,
         "h": 7
       }
@@ -2145,10 +2634,10 @@
         }
       },
       "links": [],
-      "id": 26,
+      "id": 30,
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 68,
         "w": 8,
         "h": 7
       }
@@ -2213,10 +2702,10 @@
           "fields": ""
         }
       },
-      "id": 27,
+      "id": 31,
       "gridPos": {
         "x": 8,
-        "y": 58,
+        "y": 68,
         "w": 8,
         "h": 7
       }
@@ -2302,22 +2791,22 @@
         }
       },
       "links": [],
-      "id": 28,
+      "id": 32,
       "gridPos": {
         "x": 16,
-        "y": 58,
+        "y": 68,
         "w": 8,
         "h": 7
       }
     },
     {
-      "id": 29,
+      "id": 33,
       "type": "row",
       "title": "Is the cluster's telemetry healthy?",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 75,
         "w": 24,
         "h": 1
       },
@@ -2399,10 +2888,10 @@
           "mode": "single"
         }
       },
-      "id": 30,
+      "id": 34,
       "gridPos": {
         "x": 0,
-        "y": 66,
+        "y": 76,
         "w": 12,
         "h": 7
       }
@@ -2477,10 +2966,10 @@
         }
       },
       "links": [],
-      "id": 31,
+      "id": 35,
       "gridPos": {
         "x": 12,
-        "y": 66,
+        "y": 76,
         "w": 6,
         "h": 7
       }
@@ -2549,10 +3038,10 @@
           "fields": ""
         }
       },
-      "id": 32,
+      "id": 36,
       "gridPos": {
         "x": 18,
-        "y": 66,
+        "y": 76,
         "w": 6,
         "h": 7
       }
