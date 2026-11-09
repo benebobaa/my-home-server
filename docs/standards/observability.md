@@ -110,7 +110,7 @@ a guest falls out of the job.
 | --- | --- | --- |
 | `critical` | immediately, with sound; repeated every 4 h while firing | someone should act now, at any hour |
 | `warning` | with sound, but held 23:00–07:00 WIB | act today; resolved overnight → never sent |
-| `info` | silent message | a record (a reboot, a cap reached) |
+| `info` | silent message, repeated weekly | a record (a reboot, a cap reached) |
 
 `Watchdog` never reaches Telegram: it is the healthchecks.io dead-man's
 switch.

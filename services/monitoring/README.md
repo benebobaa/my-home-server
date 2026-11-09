@@ -50,7 +50,7 @@ message (`alertmanager/telegram.tmpl`) links it.
 
 **Routing by severity** (`alertmanager/alertmanager.yml`): `critical` →
 Telegram now, repeated every 4 h; `warning` → Telegram, held 23:00–07:00
-WIB; `info` → Telegram without sound. `HostUnreachable`, `HttpProbeFailed`
+WIB; `info` → Telegram without sound, repeated weekly (a record for the weekly review). `HostUnreachable`, `HttpProbeFailed`
 and `TargetDown` take their severity from the host's `tier`.
 
 Highlights:
@@ -68,6 +68,16 @@ Highlights:
 Inhibitions (`alertmanager/alertmanager.yml`): an unreachable host suppresses
 its own scrape and probe alerts, and a node that is down suppresses its
 guests' alerts.
+
+**Every rule** carries `summary`, `description`, `runbook_url` and
+`dashboard_url` (one of the generated boards); `make check` enforces it
+(`scripts/check-alert-contract.py`) and checks where six kinds of alert are
+routed (`scripts/test-alertmanager-routes.sh`). **SLO:** Kubeletto's public API,
+99.5 % over 30 days from the public probes, with burn-rate alerts
+(`rules/slo.yml`, ADR 0036). **If Telegram itself fails**,
+`AlertmanagerNotificationsFailing` also pings the healthchecks.io `/fail`
+endpoint, which reaches you through that service's own Telegram integration:
+expect "down" then "up" within two minutes.
 
 **Cold reboot, verified 2026-10-09:** both nodes rebooted. CT 120 and
 admin-gw came back on their own, and all targets were up again. The first

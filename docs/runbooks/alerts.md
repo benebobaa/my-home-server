@@ -553,6 +553,16 @@ power cut, internet down, the stack dead). It never reaches Telegram.
 
 ### AlertmanagerNotificationsFailing
 **Meaning:** Alertmanager cannot deliver to Telegram (or healthchecks.io).
+**A second path:** if Telegram is what broke, this alert cannot reach you
+through Telegram. Alertmanager therefore also calls the `/fail` endpoint of the
+healthchecks.io check (`homelab-watchdog`), whose own Telegram integration is an
+independent route to you (ADR 0036). You will see healthchecks.io report the
+check **down** and, within about two minutes (the next Watchdog ping), **up**
+again. That down-then-up is this alert: the Watchdog itself is fine, Telegram
+delivery from Alertmanager is not. It repeats at most hourly while the alert
+fires. Routing was tested live on 2026-11-09 with a test alert sent only to
+this path; that the Telegram messages from healthchecks.io arrived is for the
+operator to confirm.
 **Check:** `pct exec 120 -- journalctl -u prometheus-alertmanager -n 50`.
 Token revoked? Internet down?
 **Fix:** rotate/repair the secret (`docs/runbooks/secrets.md`), `tofu apply`.
