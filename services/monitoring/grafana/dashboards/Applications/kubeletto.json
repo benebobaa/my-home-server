@@ -1,0 +1,2281 @@
+{
+  "uid": "homelab-apps-kubeletto",
+  "title": "Kubeletto",
+  "description": "Is Kubeletto working for its customers? The public path (availability against 99.5 %, probe time), the core and its usage meters, the Traefik edge by route, the log pipeline and the platform pods. Open it after KubelettoPublicPathDown, KubelettoUsageMeter*, K8sPlatformPod*, K8sTenantLogsThrottled or K8sLogsDropped, or on the weekly review.",
+  "tags": [
+    "homelab",
+    "applications",
+    "red",
+    "slo"
+  ],
+  "editable": false,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Homelab boards",
+      "tags": [
+        "homelab"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "step": "60s",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{instance}} {{severity}}"
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Is Kubeletto working for its customers?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Public path",
+      "description": "api.kubeletto.com/healthz and the registry token endpoint, probed every 60 s from the lab through the household line, Cloudflare and the tunnel (rule KubelettoPublicPathDown: either one failing for 5 minutes). DOWN means the console, the CLI and image pulls fail for customers. The probe crosses the household line twice, so a line outage looks the same: Network > Reachability and Router and WAN tell the two apart.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(probe_success{job=\"blackbox_public\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [
+        {
+          "title": "Reachability board",
+          "url": "/d/homelab-net-reachability",
+          "targetBlank": true
+        }
+      ],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Availability, 24 h",
+      "description": "Share of the last 24 hours in which the weaker of the two public probes answered correctly. Green is at or above the 99.5 % objective (ADR 0036; its window there is 30 days; 99.5 % of 24 hours allows about 7 minutes of failure). No alert fires on this number: KubelettoPublicPathDown fires on 5 minutes down. Time when the monitoring host was off has no probes and counts as neither.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(avg_over_time(probe_success{job=\"blackbox_public\"}[24h]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.995
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 3,
+      "gridPos": {
+        "x": 3,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Availability, 7 d",
+      "description": "Share of the last 7 days in which the weaker of the two public probes answered correctly. Green is at or above the 99.5 % objective (50 minutes of failure a week; ADR 0036). The probe runs every 60 s, so 0.1 % is about 10 probes. The chart below the tiles shows the rolling value over time.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(avg_over_time(probe_success{job=\"blackbox_public\"}[7d]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.995
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 4,
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Core ready",
+      "description": "Core's /readyz through the NodePort health proxy on k3s:30080, probed from the lab (rule HttpProbeFailed for instance k3s, standard tier: 5 minutes, warning). DOWN means core is not ready: the API, builds and deploys fail. Unlike the public probe this one does not cross the household line or Cloudflare: DOWN here is the platform, DOWN only on the public path is the line, Cloudflare, the tunnel or DNS.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(probe_success{job=\"blackbox_http\", instance=\"k3s\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 5,
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Usage meter lag, worst",
+      "description": "Time since the newest window the slowest usage meter (http_requests, log_bytes) has recorded (rule KubelettoUsageMeterStale: over 30 minutes for 5 minutes). Healthy is a sawtooth of 2 to 10 minutes; orange is above 15, unusual. While it is red, request caps and the tenants' usage page stand still. 'no meter' means core serves no checkpoint at all, or the scrape is down (TargetDown); one meter missing shows only as a missing row in the Usage meters table (rule KubelettoUsageMeterMissing, 30 minutes).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(time() - kubeletto_usage_meter_processed_until_seconds{job=\"service_dmz\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 900
+              },
+              {
+                "color": "red",
+                "value": 1800
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "no meter"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Edge 5xx share",
+      "description": "Share of Traefik's responses in the selected time range that were 5xx, all three routes together (the Edge row splits them). No alert rule watches it, and ADR 0036 does not use it as the SLI: an upload the client cancels can show as a 502, and 504s on websocket upgrades of tenant apps (most of the 5xx on 2026-11-09) count here. The colours (orange 5 %, red 20 %) are a reading aid, not an objective. Read the by-route chart before concluding anything.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum(increase(traefik_service_requests_total{job=\"service_dmz\", code=~\"5..\"}[$__range])) or vector(0)) / sum(increase(traefik_service_requests_total{job=\"service_dmz\"}[$__range]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tenant log events lost",
+      "description": "Log events Vector dropped in the selected time range because the per-tenant cap was hit (rule K8sTenantLogsThrottled) or because a sink failed (rule K8sLogsDropped): lines a tenant's `kubeletto logs` will never show. Zero is the good state; the counters exist only after the first drop. n/a means a Vector metrics endpoint is down, so a 0 would be a guess (TargetDown). The Log pipeline row names the node and component.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "((sum(increase(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"false\"}[$__range])) or vector(0)) + (sum(increase(vector_component_discarded_events_total{job=\"service_dmz\", component_id=\"kubeletto_throttle_runtime\"}[$__range])) or vector(0))) and on () (min(up{job=\"service_dmz\", port=\"30598\"}) == 1)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 8,
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Platform pods ready",
+      "description": "Share of running platform pods (core, NATS, Valkey, registry, Traefik, Kourier, Knative, cloudflared, logs, kube-system; never tenant kl-* or build pods) whose containers are all ready (rule K8sPlatformPodNotReady: a container running but not ready for 10 minutes). Anything under 100 % is red at once: a rollout shows red for a minute, and only 10 minutes of it alerts. The Platform pods row names the pod.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - (count(count by (namespace, pod) ((kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 0) and on (namespace, pod) (kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))) or vector(0)) / count((kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 9,
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Can customers reach it, and how fast?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "state-timeline",
+      "title": "Public probes: up or down",
+      "description": "The two probes through the public edge over time: kubeletto-api is api.kubeletto.com/healthz, kubeletto-registry-auth is the registry's token endpoint (it answers 401 JSON to an anonymous request on purpose, which the probe counts as up). Rule KubelettoPublicPathDown fires after 5 minutes of red. Both red at once is the tunnel, Cloudflare or the line; one red is that route.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "probe_success{job=\"blackbox_public\"}",
+          "legendFormat": "{{instance}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.8,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Availability against the 99.5 % objective",
+      "description": "Rolling availability of each public probe over the last 24 hours and 7 days: the share of probes that answered correctly. The dashed red line is the 99.5 % objective of ADR 0036 (whose window is 30 days): a line under it is spending the budget faster than the objective allows. The 24-hour line drops sharply in an outage and recovers a day later; the 7-day line moves slowly. No alert fires on it. An error-budget and burn-rate row follows this one in a later phase.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg_over_time(probe_success{job=\"blackbox_public\"}[24h])",
+          "legendFormat": "{{instance}} 24 h",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "avg_over_time(probe_success{job=\"blackbox_public\"}[7d])",
+          "legendFormat": "{{instance}} 7 d",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "axisSoftMin": 0.99,
+            "axisSoftMax": 1
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.995
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 12,
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Public probe time",
+      "description": "Time of each public probe, whole request and the server-processing share (the wait for the first byte, after DNS, connect and TLS). The probe runs from the lab, so the gap between the lines is the household line and Cloudflare, not the platform; the server-processing line is the platform's part plus the return path through the tunnel. The median is about half a second with spikes of several seconds (9.5 s peak on 2026-11-09), because the line is shared and, after the ISP quota, throttled (Router and WAN board). A band that stays high for hours is the line. No alert rule watches latency.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "probe_duration_seconds{job=\"blackbox_public\"}",
+          "legendFormat": "{{instance}} total",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "probe_http_duration_seconds{job=\"blackbox_public\", phase=\"processing\"}",
+          "legendFormat": "{{instance}} server processing",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Is the core ready, and is metering on time?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "state-timeline",
+      "title": "Core readiness and metrics endpoint",
+      "description": "Core as seen through the NodePort health proxy (k3s:30080, which serves core's /readyz and /metrics and nothing else). The readyz probe is rule HttpProbeFailed (5 minutes) and the scrape is rule TargetDown; the usage meters below are read from that same endpoint, so if the scrape is red the meter panels are stale. Red on both while the public path is green is unusual: check the proxy pod in the platform namespace.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "probe_success{job=\"blackbox_http\", instance=\"k3s\"}",
+          "legendFormat": "readyz probe",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"service_dmz\", instance=\"k3s\", port=\"30080\"}",
+          "legendFormat": "/metrics scrape",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.8,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Usage meter lag",
+      "description": "How far behind real time each usage meter is: now minus the end of the newest window it recorded. The meters turn access logs and tenant logs in VictoriaLogs into 5-minute usage samples, read 2 minutes after a window closes, so a healthy line is a sawtooth between 2 and 10 minutes. The dashed line is KubelettoUsageMeterStale (30 minutes, held 5). A climbing line means VictoriaLogs or Postgres is failing, or no replica holds the leader lock. A missing line is KubelettoUsageMeterMissing.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - kubeletto_usage_meter_processed_until_seconds{job=\"service_dmz\"}",
+          "legendFormat": "{{meter}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1800
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 8,
+        "y": 20,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "type": "table",
+      "title": "Usage meters",
+      "description": "One row per meter: its lag now, the end of the newest window it recorded, and the start of the first window it ever recorded (a constant: how far back the metering, and so the usage page, reaches). Both meters should list; a missing row is KubelettoUsageMeterMissing, a lag over 30 minutes is KubelettoUsageMeterStale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - kubeletto_usage_meter_processed_until_seconds{job=\"service_dmz\"}",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kubeletto_usage_meter_processed_until_seconds{job=\"service_dmz\"} * 1000",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kubeletto_usage_meter_started_seconds{job=\"service_dmz\"} * 1000",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lag"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Recorded up to"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Metering since"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Meter",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "meter",
+                "Value #A",
+                "Value #B",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "meter": "Meter",
+              "Value #A": "Lag",
+              "Value #B": "Recorded up to",
+              "Value #C": "Metering since"
+            },
+            "indexByName": {
+              "meter": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 17,
+      "gridPos": {
+        "x": 16,
+        "y": 20,
+        "w": 8,
+        "h": 7
+      }
+    },
+    {
+      "id": 18,
+      "type": "row",
+      "title": "What does the edge see? (rate, errors, duration)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by route",
+      "description": "Requests per second answered through Traefik, by route: api is the platform API (what the console and CLI call), user-apps is every tenant app, domains is tenants' custom domains. Rate of the request counter, all protocols. A cliff on api with the public path green is a routing or Cloudflare problem; a swing on user-apps is a tenant, often one pinger. No alert rule. The Kubernetes > Ingress board has the per-service detail.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\"))",
+          "legendFormat": "{{svc}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx share by route",
+      "description": "Share of each route's responses that were 5xx. A route with no 5xx reads 0, not a gap. The api line is the platform's own error rate; user-apps mostly reflects tenant apps (a crash loop, a cold start timing out, websocket upgrades answered 504). Uploads cancelled by the client can show up as 502 here, so this overstates real errors: that is why the SLI is the probe, not this. domains carries a few requests a minute, so one failure swings its line: read it with the rate chart. No alert rule. Details on the Kubernetes > Ingress board.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\", code=~\"5..\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\")) / sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\")) or (sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\")) * 0)",
+          "legendFormat": "{{svc}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests over 1.2 s, by route",
+      "description": "Share of each route's HTTP requests that took longer than 1.2 seconds in Traefik (the second-largest histogram bucket; the buckets are 0.1, 0.3, 1.2 and 5 s). Websocket and SSE connections are left out: their duration is how long they stayed open. The api line is the platform; on user-apps a share of several percent is normal (scale-from-zero cold starts and slow tenant apps). A low-traffic route (domains) swings on a single slow request. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_bucket{job=\"service_dmz\", protocol=\"http\", le=\"1.2\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\")) / sum by (svc) (label_replace(label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_count{job=\"service_dmz\", protocol=\"http\"}[$__rate_interval]), \"svc\", \"other\", \"exported_service\", \".*\"), \"svc\", \"api\", \"exported_service\", \"traefik-api-.*\"), \"svc\", \"user-apps\", \"exported_service\", \"traefik-user-apps-.*\"), \"svc\", \"domains\", \"exported_service\", \"traefik-dom-.*\"))",
+          "legendFormat": "{{svc}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 21,
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx and client-cancelled responses, by code",
+      "description": "What the 5xx and the client-cancelled (499) responses are, per second, all routes together. 499 means the client closed the connection first: not an error of the platform and not in the 5xx tile. 504 is a gateway timeout from the backend (on 2026-11-09 mostly websocket upgrades of tenant apps); 500 is the backend answering with an error; 502 and 503 are a backend that closed the connection or was not available (an upload cancelled by the client can also surface as 502). Empty would mean none of them in the window, the best case. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code, protocol) (rate(traefik_service_requests_total{job=\"service_dmz\", code=~\"5..\"}[$__rate_interval]))",
+          "legendFormat": "{{code}} {{protocol}}",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code, protocol) (rate(traefik_service_requests_total{job=\"service_dmz\", code=\"499\"}[$__rate_interval]))",
+          "legendFormat": "499 {{protocol}} (client hung up)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Do tenant logs reach the log store?",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Log events lost, by node and cause",
+          "description": "Log events dropped per window: by the per-tenant cap (6000 events per 10 s per tenant per node; rule K8sTenantLogsThrottled) and by a failed sink (rule K8sLogsDropped). Each is a hole in a tenant's `kubeletto logs`, which every plan may query for 7 days. Empty is the normal state: Vector creates these counters on the first drop. The throttle names the node, not the tenant; the tenant is in Vector's log.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance) (increase(vector_component_discarded_events_total{job=\"service_dmz\", component_id=\"kubeletto_throttle_runtime\"}[$__rate_interval]))",
+              "legendFormat": "{{instance}} throttled (per-tenant cap)",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance, component_id) (increase(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"false\"}[$__rate_interval]))",
+              "legendFormat": "{{instance}} {{component_id}} failed",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 24,
+          "gridPos": {
+            "x": 0,
+            "y": 44,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Vector component errors",
+          "description": "Errors Vector reports per window, by component: a sink that cannot reach VictoriaLogs, a transform that fails on an event. Errors are the early sign of the loss the left-hand chart counts. No alert rule reads this series (K8sLogsDropped reads discards). Empty is the normal state: the counter appears on the first error.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance, component_id) (increase(vector_component_errors_total{job=\"service_dmz\"}[$__rate_interval]))",
+              "legendFormat": "{{instance}} {{component_id}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 25,
+          "gridPos": {
+            "x": 8,
+            "y": 44,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Events filtered on purpose",
+          "description": "Events per second Vector discards by design (health-probe noise, build logs; intentional=\"true\", never errors). It is here as a liveness proxy, the only Vector throughput series Prometheus keeps: on the k3s node the probe noise is constant (about 18 events/s on 2026-11-09), so a flat zero there suggests Vector stopped reading while its pod still looks ready. No alert rule.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (component_id) (rate(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"true\", component_id!=\"kubeletto_throttle_runtime\"}[$__rate_interval]))",
+              "legendFormat": "{{component_id}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 2
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 26,
+          "gridPos": {
+            "x": 16,
+            "y": 44,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "state-timeline",
+          "title": "Log pipeline up or down",
+          "description": "The pipeline's parts over time: victorialogs-0 (the store behind the customers' 7-day `kubeletto logs` promise), one Vector pod per node, and each Vector metrics endpoint (rule TargetDown). Pod readiness is K8sPlatformPodNotReady's view. The retention itself cannot be measured here: the in-cluster VictoriaLogs is not scraped (see the last row).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (container, exported_node) (kube_pod_container_status_ready{job=\"service_dmz\", namespace=\"logs\"} * on (namespace, pod) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace=\"logs\"})",
+              "legendFormat": "{{container}} ready on {{exported_node}}",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "up{job=\"service_dmz\", port=\"30598\"}",
+              "legendFormat": "{{instance}} vector metrics",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "UP",
+                      "color": "green",
+                      "index": 1
+                    }
+                  }
+                }
+              ],
+              "custom": {
+                "fillOpacity": 70,
+                "lineWidth": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "mergeValues": true,
+            "showValue": "never",
+            "alignValue": "center",
+            "rowHeight": 0.8,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "id": 27,
+          "gridPos": {
+            "x": 0,
+            "y": 51,
+            "w": 24,
+            "h": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Are the platform pods ready?",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "bargauge",
+          "title": "Ready pods by platform namespace",
+          "description": "Share of running pods that are fully ready, in each platform namespace (rule K8sPlatformPodNotReady). Full bars are healthy; a short bar names the namespace: platform is core, its health proxy, Valkey and kube-state-metrics, registry the image registry and its Docker Hub mirror, traefik the edge, cloudflared the tunnel, logs the log pipeline.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "1 - (count by (namespace) (count by (namespace, pod) ((kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 0) and on (namespace, pod) (kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))) or (count by (namespace) ((kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1)) * 0)) / count by (namespace) ((kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+              "legendFormat": "{{namespace}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "max": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "valueMode": "color",
+            "minVizHeight": 16,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false,
+              "fields": ""
+            }
+          },
+          "id": 29,
+          "gridPos": {
+            "x": 0,
+            "y": 59,
+            "w": 8,
+            "h": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Platform container restarts in 30 minutes",
+          "description": "The most restarts any one platform container had in the last 30 minutes, per namespace (rule K8sPlatformPodRestarting: more than 2; a node reboot restarts each container once). A line above the dashed one is a component falling over: usually a memory limit (OOM) or a failing liveness probe. The window is the rule's, not the dashboard's.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[30m]))",
+              "legendFormat": "{{namespace}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "dashed"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 2
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 30,
+          "gridPos": {
+            "x": 8,
+            "y": 59,
+            "w": 8,
+            "h": 8
+          }
+        },
+        {
+          "type": "table",
+          "title": "Platform containers not ready or stuck",
+          "description": "Every platform container that runs but is not ready (rule K8sPlatformPodNotReady, 10 minutes) and every one that cannot start, with the reason (rule K8sPlatformPodWaiting: crash loop, image pull, a missing Secret or ConfigMap; 10 minutes). Empty is the good state.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 0) and on (namespace, pod) (kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\", namespace!~\"kl-.*|kubeletto-builds\"} == 1)",
+              "legendFormat": "",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "kube_pod_container_status_waiting_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\", reason=~\"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError\"} == 1",
+              "legendFormat": "",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Namespace",
+                "desc": false
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "include": {
+                  "names": [
+                    "namespace",
+                    "pod",
+                    "container",
+                    "reason"
+                  ]
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "pod": "Pod",
+                  "container": "Container",
+                  "reason": "Waiting reason"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "pod": 1,
+                  "container": 2,
+                  "reason": 3
+                }
+              }
+            }
+          ],
+          "links": [],
+          "id": 31,
+          "gridPos": {
+            "x": 16,
+            "y": 59,
+            "w": 8,
+            "h": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "row",
+      "title": "What this board cannot see yet",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "text",
+      "title": "Not instrumented",
+      "description": "Reading guide.",
+      "options": {
+        "mode": "markdown",
+        "content": "**There are no application-level request, latency or error metrics for Kubeletto core or for the larasrouter app in Prometheus.** Everything above is the edge (Traefik sees every request, by route, not by customer or endpoint), synthetic probes of the public path, kube-state-metrics, Vector's own counters and core's two usage-meter gauges. This board has no larasrouter panels on purpose: none of its series reach Prometheus, and a panel built from the edge would pass for app health that nobody measures.\n\n**Planned follow-up:** instrument core and larasrouter (request rate, errors, latency histograms) and scrape them from the DMZ, then add the error-budget and burn-rate row for the 99.5 % objective. Also missing, and named in the panels that need them: the in-cluster VictoriaLogs is not scraped, so the 7-day log retention customers are promised is unmeasured, and there are no kubelet or cAdvisor series, so no per-pod CPU or memory."
+      },
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 7
+      }
+    }
+  ]
+}
