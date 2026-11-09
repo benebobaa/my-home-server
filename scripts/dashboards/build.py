@@ -91,7 +91,7 @@ def cmd_write(boards: list[lib.Board], partial: bool = False) -> int:
     return 0
 
 
-def cmd_check(boards: list[lib.Board]) -> int:
+def cmd_check(boards: list[lib.Board], partial: bool = False) -> int:
     rendered = render_all(boards)
     bad = []
     for rel, text in rendered.items():
@@ -100,7 +100,8 @@ def cmd_check(boards: list[lib.Board]) -> int:
             bad.append(f"missing  {rel}")
         elif p.read_text() != text:
             bad.append(f"differs  {rel}")
-    for rel in sorted(on_disk() - set(rendered)):
+    # with --module only some boards are loaded: the rest is not stale
+    for rel in sorted(set() if partial else on_disk() - set(rendered)):
         bad.append(f"stale    {rel} (no generator produces it)")
     if bad:
         print("dashboards: committed JSON does not match the generator:\n  "
@@ -124,10 +125,15 @@ BUILTIN_SUBST = {
 }
 
 
-def prom_get(url: str, path: str, params: dict | None = None) -> dict:
-    data = urllib.parse.urlencode(params or {}, doseq=True).encode()
-    req = urllib.request.Request(f"{url}{path}", data=data if params else None)
-    with urllib.request.urlopen(req, timeout=20) as r:
+def prom_get(url: str, path: str, params: dict | None = None, post: bool = False) -> dict:
+    """GET by default: /api/v1/label/<name>/values accepts nothing else (405).
+    Queries pass post=True so a long expression is not limited by URL length."""
+    qs = urllib.parse.urlencode(params or {}, doseq=True)
+    if post:
+        req = urllib.request.Request(f"{url}{path}", data=qs.encode())
+    else:
+        req = urllib.request.Request(f"{url}{path}" + (f"?{qs}" if qs else ""))
+    with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
 
@@ -156,7 +162,7 @@ def substitute(expr: str, variables: dict[str, list[str]]) -> str:
     for name, vals in variables.items():
         if not vals:
             continue
-        joined = "|".join(re.escape(v) if False else v for v in vals)
+        joined = "|".join(vals)
         # =~"$name" takes every value; anything else takes the first
         expr = re.sub(r'=~\s*"(\$\{?%s\}?)"' % re.escape(name), f'=~"{joined}"', expr)
         expr = re.sub(r"\$\{?%s\}?" % re.escape(name), vals[0], expr)
@@ -182,7 +188,7 @@ def cmd_verify(boards: list[lib.Board], url: str, only: str | None, strict: bool
                     continue
                 expr = substitute(t["expr"], variables)
                 try:
-                    res = prom_get(url, "/api/v1/query", {"query": expr})
+                    res = prom_get(url, "/api/v1/query", {"query": expr}, post=True)
                 except urllib.error.HTTPError as e:
                     body = e.read().decode(errors="replace")[:200]
                     errors += 1
@@ -238,7 +244,7 @@ def main() -> int:
         print(f"dashboards: standard violated:\n{e}", file=sys.stderr)
         return 1
     if a.check:
-        return cmd_check(boards)
+        return cmd_check(boards, partial=bool(a.module))
     if a.list:
         return cmd_list(boards)
     if a.verify_live:
