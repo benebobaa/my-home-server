@@ -1,0 +1,11 @@
+# dashboard-linter (grafana/dashboard-linter) exclusions for the generated boards.
+# Passed with --config by `make dashboard-lint`. Every exclusion says why; a rule
+# that fails without an entry here fails `make check`.
+exclusions:
+  template-datasource-rule:
+    reason: >-
+      One Prometheus, one log store, one trace store, with fixed uids
+      (docs/standards/dashboards.md section 3). A datasource variable would be a
+      picker with a single choice.
+  panel-datasource-rule:
+    reason: Same as template-datasource-rule, the uids are fixed on purpose.

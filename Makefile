@@ -18,9 +18,9 @@ MODULES     := inventory proxmox/opentofu/modules/lxc-guest
 SHELL_FILES := $(shell git ls-files '*.sh' .githooks/pre-commit)
 RULES       := services/monitoring/prometheus/rules/*.yml
 
-.PHONY: check inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan fmt plan drift
+.PHONY: check inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config dashboards dashboards-check dashboard-lint secrets-scan fmt plan drift
 
-check: inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config secrets-scan
+check: inventory fmt-check validate tflint shellcheck yamllint ansible-lint monitoring-config dashboards-check dashboard-lint secrets-scan
 	@echo "check: all passed"
 
 # inventory/lab.yaml: unique IPs/VMIDs, IPs inside their VLAN, known nodes.
@@ -71,6 +71,20 @@ monitoring-config:
 	$(X) amtool template render --template.glob='services/monitoring/alertmanager/*.tmpl' \
 	  --template.text='{{ template "homelab.telegram" . }}' >/dev/null && echo "amtool: templates OK"
 	python3 -c "import ast; ast.parse(open('services/monitoring/targets.py').read())" && echo "targets.py: syntax OK"
+
+# Grafana boards are generated (ADR 0036): `make dashboards` rewrites the JSON;
+# `make check` fails if the committed JSON differs from the generator, if a
+# board breaks docs/standards/dashboards.md, or if the linter finds a problem.
+dashboards:
+	$(X) uv run scripts/dashboards/build.py
+
+dashboards-check:
+	$(X) uv run scripts/dashboards/build.py --check
+
+dashboard-lint:
+	@set -e; for f in $$(find services/monitoring/grafana/dashboards -name '*.json' | sort); do \
+	  $(X) dashboard-linter lint --config scripts/dashboards/lint.yml --strict "$$f"; done; \
+	  echo "dashboard-linter: all boards OK"
 
 secrets-scan:
 	$(X) gitleaks git --no-banner --redact .
