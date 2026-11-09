@@ -30,6 +30,9 @@ install -d -m 0750 -o root -g prometheus "$SECRETS"
 put() { printf '%s' "$2" > "$SECRETS/$1"; chown root:prometheus "$SECRETS/$1"; chmod 0640 "$SECRETS/$1"; }
 put telegram_bot_token "$tg_token"
 put healthchecks_ping_url "$hc_url"
+# healthchecks.io's failure endpoint is the ping URL plus /fail (empty while the
+# check is not configured; the receiver is swapped for blackhole below).
+put healthchecks_fail_url "${hc_url:+${hc_url%/}/fail}"
 
 # --- Alertmanager ------------------------------------------------------------
 am=$(mktemp)
@@ -44,8 +47,8 @@ if [ -z "$tg_token" ] || [ -z "$tg_chat" ]; then
   echo "alertmanager: Telegram not configured yet → alerts go to blackhole"
 fi
 if [ -z "$hc_url" ]; then
-  sed -i 's/^\(\s*receiver:\) healthchecks$/\1 blackhole/' "$am"
-  echo "alertmanager: healthchecks.io not configured yet → Watchdog goes to blackhole"
+  sed -i 's/^\(\s*receiver:\) healthchecks\(_fail\)\{0,1\}$/\1 blackhole/' "$am"
+  echo "alertmanager: healthchecks.io not configured yet → Watchdog and the delivery-failure ping go to blackhole"
 fi
 amtool check-config "$am" >/dev/null
 install -m 0640 -o root -g prometheus "$am" /etc/prometheus/alertmanager.yml

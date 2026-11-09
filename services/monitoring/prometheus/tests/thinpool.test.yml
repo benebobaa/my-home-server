@@ -1,0 +1,59 @@
+# promtool unit tests for ThinPoolFilling's keep_firing_for (rules/hosts.yml, make
+# check). pve3's pool hovers around the 85 % threshold: without keep_firing_for
+# every dip below it closed the alert and every return opened a new one.
+rule_files:
+  - ../rules/hosts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # above 85 % for 20 minutes, then just below it for good
+  - interval: 1m
+    input_series:
+      - series: 'node_lvm_thin_pools_allocated{job="node",instance="pve3",node="pve3",tier="critical"}'
+        values: '85.5x19 84.9x300'
+    alert_rule_test:
+      # pending: not 15 minutes above yet
+      - eval_time: 10m
+        alertname: ThinPoolFilling
+        exp_alerts: []
+      # firing after the 15 minutes
+      - eval_time: 17m
+        alertname: ThinPoolFilling
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve3, node: pve3, tier: critical }
+            exp_annotations:
+              summary: "pve3: thin pool data 85.5% allocated"
+              description: "The guest thin pool on pve3 is 85.5% allocated, past its 80% auto-extend, so the small VG buffer is being used up; at 100% every guest on the pool freezes and can corrupt. Check lvs -a pve and which guest grew, then fstrim the guests."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#thinpoolfilling
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+      # 40 minutes in the value has been below 85 for 21 minutes: still firing
+      - eval_time: 40m
+        alertname: ThinPoolFilling
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve3, node: pve3, tier: critical }
+            exp_annotations:
+              summary: "pve3: thin pool data 85.5% allocated"
+              description: "The guest thin pool on pve3 is 85.5% allocated, past its 80% auto-extend, so the small VG buffer is being used up; at 100% every guest on the pool freezes and can corrupt. Check lvs -a pve and which guest grew, then fstrim the guests."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#thinpoolfilling
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+      # more than 2 h after it last exceeded 85: resolved
+      - eval_time: 200m
+        alertname: ThinPoolFilling
+        exp_alerts: []
+
+  # a genuine climb to 90 % keeps firing while it stays above
+  - interval: 1m
+    input_series:
+      - series: 'node_lvm_thin_pools_allocated{job="node",instance="pve2",node="pve2",tier="critical"}'
+        values: '90x120'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: ThinPoolFilling
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve2, node: pve2, tier: critical }
+            exp_annotations:
+              summary: "pve2: thin pool data 90% allocated"
+              description: "The guest thin pool on pve2 is 90% allocated, past its 80% auto-extend, so the small VG buffer is being used up; at 100% every guest on the pool freezes and can corrupt. Check lvs -a pve and which guest grew, then fstrim the guests."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#thinpoolfilling
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox

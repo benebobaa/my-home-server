@@ -10,7 +10,9 @@
 #   critical  Telegram now, repeated every 4 h while firing
 #   warning   Telegram, but held 23:00-07:00 WIB: still firing in the
 #             morning → it is sent then; resolved overnight → never sent
-#   info      Telegram without sound (a record, not a page)
+#   info      Telegram without sound (a record, not a page), repeated weekly
+#             (it was every 12 h: seven tenants and an off `ai` repeated twice
+#             a day, although these are "for the weekly review")
 
 templates:
   - /etc/prometheus/alertmanager-templates/*.tmpl
@@ -31,6 +33,17 @@ route:
       group_interval: 1m
       repeat_interval: 1m
 
+    # Telegram failing (revoked token, API down) cannot report itself through
+    # Telegram. healthchecks.io has its own Telegram integration, so a /fail
+    # ping reaches the operator on a second path (ADR 0036). `continue` keeps
+    # the normal route as well. The next Watchdog ping marks the check up
+    # again: "down" then "up" within a couple of minutes IS this signal.
+    - matchers: ['alertname="AlertmanagerNotificationsFailing"']
+      receiver: healthchecks_fail
+      continue: true
+      group_wait: 0s
+      repeat_interval: 1h
+
     - matchers: ['severity="critical"']
       receiver: telegram
       repeat_interval: 4h
@@ -41,6 +54,7 @@ route:
 
     - matchers: ['severity="info"']
       receiver: telegram_silent
+      repeat_interval: 168h
 
 time_intervals:
   - name: night
@@ -71,6 +85,12 @@ receivers:
   - name: healthchecks
     webhook_configs:
       - url_file: /etc/prometheus/secrets/healthchecks_ping_url
+        send_resolved: false
+
+  # The same check, its /fail endpoint (written by secrets.sh from the ping URL).
+  - name: healthchecks_fail
+    webhook_configs:
+      - url_file: /etc/prometheus/secrets/healthchecks_fail_url
         send_resolved: false
 
   - name: blackhole

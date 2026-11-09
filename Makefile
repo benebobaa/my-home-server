@@ -68,6 +68,7 @@ monitoring-config:
 	    -e 's|/etc/prometheus/alertmanager-templates/|$(CURDIR)/services/monitoring/alertmanager/|' \
 	    services/monitoring/alertmanager/alertmanager.yml \
 	  | $(X) amtool check-config /dev/stdin >/dev/null && echo "amtool: alertmanager.yml OK"
+	$(X) scripts/test-alertmanager-routes.sh
 	$(X) amtool template render --template.glob='services/monitoring/alertmanager/*.tmpl' \
 	  --template.text='{{ template "homelab.telegram" . }}' >/dev/null && echo "amtool: templates OK"
 	python3 -c "import ast; ast.parse(open('services/monitoring/targets.py').read())" && echo "targets.py: syntax OK"
