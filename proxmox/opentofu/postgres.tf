@@ -9,6 +9,8 @@
 #
 #   postgres_setup  server, config, exporter, nightly dump (services/postgres/setup.sh)
 #   postgres_roles  app roles + databases, passwords generated below
+#   postgres_offsite  pgBackRest to a B2 bucket (services/postgres/offsite.sh,
+#                     ADR 0034), once its keys are in secrets.sops.env
 #
 # An app gets a database by adding its name to postgres_databases; its own .tf
 # then delivers random_password.postgres["<name>"].result into its guest (the
@@ -170,4 +172,51 @@ resource "terraform_data" "postgres_readers" {
   }
 
   depends_on = [terraform_data.postgres_roles]
+}
+
+# The off-site copy (ADR 0034): pgBackRest archives WAL and takes a full
+# backup every 3 days into a B2 bucket, encrypted in the CT
+# (services/postgres/offsite.sh). Nothing exists until the B2 keys are in
+# secrets.sops.env. This never restarts Postgres: turning archive_mode on is
+# a separate, hand-run step in an approved window (offsite.sh --restart-ok,
+# docs/runbooks/backup-restore.md).
+resource "terraform_data" "postgres_offsite" {
+  count = var.postgres_b2_key_id != "" ? 1 : 0
+
+  triggers_replace = [
+    sha256(join("\n", [
+      var.postgres_b2_key_id,
+      var.postgres_b2_app_key,
+      var.postgres_b2_bucket,
+      var.postgres_b2_endpoint,
+      var.postgres_b2_region,
+      var.postgres_offsite_cipher_pass,
+    ])),
+  ]
+
+  # Re-run after every setup run (it replaces /root/postgres, and a change to
+  # offsite.sh or offsite-job.sh is a change in that directory).
+  lifecycle {
+    replace_triggered_by = [terraform_data.postgres_setup]
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -eu
+      printf 'B2_KEY_ID=%s\nB2_APP_KEY=%s\nB2_BUCKET=%s\nB2_ENDPOINT=%s\nB2_REGION=%s\nCIPHER_PASS=%s\n' \
+        "$B2_KEY_ID" "$B2_APP_KEY" "$B2_BUCKET" "$B2_ENDPOINT" "$B2_REGION" "$CIPHER_PASS" \
+        | ${local.postgres_ssh} 'pct exec ${module.postgres.vmid} -- bash /root/postgres/offsite.sh'
+    EOT
+
+    environment = {
+      B2_KEY_ID   = var.postgres_b2_key_id
+      B2_APP_KEY  = var.postgres_b2_app_key
+      B2_BUCKET   = var.postgres_b2_bucket
+      B2_ENDPOINT = var.postgres_b2_endpoint
+      B2_REGION   = var.postgres_b2_region
+      CIPHER_PASS = var.postgres_offsite_cipher_pass
+    }
+  }
+
+  depends_on = [terraform_data.postgres_setup]
 }

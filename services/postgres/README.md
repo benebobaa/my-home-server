@@ -12,10 +12,10 @@ What an app must do to use it: [docs/standards/apps.md](../../docs/standards/app
 | Cluster | `18/main`, UTF8, builtin `C.UTF-8` collation, data checksums on; 2 cores, 2 GB (`shared_buffers` 512 MB), 20 GB root disk |
 | Apps connect | `postgres.home.arpa:5432`, database = user = `<app>`, `sslmode=require`, from VLAN 20 only |
 | Admin | `ssh root@10.10.10.12` → `pct exec 130 -- runuser -u postgres -- psql` (peer auth; no superuser over the network) |
-| Metrics | `postgres_exporter` on `:9187` (Debian package), role `prometheus` over the unix socket, no password; reachable from the monitoring host only (nftables in the CT). Alerts: `app-postgres.yml` |
+| Metrics | `postgres_exporter` on `:9187` (Debian package), role `prometheus` over the unix socket, no password; node_exporter on `:9100` serving only the off-site backup's textfiles; both reachable from the monitoring host only (nftables in the CT). Alerts: `app-postgres.yml` |
 | Logs | journal (`log_destination = syslog`, ident `postgres`) → VictoriaLogs: `_stream:{_HOSTNAME="postgres"} SYSLOG_IDENTIFIER:=postgres`. No statement text or parameters, not even for slow or failing statements (below) |
-| Backups | nightly PBS snapshot (02:30) **and** a logical dump at 01:30 WIB to `/var/backups/postgres/<UTC date>/`, last 3 kept there; PBS keeps the history |
-| Built by | `proxmox/opentofu/postgres.tf` → `setup.sh`, `dump.sh` (installed as `pg-dump-all`), `roles.sh`, `readers.sh` |
+| Backups | nightly PBS snapshot (02:30) **and** a logical dump at 01:30 WIB to `/var/backups/postgres/<UTC date>/`, last 3 kept there; PBS keeps the history. Off-site (once live): pgBackRest to a B2 bucket, below |
+| Built by | `proxmox/opentofu/postgres.tf` → `setup.sh`, `dump.sh` (installed as `pg-dump-all`), `roles.sh`, `readers.sh`, `offsite.sh` + `offsite-job.sh` (installed as `pg-offsite`) |
 
 ## Giving an app a database
 
@@ -143,6 +143,29 @@ pg_restore --clean --if-exists -d <app> "$d/<app>.dump"
 Older than the last 3 nights: restore the CT from PBS to a scratch VMID
 ([backup-restore.md](../../docs/runbooks/backup-restore.md)) and take the
 dump from its `/var/backups/postgres/`.
+
+### Off-site: pgBackRest to Backblaze B2
+
+[ADR 0034](../../docs/decisions/0034-postgres-off-site-on-b2-with-pgbackrest.md).
+WAL archiving (`archive_timeout = 15min`) and a full backup every third day
+into a private B2 bucket (free tier, 10 GB), encrypted in the CT
+(aes-256-cbc, passphrase in SOPS). Two fulls kept: point-in-time restore to
+any moment in the last 3-6 days, survives losing the house.
+
+- `offsite.sh` (Tofu `terraform_data.postgres_offsite`, once the B2 keys are
+  in `proxmox/opentofu/secrets.sops.env`; keys on stdin): installs
+  pgBackRest, writes `/etc/pgbackrest/pgbackrest.conf`, proves the bucket
+  with `stanza-create`. It **never restarts Postgres**: `archive_mode` goes on
+  only with `--restart-ok`, a hand-run step in an approved window, and only
+  after `stanza-create` passed; then `pgbackrest check`, the timers, the
+  first full. `conf.d/offsite.conf` holds the archive settings.
+- `pg-offsite metrics` (every 5 min) and `pg-offsite daily` (04:00 WIB: a full
+  when the newest is ~3 days old, the repo's size, the guard: above 9 GB it
+  expires down to one full). Textfiles in `/var/lib/prometheus/node-exporter/`,
+  alerts `PostgresOffsite*` in `app-postgres.yml`.
+- Turning it on, the restore into a scratch Postgres, and after a PBS
+  restore of this CT: [backup-restore.md](../../docs/runbooks/backup-restore.md#postgres-off-site-pgbackrest-in-b2).
+  Keys and rotation: [secrets.md](../../docs/runbooks/secrets.md#the-off-site-backup-b2-keys-and-the-cipher-passphrase).
 
 A failed dump shows in the journal only (`journalctl -u pg-dump-all`; also in
 VictoriaLogs). The snapshot still covers the database.

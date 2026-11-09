@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # postgres in-guest setup: PostgreSQL 18 from the PostgreSQL project's apt
 # repo (PGDG), its exporter and the nightly logical dump (ADR 0010).
-# Idempotent.
+# Idempotent. The off-site copy (pgBackRest to B2) is offsite.sh, run after
+# this one (ADR 0034).
 #
 # Run by OpenTofu (terraform_data.postgres_setup in
 # ../../proxmox/opentofu/postgres.tf) every time a file in this directory
@@ -74,6 +75,10 @@ cat > /etc/postgresql-common/createcluster.d/homelab.conf <<'EOF'
 initdb_options = '--encoding=UTF8 --locale=C.UTF-8 --locale-provider=builtin --builtin-locale=C.UTF-8'
 EOF
 apt-get install -y -qq "postgresql-${PG_MAJOR}" prometheus-postgres-exporter
+# node_exporter only as a textfile reader (no recommends: those are host
+# collectors with timers of their own): the off-site backup writes its
+# freshness there (offsite.sh, ADR 0034).
+apt-get install -y -qq --no-install-recommends prometheus-node-exporter
 
 # --- server config -----------------------------------------------------------------
 # What the server reads only when it starts. If none of it changes, the run
@@ -209,9 +214,21 @@ EOF
 systemctl enable -q prometheus-postgres-exporter
 systemctl restart prometheus-postgres-exporter
 
-# Only the monitoring host may reach the exporter. It has no auth, and its
-# /probe endpoint connects to any target it is given (SSRF): without this,
-# every host on VLAN 20 could use it. Postgres itself is gated by pg_hba.
+# node_exporter on 9100 serves the textfile directory and nothing else: CPU,
+# memory and disk of the CT come from the Proxmox API (observability
+# standard §1). Written by the off-site jobs (offsite.sh); empty until then.
+cat > /etc/default/prometheus-node-exporter <<'EOF'
+# managed by services/postgres/setup.sh
+ARGS='--web.listen-address=:9100 --collector.disable-defaults --collector.textfile --collector.textfile.directory=/var/lib/prometheus/node-exporter'
+EOF
+install -d -m 0755 -o prometheus -g prometheus /var/lib/prometheus/node-exporter
+systemctl enable -q prometheus-node-exporter
+systemctl restart prometheus-node-exporter
+
+# Only the monitoring host may reach the exporters. They have no auth, and
+# postgres_exporter's /probe endpoint connects to any target it is given
+# (SSRF): without this, every host on VLAN 20 could use it. Postgres itself
+# is gated by pg_hba.
 cat > /etc/nftables.conf <<EOF
 #!/usr/sbin/nft -f
 # managed by services/postgres/setup.sh
@@ -220,8 +237,8 @@ table inet filter {
   chain input {
     type filter hook input priority filter; policy accept;
     iif lo accept
-    tcp dport 9187 ip saddr ${MONITORING_IP} accept
-    tcp dport 9187 drop
+    tcp dport { 9187, 9100 } ip saddr ${MONITORING_IP} accept
+    tcp dport { 9187, 9100 } drop
   }
 }
 EOF
@@ -269,6 +286,12 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 pg_up || { echo "postgres: exporter does not report pg_up 1" >&2; exit 1; }
+textfile_up() { local m; m=$(curl -fsS http://127.0.0.1:9100/metrics 2>/dev/null) && grep -q '^node_textfile_scrape_error 0' <<<"$m"; }
+for _ in $(seq 1 15); do
+  textfile_up && break
+  sleep 1
+done
+textfile_up || { echo "postgres: node_exporter does not serve the textfile directory" >&2; exit 1; }
 enc=$(runuser -u postgres -- psql -XAtc "SELECT pg_encoding_to_char(encoding) || ' ' || datlocprovider::text || ' ' || coalesce(datlocale, datcollate) FROM pg_database WHERE datname = 'template1'")
 [ "$enc" = "UTF8 b C.UTF-8" ] || { echo "postgres: cluster is '${enc}', expected 'UTF8 b C.UTF-8' (rebuild the CT: README)" >&2; exit 1; }
 echo "postgres setup complete ($(runuser -u postgres -- psql -XAtc 'SHOW server_version'), ${enc})"

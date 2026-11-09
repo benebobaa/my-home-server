@@ -134,7 +134,9 @@ hosts:
     vlan: servers
     ip: 10.10.20.21
     note: the lab's shared PostgreSQL 18, one database + role per app (ADR 0010, services/postgres)
-    monitoring: { tier: critical, metrics: [9187], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical: kubeletto and larasrouter depend on it (ADR 0010)
+    # 9187 postgres_exporter; 9100 node_exporter serving only the textfile of
+    # the off-site backup's freshness (ADR 0034).
+    monitoring: { tier: critical, metrics: [9187, 9100], logs: true } # no HTTP side: pg_up from the exporter (app-postgres.yml); critical: kubeletto and larasrouter depend on it (ADR 0010)
   nats:
     kind: lxc
     vmid: 131

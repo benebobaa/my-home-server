@@ -69,3 +69,49 @@ variable "monitoring_snmp_priv_password" {
   sensitive   = true
 }
 
+
+# The off-site copy of the shared Postgres (ADR 0034): a Backblaze B2 bucket
+# over its S3 API. All empty until the operator adds them to secrets.sops.env;
+# terraform_data.postgres_offsite does nothing until then. The bucket's name
+# and endpoint are not secret, but they stay out of this public repo.
+variable "postgres_b2_key_id" {
+  description = "B2 application key ID (read+write, this bucket only) that CT 130 archives with (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "postgres_b2_app_key" {
+  description = "The B2 application key itself (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "postgres_b2_bucket" {
+  description = "B2 bucket name, private (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "postgres_b2_endpoint" {
+  description = "B2 S3 endpoint host, e.g. s3.<region>.backblazeb2.com, without https:// (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "postgres_b2_region" {
+  description = "B2 region, the <region> part of the endpoint (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "postgres_offsite_cipher_pass" {
+  description = "pgBackRest repo cipher passphrase (aes-256-cbc), at least 32 characters; without it the bucket cannot be read (from secrets.sops.env)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
