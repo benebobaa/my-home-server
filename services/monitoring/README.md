@@ -8,6 +8,7 @@ stack and why VLAN 10: [ADR 0006](../../docs/decisions/0006-monitoring-stack.md)
 | | |
 | --- | --- |
 | Grafana | `http://10.10.10.16:3000` (or `monitoring.home.arpa`), user `admin`. Password: `sops decrypt --extract '["TF_VAR_monitoring_grafana_admin_password"]' proxmox/opentofu/secrets.sops.env` |
+| Boards | 17 generated boards, grouped by concern, the Overview as Grafana's home page. Standard: [docs/standards/dashboards.md](../../docs/standards/dashboards.md); why: [ADR 0036](../../docs/decisions/0036-observability-v2-generated-dashboards-and-alert-contract.md) |
 | Prometheus | `http://10.10.10.16:9090` (targets, alerts, ad-hoc queries; no login, MGMT only) |
 | Alertmanager | `127.0.0.1:9093` in the CT only: it has no login, and whoever reaches it can silence alerts. Alerts and silences: Grafana → Alerting (Alertmanager datasource), or `amtool` in the CT |
 | Retention | 30 days, capped at 8 GB (12 GB disk) |
@@ -60,7 +61,7 @@ Highlights:
 | `HostOnBattery` | Both nodes are laptops: losing AC is the earliest sign of a power cut |
 | `DiskPendingSectors`, `DiskSmartFailing`, `DiskReallocatedSectorsGrowing` | pve3's HDD died with 8,448 pending sectors. pve2's HDD already has 9 reallocated sectors (2026-10-09), so the alert is on *growth* |
 | `ThinPoolFilling` (>85 %) / `ThinPoolCritical` (>92 %) | Guests freeze at 100 %. The pool auto-extends at 80 % into a small buffer |
-| `PveClusterNotQuorate`, `PveNodeDown`, `PveGuestDown` | Two-node quorum. `PveGuestDown` covers onboot guests only (the archive CT is not boot-safe yet) |
+| `PveClusterNotQuorate`, `PveNodeDown`, `PveGuestDown` | Three-node quorum: one node down keeps it, two lose it. `PveGuestDown` covers onboot guests only (the archive CT is not boot-safe yet) |
 | `HostUnreachable`, `InternetDown`, `DnsResolverFailing`, `RouterWanLinkDown` | Reachability. Telegram cannot be reached while the internet is down: those alerts arrive afterwards, as a record of the outage |
 | `TargetDown`, `HostTextfileCollectorStale`, `AlertmanagerNotificationsFailing` | The monitoring itself going blind |
 
@@ -75,8 +76,9 @@ address existed and used up systemd's 5 quick restarts. It now starts after
 `network-online.target` and retries without limit (Ansible drop-in). A
 second pve2 cold reboot had it listening at 12.9 s on the first try.
 
-Not yet: a UPS (NUT). Backups (`PveGuestNotBackedUp`), the public endpoints
-(`blackbox_public`), hEX logs and GPU metrics are in place.
+Not yet: a UPS (NUT). Already in place: backup coverage
+(`PveGuestNotBackedUp`), the public endpoints (`blackbox_public`), hEX logs and
+GPU metrics.
 
 ## Operator steps (account-level, once)
 
@@ -108,10 +110,12 @@ Until these are done, alerts are evaluated but routed to `blackhole`
 
 ## Changing things
 
-- **Any file in this directory** → `tofu apply` in `proxmox/opentofu`. It
-  streams the directory into the CT, runs `setup.sh`, then `secrets.sh`
-  (`terraform_data.monitoring_setup`, keyed on the files' hashes). Never edit
-  configs in the CT: the next apply overwrites them.
+- **Any file in this directory except the boards** → `tofu apply` in
+  `proxmox/opentofu`. It streams the directory into the CT, runs `setup.sh`,
+  then `secrets.sh` (`terraform_data.monitoring_setup`, keyed on the files'
+  hashes). Never edit configs in the CT: the next apply overwrites them. One
+  such apply pushes everything under this directory, rules included, and
+  restarts Prometheus and Grafana. For a board alone use the next bullet.
 - **A new host or target:** its `monitoring:` block in `inventory/lab.yaml`
   ([the standard](../../docs/standards/observability.md)), then `tofu apply` in
   `network/routeros` (the exact scrape rule for hosts outside MGMT is
@@ -120,18 +124,27 @@ Until these are done, alerts are evaluated but routed to `blackhole`
 - **Silence** during planned work: Grafana → Alerting → Silences
   (Alertmanager datasource), or
   `ssh root@10.10.10.12 'pct exec 120 -- amtool --alertmanager.url=http://127.0.0.1:9093 silence add instance=pve3 --duration 1h --comment reboot'`.
-- **Dashboards** are pinned grafana.com revisions + sha256 (`setup.sh`,
-  `DASHBOARDS`) for the host views, plus JSON in `grafana/dashboards/`: the
-  **Service** view (any host), one per shared app (`app-postgres`,
-  `app-nats`, `app-valkey`) and four platform views (`platform-logs`,
-  `platform-k3s`, `platform-traces`, `platform-monitoring`). Each alert file
-  has a dashboard whose panels follow the alert expressions. UI edits are not
-  saved: change the JSON in the repo, then apply.
+- **Dashboards** are generated, never edited by hand and never saved from the
+  UI (and never exported from Grafana 13's GUI: it writes the v2 schema, which
+  file provisioning rejects). The Python is in `scripts/dashboards/boards/`;
+  `make dashboards` writes the JSON into `grafana/dashboards/<Folder>/`;
+  `scripts/dashboards/build.py --verify-live -v` runs every query against the
+  live Prometheus; `make check` fails on any drift and runs the linter. Folders:
+  Infrastructure (Nodes, Host and guest, Proxmox cluster, Hardware health),
+  Network (Router and WAN, Reachability), Platform services (PostgreSQL, NATS,
+  Valkey), Kubernetes (Cluster, Platform workloads, Tenants, Ingress),
+  Applications (Kubeletto), Observability (Monitoring health, Log and trace
+  stores), and the Overview at the root. To deploy boards alone:
+  `sops exec-env secrets.sops.env 'tofu apply -target=terraform_data.monitoring_dashboards'`
+  in `proxmox/opentofu` (the directory is swapped as a whole, so a removed
+  board disappears from Grafana, and nothing restarts).
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
 - **Traces** are in the `traces` data source (Tempo API of CT 122,
   `services/traces/`, ADR 0028), which Grafana's Traces Drilldown reads. A
-  TraceQL search needs a service name.
+  TraceQL search needs a service name. VictoriaTraces documents that Tempo API
+  as experimental and the Jaeger API as its stable path, so a `jaeger` data
+  source (uid `jaeger`, same store) is the fallback if a release breaks it.
 - **Versions**: Prometheus, Alertmanager and the exporters are Debian 13
   packages (security updates via apt). Grafana is pinned and held
   (`GRAFANA_VERSION`). pve-exporter is pinned (`PVE_EXPORTER_VERSION`). The

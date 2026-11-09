@@ -39,4 +39,16 @@
 
 ## Verification
 
-Filled in as each phase is applied.
+Filled in as each phase is applied. Decisions above are not edited by it.
+
+**2026-11-09, boards (decisions 2, 3, 4 and 10).** Applied from a branch that was a descendant of `main`, with `-target` on the three monitoring resources, then on `terraform_data.monitoring_dashboards` alone for the second set. `terraform_data.ai_converge` was in the full plan (the hashes of `services/ai/converge.sh` and `provision.sh` differ from the recorded ones after another session's edits) and was left pending, as before; the `ai` VM was not touched.
+
+- Grafana 13.2.3, through its API with the admin password only in the process environment: exactly the 17 generated boards in the root, Infrastructure, Network, Platform services, Kubernetes, Applications and Observability; every board loads and is provisioned; none of the old 13 remained (so `disableDeletion: false` works as intended, which Grafana's docs do not state for an unmodified board); the empty `Homelab` folder the old provider left was deleted.
+- Datasources Prometheus, VictoriaLogs, Traces and the Jaeger fallback are healthy. `$__rate_interval` through Grafana's query API over the 60 s SNMP job returns 361 of 361 points, so the declared 30 s interval works.
+- Every Prometheus query of every board was run against the live lab (`build.py --verify-live -v`): 0 errors and 0 unexpected empties, values read and checked, plus a 24 h range run for the time-series. The generator, the linter and the checks were proven with negative controls (a bad board, a hand-edited board, a stale file each fail `make check`); two bugs in my own guards were found that way and fixed (a `while` loop that reported only its last iteration, and a path split on a space).
+- Series trimming (decision 8, first part): the relabel rules drop exactly 4,196 samples per scrape on the node job, as predicted from 3,020 + 1,176 series.
+- `make check` passes on the final tree: 17 boards, linter clean, promtool, amtool, no leaks.
+
+**Findings the boards surfaced, not decisions of this ADR:** five tenants cold-start 650 to 720 pods a day while customers send about 110 bit/s, so the worker's inbound is image pulls (`TenantWorkerInboundSustained` is firing); the monitoring CT's 24-day disk runway is the one-time fill of the 30-day window, with a predicted low near 2.4 GB free around 2026-11-15; the `pbs` datastore is at 84.8 %; pve3's thin pool sits at 85.02 %; `pbs-replica` (CT 112) is in no backup job; the ISP throttle holds the WAN near 4.9 Mbit/s, so `WanInboundDayHigh` cannot fire while it lasts.
+
+**Not yet applied:** decisions 5 to 9 (the alert contract, the SLO, meta-monitoring, the remaining data gaps).
