@@ -38,7 +38,7 @@ targets and the two internet probes.
 | `blackbox_icmp` | every live host with a monitoring block, 1.1.1.1, 8.8.8.8 | ping |
 | `blackbox_http` | every `health:` URL (switch and PVE UIs: `http_any`; Grafana, VictoriaLogs: `http_2xx`; untrusted-zone hosts (DMZ, LAB): `http_dmz`, which never follows a redirect into MGMT) | HTTP |
 | `service` | every `metrics:` port (today: the log store, the trace store, and the shared Postgres, NATS and Valkey exporters) | `/metrics` |
-| `service_dmz` | `metrics:` ports of hosts in the untrusted zones, DMZ and LAB (the Kubeletto cluster; `ai`'s nvidia_gpu_exporter `:9835`, ADR 0014): no redirects and sample/label/body limits; a breach fails the scrape (`TargetDown`) | `/metrics` |
+| `service_dmz` | `metrics:` ports of hosts in the untrusted zones, DMZ and LAB (the Kubeletto cluster, including its per-pod usage on `:30599`, see below; `ai`'s nvidia_gpu_exporter `:9835`, ADR 0014): no redirects and sample/label/body limits; a breach fails the scrape (`TargetDown`) | `/metrics` |
 | `blackbox_dns` | hEX resolver | resolves `cloudflare.com` |
 
 ## Alerts
@@ -148,6 +148,18 @@ Until these are done, alerts are evaluated but routed to `blackhole`
   `sops exec-env secrets.sops.env 'tofu apply -target=terraform_data.monitoring_dashboards'`
   in `proxmox/opentofu` (the directory is swapped as a whole, so a removed
   board disappears from Grafana, and nothing restarts).
+- **Per-pod CPU, memory and network** of the Kubeletto cluster come from `kubelet-metrics`, a small component of
+  the cluster (`kubeletto-home` `infra/k8s/home/kubelet-metrics*.yaml`, ADR 0036): one Deployment per node reads
+  that node's kubelet cAdvisor endpoint with a read-only token (RBAC `nodes/metrics`), keeps four families
+  (CPU, memory working set, pod network bytes on `eth0`), and exports them on NodePort `30599`; Prometheus scrapes
+  both nodes in job `service_dmz`. It is separate from the log shipper on purpose. The series with `namespace=""`
+  is the node's own interface (the total), so per-tenant queries filter `pod!=""`. The port is declared in
+  `inventory/lab.yaml` and **three layers** are generated from it: the hEX rule (`network/routeros`), the Proxmox
+  firewall rule of VM 300 and 301 (`proxmox/opentofu`, policy_in DROP: forgetting it shows as `context deadline
+  exceeded`) and the Prometheus targets. A new k3s node needs one more Deployment and source file in
+  `kubelet-metrics.yaml` (Vector 0.59 cannot interpolate an environment variable into the scrape endpoint, so
+  each node's kubelet address is a literal) and its `metrics:` port in `lab.yaml`. New pods need a few minutes
+  before the cluster's network policy admits the monitoring host.
 - **Logs** are in the VictoriaLogs datasource (CT 121, `services/logs/`);
   the Grafana plugin is pinned (`VLOGS_PLUGIN_VERSION`).
 - **Traces** are in the `traces` data source (Tempo API of CT 122,

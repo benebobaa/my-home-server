@@ -93,7 +93,9 @@ a guest falls out of the job.
    `proxmox/opentofu/logs.tf`, and its setup resource to `log_shipping`'s
    `depends_on` there. Needs a database: [apps.md §3](apps.md#3-database).
 3. `tofu apply` in `network/routeros` (DNS name, firewall rules), then in
-   `proxmox/opentofu` (guest, targets, log shipping). Router changes: snapshot
+   `proxmox/opentofu` (guest, targets, log shipping, and for the K3s VMs the Proxmox
+   firewall rule that admits the monitoring host: it is generated from the same
+   `metrics:` list, and a port missing there reads as a scrape timeout). Router changes: snapshot
    before and after (`./scripts/hex-snapshot.sh`).
 4. Verify:
    - Prometheus → Targets: its targets `up`.
