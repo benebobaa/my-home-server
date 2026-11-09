@@ -1,0 +1,2086 @@
+{
+  "uid": "homelab-k8s-ingress",
+  "title": "Ingress (Traefik)",
+  "description": "Is the public edge serving Kubeletto's customers, and how well? Request rate and response classes, the 5xx and client-closed (499) shares, latency as shares over 1.2 s and 5 s (the histogram is coarse), traffic, connections, TLS expiry and config reloads, by route and protocol. No alert rule covers Traefik traffic yet: open it on a customer report, after KubelettoPublicPathDown, and weekly.",
+  "tags": [
+    "homelab",
+    "kubernetes",
+    "red"
+  ],
+  "editable": false,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Homelab boards",
+      "tags": [
+        "homelab"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "step": "60s",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{instance}} {{severity}}"
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Is the edge serving?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Traefik scrape",
+      "description": "Whether Prometheus can read Traefik's metrics (rule TargetDown, 5 minutes). DOWN means this board is blind, and Traefik itself may be gone: check the traefik pod on the k3s server and KubelettoPublicPathDown, which probes through the edge.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"service_dmz\", port=\"30910\"}",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Requests per second",
+      "description": "Requests the websecure entry point answers per second (every protocol; a websocket counts once). Context, not a threshold: no alert watches the rate. A drop to near 0 with the probes still green means customers are not reaching the edge (Cloudflare tunnel); a sustained jump is a pinger or a scan.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\"}[$__rate_interval]))",
+          "legendFormat": "all requests",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 3,
+      "gridPos": {
+        "x": 3,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx share, last hour",
+      "description": "Share of the last hour's requests (all protocols) Traefik answered with 5xx. No alert rule covers it: orange at 1 % and red at 5 % are proposals. 5xx here overstates real server errors: a request the client cancelled halfway (an upload on a slow line) can surface as 499 or as 502, and Traefik counts the 5xx a backend chooses to send as its own. At the time of writing most of it is 504, many of them websocket handshakes to tenant apps; the panels below split it by code, protocol and route.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"5..\"}[1h])) / sum(increase(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\"}[1h]))",
+          "legendFormat": "5xx",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 4,
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Client closed (499), last hour",
+      "description": "Share of the last hour's requests the client abandoned before Traefik could answer (status 499; not a server error). Large uploads on the slow home line are the known cause: Traefik's read timeout is 300 s since 2026-11-06 (docs/incidents/2026-11-06-slow-downlink-traefik-499.md). No alert rule; no colour on purpose.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=\"499\"}[1h])) / sum(increase(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\"}[1h]))",
+          "legendFormat": "499",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 5,
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Over 1.2 s, last hour",
+      "description": "Share of the last hour's http requests that took longer than 1.2 s, the second from last histogram bucket. Cold starts of scale-to-zero tenant apps are the main source, so it moves with the churn on the Tenants board, not with Traefik's health. Websocket and SSE are left out (their duration is the connection's life). No alert.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum(increase(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"1.2\"}[1h])) / sum(increase(traefik_entrypoint_request_duration_seconds_count{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\"}[1h]))",
+          "legendFormat": "over 1.2 s",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Over 5 s, last hour",
+      "description": "Share of the last hour's http requests that took longer than 5 s, the top bucket: slower is not resolved by this histogram. These are timeouts and cold starts that went badly. No alert; no colour on purpose.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum(increase(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"5\"}[1h])) / sum(increase(traefik_entrypoint_request_duration_seconds_count{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\"}[1h]))",
+          "legendFormat": "over 5 s",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Connections open now",
+      "description": "Connections open on the websecure entry point right now (websockets and streams included). A staircase that never comes back down is a leak or a stuck backend. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(traefik_open_connections{job=\"service_dmz\", entrypoint=\"websecure\"})",
+          "legendFormat": "websecure",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 8,
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "TLS certificate days left",
+      "description": "Days until the soonest of Traefik's served certificates expires (the two Cloudflare origin certificates for *.kubeletto.app and *.kubeletto.com). They last 15 years, so this reads thousands of days. No alert rule; red under 14 and orange under 30 are proposals.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min((traefik_tls_certs_not_after{job=\"service_dmz\"} - time()) / 86400)",
+          "legendFormat": "soonest expiry",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 9,
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "What does the edge answer?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by response class",
+      "description": "Requests per second by the status Traefik answered, stacked (the parts sum to all requests). 3xx is mostly 304 Not Modified (conditional requests), the single largest status. 499 is shown apart from 4xx: it is the client leaving, not a client mistake. Code 0 is a websocket that upgraded (no HTTP status exists after the hijack). Healthy is 5xx a thin sliver. 5xx here overstates real server errors: a request the client cancelled halfway (an upload on a slow line) can surface as 499 or as 502, and Traefik counts the 5xx a backend chooses to send as its own.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"2..\"}[$__rate_interval]))",
+          "legendFormat": "2xx",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"3..\"}[$__rate_interval]))",
+          "legendFormat": "3xx",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"4..\", code!=\"499\"}[$__rate_interval]))",
+          "legendFormat": "4xx (not 499)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=\"499\"}[$__rate_interval]))",
+          "legendFormat": "499 client closed",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"5..\"}[$__rate_interval]))",
+          "legendFormat": "5xx",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=\"0\"}[$__rate_interval]))",
+          "legendFormat": "websocket upgraded (no status)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Client closed (499) and 5xx, by status and protocol",
+      "description": "Requests per second answered 499 or 5xx, one line per status code and protocol. 499 is a client that left (not a server error). 504 is Traefik giving up on a backend that did not answer in time: for websockets that is a handshake to a tenant app that never came up, for http a slow or cold app. 502 is a backend that closed or refused the connection, or an app that chose to send 502 (larasrouter did when its LLM provider was unreachable, 2026-11-03), and it is also what some cancelled uploads look like. 5xx here overstates real server errors: a request the client cancelled halfway (an upload on a slow line) can surface as 499 or as 502, and Traefik counts the 5xx a backend chooses to send as its own. No alert rule covers any of these.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code, protocol) (rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\", code=~\"499|5..\"}[$__rate_interval]))",
+          "legendFormat": "{{code}} {{protocol}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 12,
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Who is it serving? (route and protocol)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by route",
+      "description": "Requests per second to each route Traefik knows, stacked. user-apps is every tenant app together (one wildcard route, so no per-tenant split exists here: the Tenants board explains why), api is Kubeletto's platform API (api.kubeletto.com), domains are the traefik-dom-* routes (named after a domain id, so presumably one per custom domain). The hashed service names are folded by label_replace.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\"))",
+          "legendFormat": "{{route}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by protocol",
+      "description": "Requests per second by protocol: http, sse (event streams, such as an LLM answer) and websocket (one per connection). Latency below is http only because a stream's duration is its lifetime. A websocket line that grows with no matching traffic is a client reconnect loop.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (protocol) (rate(traefik_entrypoint_requests_total{job=\"service_dmz\", entrypoint=\"websecure\"}[$__rate_interval]))",
+          "legendFormat": "{{protocol}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 15,
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx share by route",
+      "description": "Share of each route's requests answered 5xx (all protocols). A route with few requests (domains) jumps on a single error: read it with the rate chart beside it. No alert rule covers it. 5xx here overstates real server errors: a request the client cancelled halfway (an upload on a slow line) can surface as 499 or as 502, and Traefik counts the 5xx a backend chooses to send as its own.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\", code=~\"5..\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\")) / sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_requests_total{job=\"service_dmz\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\"))",
+          "legendFormat": "{{route}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "id": 17,
+      "type": "row",
+      "title": "How slow? (http only; the histogram has five buckets)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Share of http requests over 1.2 s and over 5 s",
+      "description": "Share of http requests slower than 1.2 s and than 5 s. With buckets at 0.1, 0.3, 1.2, 5 s and +Inf, these two are the only latency numbers the histogram resolves; a p95 above 1.2 s would be a straight line drawn between buckets, so none is shown. Cold starts of scale-to-zero apps are the main source. Websocket and SSE are left out: their duration is the connection's life. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"1.2\"}[$__rate_interval])) / sum(rate(traefik_entrypoint_request_duration_seconds_count{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\"}[$__rate_interval]))",
+          "legendFormat": "over 1.2 s",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"5\"}[$__rate_interval])) / sum(rate(traefik_entrypoint_request_duration_seconds_count{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\"}[$__rate_interval]))",
+          "legendFormat": "over 5 s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests per latency band (http)",
+      "description": "Requests per second in each latency band, stacked (the bands sum to all http requests): the histogram as it is, without interpolation. Most requests sit in the first band; the thin top bands are the slow ones. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"0.1\"}[$__rate_interval]))",
+          "legendFormat": "up to 0.1 s",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"0.3\"}[$__rate_interval])) - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"0.1\"}[$__rate_interval]))",
+          "legendFormat": "0.1 to 0.3 s",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"1.2\"}[$__rate_interval])) - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"0.3\"}[$__rate_interval]))",
+          "legendFormat": "0.3 to 1.2 s",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"5\"}[$__rate_interval])) - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"1.2\"}[$__rate_interval]))",
+          "legendFormat": "1.2 to 5 s",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_request_duration_seconds_count{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\"}[$__rate_interval])) - sum(rate(traefik_entrypoint_request_duration_seconds_bucket{job=\"service_dmz\", entrypoint=\"websecure\", protocol=\"http\", le=\"5\"}[$__rate_interval]))",
+          "legendFormat": "over 5 s",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 19,
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Share over 1.2 s, by route (http)",
+      "description": "Share of each route's http requests that took more than 1.2 s. user-apps carries the cold starts of tenant apps; api answers in a few milliseconds on average at the time of writing. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_bucket{job=\"service_dmz\", protocol=\"http\", le=\"1.2\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\")) / sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_count{job=\"service_dmz\", protocol=\"http\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\"))",
+          "legendFormat": "{{route}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean request duration, by route (http)",
+      "description": "Exact mean duration (sum divided by count, so not bucket-limited) of http requests per route. The mean is dominated by the slow tail: a handful of 5 s and 60 s timeouts lift it above what a typical request feels like. Use it for the trend; the shares beside it say how many requests were slow.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_sum{job=\"service_dmz\", protocol=\"http\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\")) / sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_request_duration_seconds_count{job=\"service_dmz\", protocol=\"http\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\"))",
+          "legendFormat": "{{route}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 21,
+      "gridPos": {
+        "x": 12,
+        "y": 33,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "Traffic and connections",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Edge traffic in and out",
+      "description": "Bit rate of request bodies Traefik receives and responses it sends. Everything enters through the Cloudflare tunnel, so request bytes arrive on the home line's download side (the ISP quota counts it) and responses leave on the upload side. Request bodies are usually tiny next to what pods download on their own: see the worker panel on the Tenants board.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_bytes_total{job=\"service_dmz\", entrypoint=\"websecure\"}[$__rate_interval])) * 8",
+          "legendFormat": "from clients (request bodies)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_responses_bytes_total{job=\"service_dmz\", entrypoint=\"websecure\"}[$__rate_interval])) * 8",
+          "legendFormat": "to clients (responses)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 23,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bytes to clients, by route",
+      "description": "Response bit rate per route, stacked. user-apps (all tenant apps) is nearly all of it; a sudden step is one tenant serving a big file or a page that is polled hard. The per-tenant split is not available at this layer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (route) (label_replace(label_replace(label_replace(rate(traefik_service_responses_bytes_total{job=\"service_dmz\"}[$__rate_interval]), \"route\", \"$1\", \"exported_service\", \"traefik-(api|user-apps|dom)-.*\"), \"route\", \"other\", \"route\", \"\"), \"route\", \"domains\", \"route\", \"dom\")) * 8",
+          "legendFormat": "{{route}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 24,
+      "gridPos": {
+        "x": 8,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Open connections",
+      "description": "Connections open on the websecure entry point over time (websockets and streams included). Steady is healthy; a staircase that never falls back is a leak or clients that do not hang up. A drop to 0 and a jump back is a Traefik restart. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(traefik_open_connections{job=\"service_dmz\", entrypoint=\"websecure\"})",
+          "legendFormat": "websecure",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 25,
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "TLS and configuration",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "TLS certificates served",
+          "description": "Every certificate Traefik serves and the days left on it, soonest first. Both are Cloudflare origin certificates (15-year validity), so days are in the thousands. Red under 14 and orange under 30 are proposals: no alert rule watches expiry. The secrets are traefik/kubeletto-app-tls and kubeletto-com-tls (Kubeletto repo, infra/k8s/home).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "(traefik_tls_certs_not_after{job=\"service_dmz\"} - time()) / 86400",
+              "legendFormat": "",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Days left"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "unit",
+                    "value": "d"
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 14
+                        },
+                        {
+                          "color": "green",
+                          "value": 30
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Days left",
+                "desc": false
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "include": {
+                  "names": [
+                    "sans",
+                    "cn",
+                    "Value"
+                  ]
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "sans": "Covers",
+                  "cn": "Issuer name",
+                  "Value": "Days left"
+                },
+                "indexByName": {
+                  "sans": 0,
+                  "cn": 1,
+                  "Value": 2
+                }
+              }
+            }
+          ],
+          "links": [],
+          "id": 27,
+          "gridPos": {
+            "x": 0,
+            "y": 51,
+            "w": 10,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Config reloads per hour",
+          "description": "Times Traefik reloaded its dynamic configuration in the trailing hour. A reload usually follows a change to an IngressRoute, Service or Secret, so bursts line up with platform deploys. A new Traefik pod answered its first second with 502s while its routes loaded (2026-11-06 incident), so a burst can show as a blip in the 5xx lines. No reload-failure counter is exported today, so a failed reload shows only as the age in the next panel growing. No alert rule.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(traefik_config_reloads_total{job=\"service_dmz\"}[1h])",
+              "legendFormat": "reloads in the trailing hour",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 28,
+          "gridPos": {
+            "x": 10,
+            "y": 51,
+            "w": 7,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Traefik uptime and age of the last config load",
+          "description": "Seconds since the Traefik process started (a drop to 0 is a restart or rollout) and since its configuration last loaded successfully (a sawtooth: it resets at each reload). An age that keeps growing while the platform is being changed means reloads are failing. No alert rule.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "time() - process_start_time_seconds{job=\"service_dmz\", port=\"30910\"}",
+              "legendFormat": "process uptime",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "time() - traefik_config_last_reload_success{job=\"service_dmz\"}",
+              "legendFormat": "since last successful reload",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 29,
+          "gridPos": {
+            "x": 17,
+            "y": 51,
+            "w": 7,
+            "h": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "What this board does not tell you",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "text",
+      "title": "Reading guide",
+      "description": "Reading guide.",
+      "options": {
+        "mode": "markdown",
+        "content": "**No alert rule covers Traefik's traffic.** Only `TargetDown` (the scrape) and `KubelettoPublicPathDown` (a blackbox probe through the edge) exist; the colours on the top tiles are proposals. **5xx overstates real server errors:** cancelled uploads can surface as 499 or 502 (shown apart), and 504 is Traefik giving up, mostly on tenant apps that were asleep. **Latency is coarse:** five buckets (0.1, 0.3, 1.2, 5 s), so only the shares over 1.2 s and 5 s are exact; http only. **No per-tenant split:** one wildcard route serves every tenant app (see the Tenants board). No cAdvisor or kubelet series exist yet."
+      },
+      "id": 31,
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 5
+      }
+    }
+  ]
+}

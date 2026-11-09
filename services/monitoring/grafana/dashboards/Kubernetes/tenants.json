@@ -1,0 +1,2278 @@
+{
+  "uid": "homelab-k8s-tenants",
+  "title": "Tenants",
+  "description": "Is any Kubeletto tenant misbehaving or costing the platform? Namespace and pod counts, cold-start churn, crash loops, throttled logs, the network fence and the worker's inbound traffic. Open it after K8sTenant* or TenantWorkerInboundSustained, and on the weekly tenant review. Tenants are opaque ids (kl-<id>-<id>), so the per-tenant views are top-10 tables; per-tenant bytes are not measurable yet.",
+  "tags": [
+    "homelab",
+    "kubernetes",
+    "red"
+  ],
+  "editable": false,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Homelab boards",
+      "tags": [
+        "homelab"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "step": "60s",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{instance}} {{severity}}"
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Is a tenant misbehaving or costing the platform?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Worker inbound, 30 min",
+      "description": "Bit rate received on the Kubeletto tenant worker's eth0, as a 30-minute average (rule TenantWorkerInboundSustained: above 2.5 Mbit/s for 2 hours, about 27 GB a day). Red means a tenant pod is pulling from the internet or the worker is busy inside the lab: eth0 also carries the cluster's own traffic. Next: the network row below, then services/kubeletto/tenant-bandwidth.sh to name the tenant.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_receive_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[30m]) * 8",
+          "legendFormat": "eth0 inbound",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2500000.0
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tenants over the churn line",
+      "description": "Tenant namespaces that started more than 200 distinct pods in 24 hours (rule K8sTenantColdStartChurn, severity info, 1 hour). A scale-to-zero app that something pings every couple of minutes starts a fresh pod each time. Orange, not red: it is for the weekly review, and most of these cost CPU, not bandwidth. The table below names them.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(count by (namespace) (last_over_time(kube_pod_info{job=\"service_dmz\", namespace=~\"kl-.*\"}[1d])) > 200)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 3,
+      "gridPos": {
+        "x": 3,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Crash-looping tenants",
+      "description": "Tenant namespaces whose app container restarted more than 10 times in the last hour, summed over the namespace's pods (rule K8sTenantContainerRestarting: 3 hours running). A crash loop, not a deploy; the usual cause is a required secret that the owner never set. The owner's to fix: tell them what the log says.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1h])) > 10)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 4,
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Namespaces without the fence",
+      "description": "Tenant namespaces with no kubeletto-base-policy (rule K8sTenantNamespaceWithoutNetworkPolicy, critical, 15 minutes). That policy keeps tenant pods off the lab network and the shared Postgres and Valkey, so a namespace without it is an isolation hole. A namespace seconds old is normal.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count((kube_namespace_created{job=\"service_dmz\", namespace=~\"kl-.*\"} unless on (namespace) kube_networkpolicy_created{job=\"service_dmz\", networkpolicy=\"kubeletto-base-policy\"}) and on () (count(kube_networkpolicy_created{job=\"service_dmz\"}) > 0))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 5,
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Log events throttled, 15 min",
+      "description": "Log events Vector's per-tenant cap dropped in the last 15 minutes (rule K8sTenantLogsThrottled: any drop). The tenant's `kubeletto logs` has holes for that window; its app is unaffected. Reads 0 while no drop has ever happened: the counter does not exist until the first one, so 0 here is also what an absent series looks like (the Logs row shows whether Vector is scraped at all).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(vector_component_discarded_events_total{job=\"service_dmz\", component_id=\"kubeletto_throttle_runtime\"}[15m]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pods unschedulable",
+      "description": "Pods the scheduler refused, cluster-wide (rule K8sPodUnschedulable: 5 minutes). When it is a tenant's pod, that tenant cannot start; the usual cause is memory requests above what the worker can hand out (K8sNodeMemoryRequestsHigh). A brief Pending during a cold start is normal and is not counted here.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_unschedulable{job=\"service_dmz\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tenant namespaces",
+      "description": "Active tenant namespaces (kl-*). One per tenant; most of them hold no pod at any moment because the apps scale to zero. No alert rule: a context number.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_namespace_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Active\"} == 1)",
+          "legendFormat": "namespaces",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 8,
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tenant pods running",
+      "description": "Tenant pods in phase Running right now (one pod holds the app and its queue-proxy sidecar). Scale-to-zero makes it swing by a few every minute. No alert rule: a context number.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_pod_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Running\"} == 1)",
+          "legendFormat": "pods",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 9,
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Who is using the line? (the worker's network)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "k3s-worker network (TenantWorkerInboundSustained)",
+      "description": "Bit rate on the worker's eth0, where every tenant pod runs (rule TenantWorkerInboundSustained: the 30-minute average above the dashed 2.5 Mbit/s for 2 hours). The WAN's inbound is nearly all this node, so a flat high inbound line is the pattern of 2026-11-06, when one free app woken every 2 minutes pulled 40 to 50 GB a day from the internet. eth0 also carries lab-internal traffic, so it can read above the WAN.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_receive_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[30m]) * 8",
+          "legendFormat": "inbound, 30 min average (the rule)",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_receive_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[$__rate_interval]) * 8",
+          "legendFormat": "inbound, short average",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_transmit_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[$__rate_interval]) * 8",
+          "legendFormat": "outbound",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2500000.0
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker inbound against what customers send in",
+      "description": "The worker's inbound next to the bytes customers upload through the public edge (Traefik request bodies) and the router's WAN inbound. The gap between the worker line and the Traefik line is what pods download on their own: image pulls and whatever a tenant app fetches from the internet. At the time of writing customers' uploads are a rounding error against the worker's several Mbit/s, which is why the hog is a pod pulling data, not traffic to it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_network_receive_bytes_total{instance=\"k3s-worker\", device=\"eth0\"}[$__rate_interval]) * 8",
+          "legendFormat": "k3s-worker eth0 inbound",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(traefik_entrypoint_requests_bytes_total{job=\"service_dmz\", entrypoint=\"websecure\"}[$__rate_interval])) * 8",
+          "legendFormat": "customer request bodies at Traefik",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(ifHCInOctets{job=\"snmp_hex\", ifName=\"ether1\"}[$__rate_interval]) * 8",
+          "legendFormat": "WAN inbound (router)",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 12,
+      "gridPos": {
+        "x": 8,
+        "y": 6,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tenant pods started per hour",
+      "description": "Distinct tenant pods created in the trailing hour (kube_pod_created of every pod that left a series). The available proxy for network cost: a woken scale-to-zero app starts a pod every time, and each start pulls or checks its image. At the time of writing it sits near 150 an hour: five tenants woken every 2 minutes (the churn table below names them). A pod that lived less than one scrape interval is missed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(last_over_time(kube_pod_created{job=\"service_dmz\", namespace=~\"kl-.*\"}[1h]) > time() - 3600)",
+          "legendFormat": "pods started in the trailing hour",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 13,
+      "gridPos": {
+        "x": 16,
+        "y": 6,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "text",
+      "title": "Per-tenant bytes: not measurable yet",
+      "description": "Reading guide.",
+      "options": {
+        "mode": "markdown",
+        "content": "**No tenant owns a byte count in Prometheus.** cAdvisor and the kubelet are not scraped, so there is no `container_network_*` per pod. Until they are (planned), the ranking comes from `services/kubeletto/tenant-bandwidth.sh`, which reads the kubelet's per-pod counters over SSH, and from `services/kubeletto/weekly-review.sh`. Proxies on this board: the worker's node-level network above and the per-tenant pod churn below. Request counts per tenant are in Postgres `usage_samples` (`http_requests`), not in Traefik: every tenant app shares one wildcard route."
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 4
+      }
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Which tenants churn pods? (cold starts)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by pods in 24 h (K8sTenantColdStartChurn)",
+      "description": "Distinct pods each tenant namespace started in the last 24 hours, the 10 highest (rule K8sTenantColdStartChurn, severity info: orange above 200). 200 is a pod every 7 minutes; about 715 means a request every 2 minutes. The 8 digits after kl- are the tenant id prefix: services/kubeletto/weekly-review.sh maps them to a slug and plan. Next: tenant-bandwidth.sh for whether the churn costs bandwidth (TenantWorkerInboundSustained says so).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, count by (namespace) (last_over_time(kube_pod_info{job=\"service_dmz\", namespace=~\"kl-.*\"}[1d])))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pods in 24 h"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 200
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Pods in 24 h",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value": "Pods in 24 h"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value": 1
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by memory requested",
+      "description": "Memory the Pending and Running pods of each tenant reserve by request, the 10 highest: what a tenant costs the scheduler, not what it uses (no memory usage series exists yet). The worker has about 3.6 GB to hand out; the node-level version of this number is rule K8sNodeMemoryRequestsHigh (90 %). A tenant that scales to zero reserves nothing, so the table moves with the traffic.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", namespace=~\"kl-.*\", resource=\"memory\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory requested"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Memory requested",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value": "Memory requested"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value": 1
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 17,
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tenant pods and awake tenants",
+      "description": "Tenant pods Running and Pending, and how many tenant namespaces hold any pod. Pending is normal for a few seconds at a cold start; a Pending line that stays above 0 is a tenant that cannot start (rule K8sPodUnschedulable counts the unschedulable ones). The gap between tenants-with-a-pod and the 250-odd tenant namespaces (first tiles) is the scale-to-zero saving.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Running\"})",
+          "legendFormat": "pods Running",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Pending\"})",
+          "legendFormat": "pods Pending",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(count by (namespace) (kube_pod_info{job=\"service_dmz\", namespace=~\"kl-.*\"}))",
+          "legendFormat": "tenants with a pod",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Are tenant containers crashing?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Tenants whose app container restarted in 24 h",
+      "description": "Tenant namespaces whose app container (user-container) restarted at least once in 24 hours, with the restarts of the last hour. The rule (K8sTenantContainerRestarting) wants more than 10 an hour for 3 hours, shown red. Empty is the normal state; a pod that is replaced rather than restarted does not count. Next: kubectl -n <namespace> logs <pod> -c user-container --previous.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(10, sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1d])) > 0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1h])) and on (namespace) (sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1d])) > 0)",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts in 24 h"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts in 1 h"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Restarts in 24 h",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "Value #A",
+                "Value #B"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Tenant namespace",
+              "Value #A": "Restarts in 24 h",
+              "Value #B": "Restarts in 1 h"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worst tenant, restarts in the trailing hour",
+      "description": "Restarts of tenant app containers in the trailing hour: the worst single tenant and the total. The dashed line is the 10 an hour of rule K8sTenantContainerRestarting, which must hold for 3 hours before it fires. A line that sits at 0 is healthy. increase() extrapolates, so a single restart can read slightly above 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1h])))",
+          "legendFormat": "worst tenant",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace=~\"kl-.*\", container=\"user-container\"}[1h])))",
+          "legendFormat": "all tenants",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 21,
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Why containers waited or stopped, last 24 h",
+      "description": "Containers of tenant pods by the reason they waited (ContainerCreating is every cold start; CrashLoopBackOff, ImagePullBackOff or CreateContainerConfigError is a tenant that cannot run) and by why their last run ended (OOMKilled is an app over its memory limit; Error is a non-zero exit). Over 24 hours, so a reason that appeared and cleared still shows. No alert watches tenant containers' waiting reasons: K8sPlatformPodWaiting skips the kl-* namespaces on purpose.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (reason) (last_over_time(kube_pod_container_status_waiting_reason{job=\"service_dmz\", namespace=~\"kl-.*\"}[1d]) == 1)",
+          "legendFormat": "waiting: {{reason}}",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count by (reason) (last_over_time(kube_pod_container_status_last_terminated_reason{job=\"service_dmz\", namespace=~\"kl-.*\"}[1d]) == 1)",
+          "legendFormat": "last ended: {{reason}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 6
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Are tenant logs throttled or lost?",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Throttled log events, per node (K8sTenantLogsThrottled)",
+          "description": "Log events Vector's per-tenant throttle dropped, per node, in a trailing 15 minutes (rule K8sTenantLogsThrottled: any drop). Empty is the normal state: the counter has no series until the first drop. The runbook says it carries a per-tenant key label that names the tenant; that label is unverified (it has never been born), so the legend shows it only if it exists. The cap is 6000 events per 10 s per tenant per node.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance, key) (increase(vector_component_discarded_events_total{job=\"service_dmz\", component_id=\"kubeletto_throttle_runtime\"}[15m]))",
+              "legendFormat": "{{instance}} {{key}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 24,
+          "gridPos": {
+            "x": 0,
+            "y": 51,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Log events lost by failure (K8sLogsDropped)",
+          "description": "Events Vector lost because a sink or transform failed, not because a filter or the throttle chose to (rule K8sLogsDropped: intentional=false, any in 15 minutes), and Vector's component errors. Empty is the normal state. A line here means the VictoriaLogs sink rejected or timed out; the lost lines do not come back.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance, component_id) (increase(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"false\"}[15m]))",
+              "legendFormat": "dropped: {{instance}} {{component_id}}",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (instance, component_id) (increase(vector_component_errors_total{job=\"service_dmz\"}[15m]))",
+              "legendFormat": "errors: {{instance}} {{component_id}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 25,
+          "gridPos": {
+            "x": 8,
+            "y": 51,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Log events dropped on purpose, per filter",
+          "description": "Events per second the filters discard by design: build logs and probe noise. Healthy and steady; a throttle drop would appear here too, as kubeletto_throttle_runtime. It doubles as proof that Vector is alive and counting.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (component_id) (rate(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"true\"}[$__rate_interval]))",
+              "legendFormat": "{{component_id}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "eps",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 26,
+          "gridPos": {
+            "x": 16,
+            "y": 51,
+            "w": 8,
+            "h": 7
+          }
+        },
+        {
+          "type": "state-timeline",
+          "title": "Vector scrape (is the throttle counter visible?)",
+          "description": "Whether Prometheus can read Vector's own metrics on each K3s node (target port 30598). When it is DOWN, the throttle and loss panels above are blind, not clean (TargetDown fires for it after 5 minutes).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "up{job=\"service_dmz\", port=\"30598\"}",
+              "legendFormat": "{{instance}}",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "DOWN",
+                      "color": "red",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "UP",
+                      "color": "green",
+                      "index": 1
+                    }
+                  }
+                }
+              ],
+              "custom": {
+                "fillOpacity": 70,
+                "lineWidth": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "mergeValues": true,
+            "showValue": "never",
+            "alignValue": "center",
+            "rowHeight": 0.8,
+            "legend": {
+              "showLegend": false
+            },
+            "tooltip": {
+              "mode": "single"
+            }
+          },
+          "id": 27,
+          "gridPos": {
+            "x": 0,
+            "y": 58,
+            "w": 24,
+            "h": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Is every tenant fenced off from the lab network?",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "Tenant namespaces without kubeletto-base-policy",
+          "description": "Tenant namespaces that carry no kubeletto-base-policy (rule K8sTenantNamespaceWithoutNetworkPolicy: critical after 15 minutes). Empty is the goal. A namespace created seconds ago is normal; one older than 15 minutes means core's quota/policy reconciler did not run for it: re-apply the policy or pause that tenant (the operator decides, it is customer-facing).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "((kube_namespace_created{job=\"service_dmz\", namespace=~\"kl-.*\"} unless on (namespace) kube_networkpolicy_created{job=\"service_dmz\", networkpolicy=\"kubeletto-base-policy\"}) and on () (count(kube_networkpolicy_created{job=\"service_dmz\"}) > 0)) * 1000",
+              "legendFormat": "",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Created"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeAsIso"
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Created",
+                "desc": true
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "include": {
+                  "names": [
+                    "namespace",
+                    "Value"
+                  ]
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "namespace": "Tenant namespace",
+                  "Value": "Created"
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "Value": 1
+                }
+              }
+            }
+          ],
+          "links": [],
+          "id": 29,
+          "gridPos": {
+            "x": 0,
+            "y": 63,
+            "w": 12,
+            "h": 7
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Namespaces with the policy against tenant namespaces",
+          "description": "Tenant namespaces that carry the base policy next to all tenant namespaces. The two lines should lie on top of each other; a gap that opens when a tenant is created and closes within minutes is the reconciler working, one that stays open is the alert. If kube-state-metrics stops exporting networkpolicies the lower line vanishes and the rule's guard keeps it quiet: look here.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(kube_networkpolicy_created{job=\"service_dmz\", namespace=~\"kl-.*\", networkpolicy=\"kubeletto-base-policy\"})",
+              "legendFormat": "with kubeletto-base-policy",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count(kube_namespace_status_phase{job=\"service_dmz\", namespace=~\"kl-.*\", phase=\"Active\"} == 1)",
+              "legendFormat": "tenant namespaces",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0,
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 30,
+          "gridPos": {
+            "x": 12,
+            "y": 63,
+            "w": 12,
+            "h": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "row",
+      "title": "Requests to tenant apps",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 70,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "type": "text",
+          "title": "Requests per tenant: not in Prometheus",
+          "description": "Reading guide.",
+          "options": {
+            "mode": "markdown",
+            "content": "Traefik reports one service for all tenant apps (`traefik-user-apps-...`), so this board can show **all tenants together** but not one tenant. The per-tenant request count is Kubeletto's `usage_samples` (metric `http_requests`, 5-minute windows) in Postgres; `services/kubeletto/weekly-review.sh` section 4 prints the top five with their error share. The Ingress (Traefik) board has the edge's rates, errors and latency by route."
+          },
+          "id": 32,
+          "gridPos": {
+            "x": 0,
+            "y": 71,
+            "w": 10,
+            "h": 8
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests to tenant apps, all tenants (http)",
+          "description": "Requests per second reaching tenant apps through the wildcard route, by response class (stacked: the parts sum to all http requests). The 5xx here are Traefik's, mostly 504 (the tenant app did not answer in time: a cold start or a slow app), and 499 is a client that left. See the Ingress board for the edge as a whole.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traefik_service_requests_total{job=\"service_dmz\", exported_service=~\"traefik-user-apps-.*\", protocol=\"http\", code=~\"2..\"}[$__rate_interval]))",
+              "legendFormat": "2xx",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traefik_service_requests_total{job=\"service_dmz\", exported_service=~\"traefik-user-apps-.*\", protocol=\"http\", code=~\"3..\"}[$__rate_interval]))",
+              "legendFormat": "3xx",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traefik_service_requests_total{job=\"service_dmz\", exported_service=~\"traefik-user-apps-.*\", protocol=\"http\", code=~\"4..\", code!=\"499\"}[$__rate_interval]))",
+              "legendFormat": "4xx (not 499)",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traefik_service_requests_total{job=\"service_dmz\", exported_service=~\"traefik-user-apps-.*\", protocol=\"http\", code=\"499\"}[$__rate_interval]))",
+              "legendFormat": "499 client closed",
+              "instant": false,
+              "range": true
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(traefik_service_requests_total{job=\"service_dmz\", exported_service=~\"traefik-user-apps-.*\", protocol=\"http\", code=~\"5..\"}[$__rate_interval]))",
+              "legendFormat": "5xx",
+              "instant": false,
+              "range": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "mappings": [],
+              "min": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "links": [],
+          "id": 33,
+          "gridPos": {
+            "x": 10,
+            "y": 71,
+            "w": 14,
+            "h": 8
+          }
+        }
+      ]
+    }
+  ]
+}
