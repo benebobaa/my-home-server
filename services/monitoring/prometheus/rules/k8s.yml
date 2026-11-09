@@ -48,6 +48,32 @@ groups:
           summary: "{{ $labels.exported_node }}: pods request {{ $value | humanizePercentage }} of allocatable memory"
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememoryrequestshigh
 
+      # Kubeletto's Phase 3 capacity trigger (operating model D27): a node
+      # whose pods have reserved more than 85 % of its allocatable memory
+      # for a whole week has no room to grow. Not an incident: it means
+      # "plan the node-IP removal and a new node now". The subquery takes
+      # the week's lowest 30-minute reading, so one quiet half hour clears it.
+      - alert: K8sNodeCapacityTrigger
+        expr: |
+          min_over_time((
+            sum by (exported_node) (
+              kube_pod_container_resource_requests{job="service_dmz", resource="memory"}
+              * on (namespace, pod, uid) group_left ()
+              (kube_pod_status_phase{job="service_dmz", phase=~"Pending|Running"} == 1)
+            )
+            / on (exported_node)
+            kube_node_status_allocatable{job="service_dmz", resource="memory"}
+          )[7d:30m]) > 0.85
+          # ...and the node existed a full week ago, so a short history
+          # cannot pass for a week.
+          and on (exported_node)
+          kube_node_status_allocatable{job="service_dmz", resource="memory"} offset 7d
+        for: 1h
+        labels: { severity: info }
+        annotations:
+          summary: "{{ $labels.exported_node }}: pods have reserved over 85 % of allocatable memory for 7 days (lowest {{ $value | humanizePercentage }}): Kubeletto's add-a-node trigger"
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodecapacitytrigger
+
       # The kubelet itself says it is short of memory and starts evicting.
       - alert: K8sNodeMemoryPressure
         expr: kube_node_status_condition{job="service_dmz", condition="MemoryPressure", status="true"} == 1

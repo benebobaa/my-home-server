@@ -125,6 +125,8 @@ ksvc` keeps its settings and a redeploy brings it back) and tell the owner.
 (3) Only if the traffic is legitimate, buy extra quota or a bigger tier from
 Biznet; do not buy it to pay for one runaway app. Design: operating model D17
 (Kubeletto repo, `docs/design/platform-operating-model.md`).
+If it fires again with legitimate traffic, it is also the trigger for
+Kubeletto's VPS front (D27): put it on the weekly queue.
 
 ### WanInboundDayHigh
 **Meaning:** WAN inbound over the last 24 h is above 60 GB (the plan allows
@@ -225,7 +227,9 @@ carry both (they only reach Postgres from `k3s`).
 **Background:** on 2026-10-11 the rented server sat at 99 % memory requests,
 tenant pods went Pending and 17 services were deleted by the crash-loop
 suspender (`docs/incidents/2026-10-11-kubeletto-prod-ksvc-deletions.md`). At
-home that suspender is log-only (D5); the tenant outage remains.
+home the fixed suspender is live since 2026-11-09 (Kubeletto D28): it pauses
+only services whose pods really crash-loop, not ones stuck Pending, so the
+tenant outage remains.
 
 ### K8sNodeMemoryRequestsHigh
 **Meaning:** pods on a node reserve over 90 % of its allocatable memory
@@ -240,6 +244,16 @@ builds 250m/512Mi, queue-proxy 32Mi: Kubeletto `e8f37aee`). Nothing to
 restart. If tenants really grew, the growth path is D9: 16 GB SODIMM for
 pve3, or a second worker on pve2 once CT 110 is gone. pve1 is not an option
 (on demand, ADR 0012).
+
+### K8sNodeCapacityTrigger
+**Meaning:** severity info, not an incident. Pods on a node have reserved over
+85 % of its allocatable memory at every 30-minute reading for 7 days. This is
+Kubeletto's Phase 3 trigger for removing hard-coded node IPs and adding a node
+(operating model D27, Kubeletto repo `docs/design/platform-operating-model.md`).
+**Check:** as `K8sNodeMemoryRequestsHigh`, and whether the growth is paying
+tenants (worth a node) or idle free ones (pause them instead).
+**Fix:** raise it at the operator's next weekly session (Kubeletto
+`docs/ops/weekly-queue.md`) with the D22 growth plan. Nothing to do tonight.
 
 ### K8sNodeMemoryPressure
 **Meaning:** the kubelet reports `MemoryPressure=true` on a node for 2 min:

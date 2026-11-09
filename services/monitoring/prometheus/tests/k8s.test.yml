@@ -83,3 +83,38 @@ tests:
             exp_annotations:
               summary: "k3s-worker: MemoryPressure, the kubelet is evicting pods"
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodememorypressure
+
+  # Capacity trigger (D27): 2.7 of 3 GB reserved (90 %) for 7 days fires;
+  # the same node with one 40-minute dip to 2.4 GB (80 %) inside the week
+  # does not.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_allocatable{job="service_dmz",instance="k3s",node="pve2",exported_node="k3s",resource="memory",unit="byte"}'
+        values: '3e9x12000'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve2",exported_node="k3s",namespace="platform",pod="core",uid="c1",container="core",resource="memory",unit="byte"}'
+        values: '2.7e9x12000'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="platform",pod="core",uid="c1",phase="Running"}'
+        values: '1x12000'
+    alert_rule_test:
+      - eval_time: 5d
+        alertname: K8sNodeCapacityTrigger
+        exp_alerts: []
+      - eval_time: 8d
+        alertname: K8sNodeCapacityTrigger
+        exp_alerts:
+          - exp_labels: { severity: info, exported_node: k3s }
+            exp_annotations:
+              summary: "k3s: pods have reserved over 85 % of allocatable memory for 7 days (lowest 90%): Kubeletto's add-a-node trigger"
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#k8snodecapacitytrigger
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_status_allocatable{job="service_dmz",instance="k3s",node="pve2",exported_node="k3s",resource="memory",unit="byte"}'
+        values: '3e9x12000'
+      - series: 'kube_pod_container_resource_requests{job="service_dmz",instance="k3s",node="pve2",exported_node="k3s",namespace="platform",pod="core",uid="c1",container="core",resource="memory",unit="byte"}'
+        values: '2.7e9x6000 2.4e9x40 2.7e9x5960'
+      - series: 'kube_pod_status_phase{job="service_dmz",instance="k3s",namespace="platform",pod="core",uid="c1",phase="Running"}'
+        values: '1x12000'
+    alert_rule_test:
+      - eval_time: 8d
+        alertname: K8sNodeCapacityTrigger
+        exp_alerts: []
