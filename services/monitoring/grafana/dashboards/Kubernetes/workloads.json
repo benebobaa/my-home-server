@@ -1,0 +1,2122 @@
+{
+  "uid": "homelab-k8s-workloads",
+  "title": "Platform workloads",
+  "description": "Are the platform's own pods running? Kubeletto's core, registry, NATS, Traefik, Knative, cloudflared, Vector and the system pods, never the tenants'. Open it after a K8sPlatformPodNotReady, K8sPlatformPodWaiting, K8sPlatformPodRestarting or K8sLogsDropped alert, or after a node reboot to see everything came back.",
+  "tags": [
+    "homelab",
+    "kubernetes",
+    "red"
+  ],
+  "editable": false,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Homelab boards",
+      "tags": [
+        "homelab"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true,
+      "icon": "external link"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Firing alerts",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "step": "60s",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{instance}} {{severity}}"
+      }
+    ]
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Are the platform pods running?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Containers not ready",
+      "description": "Platform containers whose pod is Running but whose readiness probe fails (rule K8sPlatformPodNotReady: for 10 minutes, warning). Deploys, builds or traffic through that component fail: the registry, NATS, cloudflared and Traefik are the ones customers feel. Tenant (kl-*) and build pods are excluded, as in the rule. The pod table below names the pod.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count((kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 0) and on (namespace, pod) (kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\"} == 1)) or 0 * count(kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Containers stuck waiting",
+      "description": "Platform containers that cannot start: CrashLoopBackOff, ImagePullBackOff, ErrImagePull, CreateContainerConfigError or CreateContainerError (rule K8sPlatformPodWaiting: for 10 minutes, warning). Look at the reason in the waiting table. Not counted: a pod stuck in an init container (PodInitializing), which the 'Pods not Running' tile shows instead.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_pod_container_status_waiting_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\", reason=~\"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError\"} == 1) or 0 * count(kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 3,
+      "gridPos": {
+        "x": 3,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Containers restarting",
+      "description": "Platform containers that restarted more than twice in 30 minutes (rule K8sPlatformPodRestarting, warning). A node reboot restarts each container once, so more than two is a component falling over: often an out-of-memory kill or a failing liveness probe. The 'last restart' table gives the reason.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[30m]) > 2) or 0 * count(kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 4,
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pods not Running",
+      "description": "Platform pods that are Pending, Failed or Unknown. No alert rule: a pod stuck in an init container (Pending, main containers PodInitializing) or evicted (Failed) raises none of the three alerts. Orange for longer than a minute after a deploy or a reboot deserves a look: the pod table shows its phase.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\", phase=~\"Pending|Failed|Unknown\"} == 1) or 0 * count(kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 5,
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Containers ready",
+      "description": "Ready containers over all containers of the Pending or Running platform pods: 'ready vs expected'. 100 % is every platform container serving. Expected means the pods that exist: kube-state-metrics here exports no Deployment, DaemonSet or StatefulSet series, so a replica that is simply missing does not lower it. No alert rule on the ratio (K8sPlatformPodNotReady counts the unready ones).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / count(kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 6,
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Restarts, 24 hours",
+      "description": "Platform container restarts in the last 24 hours, all together. Orange for a day after a node reboot is expected (every container restarts once). No alert rule: the alert is the 30-minute burst. Compare with the 'last restart' table for which ones.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[24h]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Log shippers up",
+      "description": "Vector's metrics endpoint (:30598) on k3s and k3s-worker (rule TargetDown, 5 minutes; Vector itself is a DaemonSet that ships every tenant's and the platform's logs to VictoriaLogs). DOWN: its metrics are stale and tenant 'kubeletto logs' may have holes. Check the pod in the pod table.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(up{job=\"service_dmz\", port=\"30598\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 8,
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Log events lost, 15 min",
+      "description": "Log events Vector lost to a failure (rule K8sLogsDropped: any in 15 minutes, warning): a sink rejected or timed out, usually VictoriaLogs down or full. Filters and the per-tenant throttle discard on purpose (intentional=\"true\") and do not count here; the Vector row shows them. Lost lines do not come back.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"false\"}[15m])) or 0 * count(up{job=\"service_dmz\", port=\"30598\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "noValue": "n/a"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "links": [],
+      "id": 9,
+      "gridPos": {
+        "x": 21,
+        "y": 1,
+        "w": 3,
+        "h": 4
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Which pods, and are they ready?",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Platform pods",
+      "description": "Every platform pod, with the node it runs on, its phase, how many of its containers are not ready (red above 0: K8sPlatformPodNotReady's condition), its restart count in total, in the last hour and in the last 24 hours, and its age. Not-ready pods sort first. k3s carries the platform; only node_exporter, Vector and coredns run on k3s-worker. A young age means the pod was recreated: a rollout, an eviction or a node reboot. Restarts since a pod's birth reset when the pod is replaced.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, exported_node, phase) ((count by (namespace, pod, uid) (kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}) - sum by (namespace, pod, uid) (kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})) * on (namespace, pod, uid) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, exported_node, phase) ((sum by (namespace, pod, uid) (kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})) * on (namespace, pod, uid) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, exported_node, phase) ((round(sum by (namespace, pod, uid) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[1h])))) * on (namespace, pod, uid) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, exported_node, phase) ((round(sum by (namespace, pod, uid) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[1d])))) * on (namespace, pod, uid) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, exported_node, phase) ((time() - max by (namespace, pod, uid) (kube_pod_start_time{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})) * on (namespace, pod, uid) group_left (exported_node) kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Not ready"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts 1 h"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts 24 h"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Not ready",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "pod",
+                "exported_node",
+                "phase",
+                "Value #A",
+                "Value #B",
+                "Value #C",
+                "Value #D",
+                "Value #E"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "pod": "Pod",
+              "exported_node": "Node",
+              "phase": "Phase",
+              "Value #A": "Not ready",
+              "Value #B": "Restarts",
+              "Value #C": "Restarts 1 h",
+              "Value #D": "Restarts 24 h",
+              "Value #E": "Age"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "exported_node": 2,
+              "phase": 3,
+              "Value #A": 4,
+              "Value #B": 5,
+              "Value #C": 6,
+              "Value #D": 7,
+              "Value #E": 8
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 11
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Containers not ready, over time",
+      "description": "The K8sPlatformPodNotReady condition over the dashboard's range: platform containers whose pod is Running and not ready. A blip of a minute or two is a rollout or a restart; the rule waits 10 minutes before it alerts. Flat at 0 is the good state.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count((kube_pod_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 0) and on (namespace, pod) (kube_pod_status_phase{job=\"service_dmz\", phase=\"Running\"} == 1)) or 0 * count(kube_pod_info{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "not ready",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Platform pods by phase",
+      "description": "Platform pods in each phase; the phases sum to every platform pod kube-state-metrics knows. Running is the norm (24 at the time of writing). A Pending or Failed band that stays is a pod stuck or evicted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (phase) (kube_pod_status_phase{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1)",
+          "legendFormat": "{{phase}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 13,
+      "gridPos": {
+        "x": 12,
+        "y": 17,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Restarts and failures",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Container restarts, by namespace",
+      "description": "Platform container restarts in each window, summed per namespace, over the dashboard's range. A bump on every namespace at once is a node reboot. One namespace repeating is a component falling over (rule K8sPlatformPodRestarting alerts above 2 restarts of one container in 30 minutes; the tile is per container). A single restart can read slightly above or below 1: increase() extrapolates.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (increase(kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}[$__rate_interval]))",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Last restart: reason, exit code and when",
+      "description": "Every platform container that has restarted at least once: why its previous run ended, the exit code, how long ago, and its restart count. Most recent first. 'Unknown' with exit code 255 is what a node reboot or a container runtime restart leaves; 'Error' is a crash (exit code says which: 1 or 2 is the application, 137 is SIGKILL, often out of memory); 'OOMKilled' is the memory limit; 'Completed'/0 is a clean stop such as SIGTERM at shutdown. The platform's restarts since the last reboot are mostly 'Unknown'.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, container, reason) ((time() - kube_pod_container_status_last_terminated_timestamp{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}) * on (namespace, pod, uid, container) group_left (reason) kube_pod_container_status_last_terminated_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, container, reason) ((kube_pod_container_status_last_terminated_exitcode{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}) * on (namespace, pod, uid, container) group_left (reason) kube_pod_container_status_last_terminated_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, container, reason) ((kube_pod_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"}) * on (namespace, pod, uid, container) group_left (reason) kube_pod_container_status_last_terminated_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Ago",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "pod",
+                "container",
+                "reason",
+                "Value #B",
+                "Value #A",
+                "Value #C"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "pod": "Pod",
+              "container": "Container",
+              "reason": "Last stop",
+              "Value #B": "Exit code",
+              "Value #A": "Ago",
+              "Value #C": "Restarts"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "container": 2,
+              "reason": 3,
+              "Value #B": 4,
+              "Value #A": 5,
+              "Value #C": 6
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 16,
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Containers waiting, any reason",
+      "description": "Every platform container that is waiting to start right now, with the reason: CrashLoopBackOff, ImagePullBackOff and the others in rule K8sPlatformPodWaiting (10 minutes), but also the harmless ContainerCreating and PodInitializing of a deploy in progress. Empty is the normal state. A PodInitializing that stays means an init container is stuck: no alert fires for it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "kube_pod_container_status_waiting_reason{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"} == 1",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Namespace",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "pod",
+                "container",
+                "reason"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "pod": "Pod",
+              "container": "Container",
+              "reason": "Reason"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "container": 2,
+              "reason": 3
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "table",
+      "title": "Init containers",
+      "description": "The platform's init containers (platform-core's wait-for-deps, the registry's config-init): whether they finished (Done = 1) and how often they restarted. An init container that never finishes holds its pod in Pending with the main containers waiting as PodInitializing, which no alert covers: this table and 'Pods not Running' show it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, container) (kube_pod_init_container_status_ready{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (namespace, pod, container) (kube_pod_init_container_status_restarts_total{job=\"service_dmz\", namespace!~\"kl-.*|kubeletto-builds\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Done",
+            "desc": false
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "namespace",
+                "pod",
+                "container",
+                "Value #A",
+                "Value #B"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "namespace": "Namespace",
+              "pod": "Pod",
+              "container": "Init container",
+              "Value #A": "Done",
+              "Value #B": "Restarts"
+            },
+            "indexByName": {
+              "namespace": 0,
+              "pod": 1,
+              "container": 2,
+              "Value #A": 3,
+              "Value #B": 4
+            }
+          }
+        }
+      ],
+      "links": [],
+      "id": 18,
+      "gridPos": {
+        "x": 12,
+        "y": 33,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "What the platform reserves",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory requested, by platform namespace",
+      "description": "Memory requests of Running and scheduled Pending platform pods, per namespace, stacked into the platform's total reservation. Requests are what the scheduler counts, not what the pods use (there are no per-pod usage series). The platform sits on the k3s server node; its total against that node's allocatable is the fullest-node tile on the Cluster board. A step is a rollout or a new component.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU requested, by platform namespace (cores)",
+      "description": "CPU requests of Running and scheduled Pending platform pods, per namespace, stacked, in cores (0.1 = 100m). Small by design: the platform is reserved lightly so tenants keep the room. No alert rule.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (namespace) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"cpu\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1))",
+          "legendFormat": "{{namespace}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 21,
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Memory reserved by kind, share of the node's allocatable",
+      "description": "Who holds each node's memory reservation: the platform (the pods on this board), the tenants' apps (kl-*) and build pods, each as a share of that node's allocatable memory. The three add up to the 'requested' ratio on the Cluster board (rules K8sNodeMemoryRequestsHigh at 90 %, K8sNodeCapacityTrigger at 85 % for a week). The platform lives on k3s, tenants and builds on k3s-worker. Builds are absent between builds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace!~\"kl-.*|kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\"}",
+          "legendFormat": "{{exported_node}} platform",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace=~\"kl-.*\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\"}",
+          "legendFormat": "{{exported_node}} tenants",
+          "instant": true,
+          "range": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (exported_node) (kube_pod_container_resource_requests{job=\"service_dmz\", resource=\"memory\", namespace=\"kubeletto-builds\"} * on (namespace, pod, uid) group_left () (kube_pod_status_phase{job=\"service_dmz\", phase=~\"Pending|Running\"} == 1)) / on (exported_node) kube_node_status_allocatable{job=\"service_dmz\", resource=\"memory\"}",
+          "legendFormat": "{{exported_node}} builds",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "mappings": [],
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Log shipper (Vector, one per node)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 55,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Events discarded on purpose, by component",
+      "description": "Log events per second that Vector's filters and throttle throw away deliberately (intentional=\"true\"): build logs and probe noise are dropped by design, and kubeletto_throttle_runtime is the per-tenant cap (6000 events per 10 s per tenant per node; it has no series until it first drops, and then rule K8sTenantLogsThrottled alerts: that is a tenant's runaway logger, see the Tenants board). Steady lines are normal; a new component appearing is news.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance, component_id) (rate(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"true\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}} {{component_id}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Events lost to failure (K8sLogsDropped)",
+      "description": "Log events Vector lost to a failure, over a 15-minute window, which is the window of rule K8sLogsDropped (any above 0 alerts, warning): the VictoriaLogs sink rejected or timed out. Flat at the 0 baseline is the good state: the counter is born with its first lost event, so no line exists until something is lost. Lost lines do not come back.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance, component_id) (increase(vector_component_discarded_events_total{job=\"service_dmz\", intentional=\"false\"}[15m]))",
+          "legendFormat": "{{instance}} {{component_id}}",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(0)",
+          "legendFormat": "none lost",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 25,
+      "gridPos": {
+        "x": 8,
+        "y": 56,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Vector component errors",
+      "description": "Errors Vector's components report (decode, send, HTTP): prometheus.yml keeps this counter, which is born with its first error, so flat at the baseline is the good state. Errors that do not lose events (retried sends) show here without raising K8sLogsDropped. No alert rule on the errors themselves.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (instance, component_id, error_type) (increase(vector_component_errors_total{job=\"service_dmz\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}} {{component_id}} {{error_type}}",
+          "instant": false,
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(0)",
+          "legendFormat": "none",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "links": [],
+      "id": 26,
+      "gridPos": {
+        "x": 16,
+        "y": 56,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Vector scrape targets",
+      "description": "Up (green) and down (red) for Vector's metrics endpoint on each node (rule TargetDown, 5 minutes). Down means Vector or its NodePort is unreachable and this row is stale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"service_dmz\", port=\"30598\"}",
+          "legendFormat": "{{instance}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.8,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "id": 27,
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "text",
+      "title": "What this row cannot see",
+      "description": "Reading guide.",
+      "options": {
+        "mode": "markdown",
+        "content": "**Not on this board:** how many events Vector reads and ships. prometheus.yml keeps only Vector's *discarded events*, *errors* and *started* counters (a metric allowlist: Vector exposes about 2,000 series a node), so there is no throughput, no sink latency and no queue depth. Whether lines arrive in VictoriaLogs is visible on *Observability → Log and trace stores*. Which tenant is throttled: *Kubernetes → Tenants*."
+      },
+      "id": 28,
+      "gridPos": {
+        "x": 8,
+        "y": 64,
+        "w": 16,
+        "h": 6
+      }
+    }
+  ]
+}
