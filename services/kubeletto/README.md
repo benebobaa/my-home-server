@@ -77,15 +77,15 @@ nodes (both admitted) and with a simulated third (`EXTRA_NODES="k3s-worker2
 worker.
 
 **Pinned images.** A tag can be re-pushed to different content; a digest cannot.
-`pin.sh` writes `digest: sha256:...` next to `newTag` for Kubeletto's own two
-images (core, admin-ui) in `infra/k8s/home/kustomization.yaml`; kustomize
+`pin.sh` writes `digest: sha256:...` next to `newTag` for Kubeletto's own
+image (core) in `infra/k8s/home/kustomization.yaml`; kustomize
 renders `image:tag@sha256:...`, so the tag stays readable and the digest is
 what runs. After a green `main` build the `images` workflow prints each digest
 in its run summary: `./pin.sh set core <sha8> <digest>`, then `./apply.sh diff`,
 then apply. `running` pins what the cluster runs now and refuses when the
 cluster's tag differs from the overlay's, or two versions run at once.
 Applying the first pin changes the pod template (`tag` becomes `tag@digest`),
-so core and admin roll once: do it in a quiet moment. `pin.sh` does not talk to
+so core rolls once: do it in a quiet moment. `pin.sh` does not talk to
 the registry (the packages are private and the `gh` token has no
 `read:packages`); resolving a digest from GHCR needs that scope.
 

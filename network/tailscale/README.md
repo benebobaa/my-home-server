@@ -9,7 +9,7 @@ everything), which was fine while the operator was its only user.
 | Policy | `policy.hujson`, with `${...}` where a login goes |
 | Logins | `identities.sops.env` (the repo is public): `OPERATOR_LOGIN`, `LARASROUTER_READERS` as `handle=login,...` |
 | Applied by | `./render-policy.sh \| pbcopy`, pasted in the admin console (Access controls → JSON editor). No API key: the console is the only writer |
-| Guard | the `tests` block: the console refuses to save a policy that fails one. Every reader is tested against the management plane, the switch, the `ai` VM, `archive` and `tag:admin` |
+| Guard | the `tests` block: the console refuses to save a policy that fails one. Every reader is tested against the management plane, the switch, the `ai` VM and `archive` |
 
 What it grants:
 
@@ -18,8 +18,6 @@ What it grants:
 | `group:operator` | everything (as before) |
 | `autogroup:shared` (Irene, through the `archive` share) | the shared machine on 443 |
 | `group:larasrouter-readers` | `10.10.20.21:5432` and `10.10.20.23:6381` only, through the admin gateways' routes; Postgres and Valkey then admit only their read-only logins ([services/postgres](../../services/postgres/README.md#read-only-access-for-a-person), [services/valkey](../../services/valkey/README.md#read-only-access-for-a-person)) |
-| `autogroup:admin` | `tag:admin` on 443 (ADR 0027; unchanged, and `tag:admin` is still owned by `autogroup:admin`) |
-| tagged nodes (`tag:admin`) | nothing; they are only reached |
 
 ## Changing it
 
