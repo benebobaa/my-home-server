@@ -316,9 +316,10 @@ quota reconciler: ingress from the namespace, `kourier-system`,
 `TENANT_EGRESS_DENY_CIDRS`. Prove it at home with a probe pod on the worker
 (as for `cloudflared`, commit 429f435) before any tenant runs.
 
-## Suspending a tenant on prod (no admin session needed)
+## Suspending a tenant on prod
 
-The admin kill-switch is `UPDATE tenants SET suspended_at/…` + a
+The kill-switch (the admin endpoint did this until the admin plane was removed,
+ADR 0035) is `UPDATE tenants SET suspended_at/…` + a
 `tenant.suspended` row in `audit_logs`; the quota reconciler then sets the
 namespace pod quota to 0 on its next pass (a pass over all tenants takes
 ~19 min). A quota does not stop running pods: once `pods=0` shows in the

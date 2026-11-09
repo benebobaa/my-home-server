@@ -6,7 +6,7 @@
 # the cluster. Apply with ./apply.sh after reviewing ./apply.sh diff.
 #
 #   ./pin.sh running                 # pin what the cluster runs now (read-only on the cluster)
-#   ./pin.sh set core|admin <sha8> <sha256:...>
+#   ./pin.sh set core <sha8> <sha256:...>
 #                                    # pin a new build: the digest is in the run summary
 #                                    # of the "images" workflow (record the digest step)
 #   ./pin.sh show                    # the overlay's current tag and digest per image
@@ -24,8 +24,8 @@ VMID=300
 [ -f "$KUST" ] || { echo "no overlay at $KUST" >&2; exit 2; }
 
 # key -> kustomize image name (the `name:` in images:) and registry repository
-kust_name() { case "$1" in core) echo kubeletto/platform-core ;; admin) echo kubeletto/admin-ui ;; *) return 1 ;; esac; }
-repo_of()   { case "$1" in core) echo ghcr.io/podpilott/kubeletto-core ;; admin) echo ghcr.io/podpilott/kubeletto-admin-ui ;; *) return 1 ;; esac; }
+kust_name() { case "$1" in core) echo kubeletto/platform-core ;; *) return 1 ;; esac; }
+repo_of()   { case "$1" in core) echo ghcr.io/podpilott/kubeletto-core ;; *) return 1 ;; esac; }
 
 # Rewrite newTag and digest for one image block, in place. Python edits the
 # text (not YAML round-trip) so comments and layout survive.
@@ -100,14 +100,13 @@ valid() { # tag digest
 }
 
 cmd_show() {
-  local k
-  for k in core admin; do printf '%-6s %s\n' "$k" "$(current "$k")"; done
+  printf '%-6s %s\n' core "$(current core)"
 }
 
 cmd_set() {
   local key=${1:-} tag=${2:-} digest=${3:-}
-  [ -n "$key" ] && [ -n "$tag" ] && [ -n "$digest" ] || { echo "usage: pin.sh set core|admin <sha8> <sha256:digest>" >&2; exit 2; }
-  kust_name "$key" >/dev/null || { echo "unknown image: $key (core|admin)" >&2; exit 2; }
+  [ -n "$key" ] && [ -n "$tag" ] && [ -n "$digest" ] || { echo "usage: pin.sh set core <sha8> <sha256:digest>" >&2; exit 2; }
+  kust_name "$key" >/dev/null || { echo "unknown image: $key (core)" >&2; exit 2; }
   valid "$tag" "$digest"
   write_pin "$key" "$tag" "$digest"
   echo "pinned $key: $tag@$digest"
@@ -119,28 +118,27 @@ cmd_running() {
 k3s kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.image} {.imageID}{"\n"}{end}{end}'
 EOF
   )
-  for key in core admin; do
-    repo=$(repo_of "$key")
-    # Only containers of this repository; tag from .image, digest from .imageID.
-    found=$(printf '%s\n' "$pairs" | awk -v r="$repo" 'index($1, r ":") == 1 || index($1, r "@") == 1 { print $1, $2 }' | sort -u)
-    if [ -z "$found" ]; then echo "$key: not running on the cluster, skipped" >&2; continue; fi
-    if [ "$(printf '%s\n' "$found" | wc -l)" -ne 1 ]; then
-      echo "$key: more than one version is running (rollout in progress?), refusing:" >&2
-      printf '  %s\n' "$found" >&2
-      exit 1
-    fi
-    read -r image imageid <<<"$found"
-    tag=${image##*:}; tag=${tag%%@*}
-    digest=${imageid##*@}
-    valid "$tag" "$digest"
-    read -r cur_tag _ <<<"$(current "$key")"
-    if [ "$tag" != "$cur_tag" ]; then
-      echo "$key: the cluster runs tag $tag but the overlay says $cur_tag; refusing to pin a version the repo does not name" >&2
-      exit 1
-    fi
-    write_pin "$key" "$tag" "$digest"
-    echo "pinned $key: $tag@$digest (what the cluster runs)"
-  done
+  key=core
+  repo=$(repo_of "$key")
+  # Only containers of this repository; tag from .image, digest from .imageID.
+  found=$(printf '%s\n' "$pairs" | awk -v r="$repo" 'index($1, r ":") == 1 || index($1, r "@") == 1 { print $1, $2 }' | sort -u)
+  if [ -z "$found" ]; then echo "$key: not running on the cluster, skipped" >&2; return 0; fi
+  if [ "$(printf '%s\n' "$found" | wc -l)" -ne 1 ]; then
+    echo "$key: more than one version is running (rollout in progress?), refusing:" >&2
+    printf '  %s\n' "$found" >&2
+    exit 1
+  fi
+  read -r image imageid <<<"$found"
+  tag=${image##*:}; tag=${tag%%@*}
+  digest=${imageid##*@}
+  valid "$tag" "$digest"
+  read -r cur_tag _ <<<"$(current "$key")"
+  if [ "$tag" != "$cur_tag" ]; then
+    echo "$key: the cluster runs tag $tag but the overlay says $cur_tag; refusing to pin a version the repo does not name" >&2
+    exit 1
+  fi
+  write_pin "$key" "$tag" "$digest"
+  echo "pinned $key: $tag@$digest (what the cluster runs)"
 }
 
 case "${1:-}" in
