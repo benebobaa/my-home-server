@@ -184,6 +184,16 @@ docker exec pg-restore runuser -u postgres -- psql -h /tmp -d kubeletto -XAtc 'S
 docker rm -f pg-restore
 ```
 
+- **A marker row needs its own transaction.** `psql -c "insert ...; select
+  pg_switch_wal()"` is one transaction: the switch runs before the commit,
+  so the commit lands in the next segment, which reaches the bucket only at
+  the next switch (up to `archive_timeout`, 15 min). Run the insert and the
+  switch as separate `-c` options.
+- **Drill log:**
+  - 2026-11-09 (first live, the day it went on): full `20261109-125144F`
+    (1006 MB database, 103 MB in the bucket); a marker row written after
+    the full came back from "latest". Restore 37–104 s plus about 20 s of
+    replay, about 110 MB downloaded, on the operator Mac (OrbStack).
 - **Drill monthly** (ADR 0032): restore to "a few minutes ago", find a row
   written after the newest full, note the time it took and the download
   size here. A restore pulls a full and its WAL (1-3 GB): if B2 refuses with
