@@ -81,10 +81,13 @@ dashboards:
 dashboards-check:
 	$(X) uv run scripts/dashboards/build.py --check
 
+# A folder name has a space ("Platform services"): read paths line by line.
+# `|| exit 1`: a while loop reports only its last iteration's status, so
+# without it a failing board in the middle would pass.
 dashboard-lint:
-	@set -e; for f in $$(find services/monitoring/grafana/dashboards -name '*.json' | sort); do \
-	  $(X) dashboard-linter lint --config scripts/dashboards/lint.yml --strict "$$f"; done; \
-	  echo "dashboard-linter: all boards OK"
+	@find services/monitoring/grafana/dashboards -name '*.json' | sort | while IFS= read -r f; do \
+	  $(X) dashboard-linter lint --config scripts/dashboards/lint.yml --strict "$$f" || exit 1; done
+	@echo "dashboard-linter: all boards OK"
 
 secrets-scan:
 	$(X) gitleaks git --no-banner --redact .
