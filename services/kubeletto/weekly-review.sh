@@ -14,6 +14,8 @@
 #   4. Traffic: top services by requests over 7 days, with their error share
 #   5. Always-on: tenants whose app never scales to zero, with their request counts
 #   6. Accounts: tenants by plan, how many are paused, how many are new
+#   7. Funnel: signups and activation by week, checkouts, renewals, abuse
+#      suspensions (the baseline for the 2026-12-07 trial-enforcement read, D31)
 # Tenants appear by slug and plan, never by name or e-mail.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -54,6 +56,36 @@ order by u.vcpu desc limit 12;
 select 'plan', plan, count(*), count(*) filter (where suspended_at is not null),
        count(*) filter (where created_at > now() - interval '7 days'), 0 from tenants group by plan order by plan;
 select 'slug', left(id::text, 8), slug, plan, 0, 0 from tenants;
+-- Funnel (D31). Signups by week: all tenants but the platform own ones; abuse
+-- counts those suspended for abuse; activated means a deployment that went
+-- active within 7 days of signup (failed deployments do not count).
+select 'fwk', to_char(date_trunc('week', t.created_at), 'YYYY-MM-DD'), count(*),
+       count(*) filter (where t.suspension_reason like 'abuse%'),
+       count(*) filter (where exists (select 1 from deployments d where d.tenant_id = t.id
+                         and d.status = 'active' and d.created_at < t.created_at + interval '7 days')), 0
+from tenants t where t.plan <> 'internal' and t.created_at > now() - interval '5 weeks' group by 2 order by 2;
+-- Checkouts started in the last 30 days, by outcome (production payments only).
+select 'fpay', status, count(*), count(distinct tenant_id), 0, 0
+from payments where created_at > now() - interval '30 days' and provider_env = 'production' group by status order by status;
+-- Paying now, due to renew within 14 days, and repeat payers (two or more completed payments).
+select 'frenew', 'paying_now', count(*), 0, 0, 0
+from tenant_plan_assignments a join plans p on p.id = a.plan_id
+where a.status = 'active' and p.monthly_price_idr > 0 and a.current_period_end > now();
+select 'frenew', 'due_14d', count(*), 0, 0, 0
+from tenant_plan_assignments a join plans p on p.id = a.plan_id
+where a.status = 'active' and p.monthly_price_idr > 0 and a.current_period_end between now() and now() + interval '14 days';
+select 'frenew', 'repeat_payers', count(*), 0, 0, 0
+from (select tenant_id from payments where status = 'completed' and provider_env = 'production'
+      group by tenant_id having count(*) >= 2) r;
+select 'frenew', 'ever_paid', count(distinct tenant_id), 0, 0, 0
+from payments where status = 'completed' and provider_env = 'production';
+-- Trials ending per week (live free tenants): the size of what the flip decides.
+select 'ftrial', to_char(date_trunc('week', a.current_period_end), 'YYYY-MM-DD'), count(*), 0, 0, 0
+from tenant_plan_assignments a join tenants t on t.id = a.tenant_id join plans p on p.id = a.plan_id
+where p.code = 'free' and a.status = 'active' and t.suspended_at is null and a.current_period_end > now() group by 2 order by 2;
+-- Abuse suspensions by week.
+select 'fabuse', to_char(date_trunc('week', suspended_at), 'YYYY-MM-DD'), count(*), 0, 0, 0
+from tenants where suspension_reason like 'abuse%' and suspended_at > now() - interval '5 weeks' group by 2 order by 2;
 SQL
 )
 
@@ -106,4 +138,20 @@ print("6. Accounts")
 print("   %-9s %7s %7s %9s" % ("plan", "tenants", "paused", "new, 7 d"))
 for r in rows:
     if r[0] == "plan": print("   %-9s %7s %7s %9s" % (r[1], r[2], r[3], r[4]))
+print()
+print("7. Funnel (baseline for the 2026-12-07 read)")
+print("   Signups by week of signup (abuse = suspended for abuse; activated = a deployment went active within 7 days):")
+print("   %-11s %7s %6s %10s" % ("week of", "signups", "abuse", "activated"))
+for r in rows:
+    if r[0] == "fwk": print("   %-11s %7s %6s %10s" % (r[1], r[2], r[3], r[4]))
+print("   Checkouts started in the last 30 days (tenants in brackets):")
+pay = [r for r in rows if r[0] == "fpay"]
+print("   " + (", ".join("%s %s (%s)" % (r[1], r[2], r[3]) for r in pay) if pay else "none"))
+ren = dict((r[1], r[2]) for r in rows if r[0] == "frenew")
+print("   Paying now %s, due to renew within 14 days %s, repeat payers %s, ever paid %s" % (
+    ren.get("paying_now", "0"), ren.get("due_14d", "0"), ren.get("repeat_payers", "0"), ren.get("ever_paid", "0")))
+print("   Trials ending, by week:")
+print("   " + (", ".join("%s: %s" % (r[1], r[2]) for r in rows if r[0] == "ftrial") or "none"))
+print("   Abuse suspensions, by week:")
+print("   " + (", ".join("%s: %s" % (r[1], r[2]) for r in rows if r[0] == "fabuse") or "none"))
 '
