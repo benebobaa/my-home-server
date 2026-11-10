@@ -11,7 +11,7 @@ stack and why VLAN 10: [ADR 0006](../../docs/decisions/0006-monitoring-stack.md)
 | Boards | 17 generated boards, grouped by concern, the Overview as Grafana's home page. Standard: [docs/standards/dashboards.md](../../docs/standards/dashboards.md); why: [ADR 0036](../../docs/decisions/0036-observability-v2-generated-dashboards-and-alert-contract.md) |
 | Prometheus | `http://10.10.10.16:9090` (targets, alerts, ad-hoc queries; no login, MGMT only) |
 | Alertmanager | `127.0.0.1:9093` in the CT only: it has no login, and whoever reaches it can silence alerts. Alerts and silences: Grafana → Alerting (Alertmanager datasource), or `amtool` in the CT |
-| Retention | 30 days, capped at 8 GB (12 GB disk) |
+| Retention | 30 days, capped at 8 GB (20 GB disk since 2026-11-10; 12 GB could not hold the cap) |
 | Built by | `proxmox/opentofu/monitoring.tf` → `setup.sh`, `secrets.sh` (in guest), `files/monitoring-pve-token.sh`, `files/monitoring-pve-notify.sh` (pve2, root) |
 | Host side | Ansible `--tags monitoring` (node_exporter + SMART/thin-pool collectors on pve2/pve3) |
 | Router side | `network/routeros/snmp.tf` (SNMPv3 user `monitoring`) + firewall `monitoring` rules |

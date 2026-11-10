@@ -41,7 +41,7 @@ MACs are shortened to their last digits. Update this file when a part changes
 
 SSD layout (VG `pve`, 446 GB, 16 GB free): root 96 GB, swap 8 GB, thin pool
 `data` 320 GB. The thin pool holds `rescue-staging` 290 GB (the archive's
-second copy, [disk-rescue](runbooks/disk-rescue.md)), CT 120 12 GB and
+second copy, [disk-rescue](runbooks/disk-rescue.md)), CT 120 20 GB and
 CT 110 4 GB. It was **70 % used** on 2026-10-09; the SSD is pve2's tightest
 resource.
 

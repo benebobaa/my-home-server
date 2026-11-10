@@ -118,8 +118,10 @@ module "monitoring" {
 
   cores     = 2
   memory_mb = 1536
-  # 30-day TSDB capped at 8 GB (services/monitoring/setup.sh) + OS + Grafana.
-  disk_gb = 12
+  # 30-day TSDB capped at 8 GB (services/monitoring/setup.sh) + OS and Grafana
+  # (about 5 GB): 12 GB could not hold the cap (4.1 GB of TSDB left 2.5 GB free on
+  # 2026-11-10 and growing); 20 GB leaves room for the cap plus headroom.
+  disk_gb = 20
 }
 
 moved {
