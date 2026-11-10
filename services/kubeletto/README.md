@@ -32,7 +32,7 @@ cd services/kubeletto
 ./apply.sh drift         # same, exit 1 if the cluster differs from the repo
 ./apply.sh nodes         # read-only: is every K3s node admitted by the registry policies?
 ./tenant-bandwidth.sh [secs]   # read-only: which tenant namespace uses the network (names tenant + plan)
-./weekly-review.sh            # read-only: the weekly 15-minute tenant review (network, churn, crash loops, traffic, always-on CPU burn, accounts)
+./weekly-review.sh            # read-only: the weekly 15-minute tenant review (network, churn, crash loops, traffic, always-on tenants, accounts)
 ./pin.sh running         # pin the overlay's own images to the digests the cluster runs
 ./pin.sh set core <sha8> <sha256:...>   # pin a new build (digest from the images run)
 ```
@@ -57,7 +57,7 @@ Helm chart) or the Secrets created outside git.
 **Weekly review.** `./weekly-review.sh` is the 15-minute review of operating-model
 D19/D23 in one report: who uses the line, which free apps cold-start more than
 200 pods a day (a pinger waking a scale-to-zero app), which containers crash-loop,
-the top services by requests with their error share, which tenants hold a flat slice of CPU all week (proxy/tunnel templates), and the account counts. It
+the top services by requests with their error share, which tenants never scale to zero (a lead for proxy/tunnel templates), and the account counts. It
 only reads (the cluster through `pve2`, Prometheus, the Kubeletto database), names
 tenants by slug and plan, and decides nothing: pausing a service stays the
 operator's call. First run 2026-11-06: it put one free tenant first on the network

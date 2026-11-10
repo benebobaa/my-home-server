@@ -12,7 +12,7 @@
 #   2. Cold-start churn: tenant apps that start more than 200 pods a day
 #   3. Crash loops: tenant containers restarting more than 50 times a day
 #   4. Traffic: top services by requests over 7 days, with their error share
-#   5. Always-on burn: tenants holding a steady slice of CPU all week
+#   5. Always-on: tenants whose app never scales to zero, with their request counts
 #   6. Accounts: tenants by plan, how many are paused, how many are new
 # Tenants appear by slug and plan, never by name or e-mail.
 set -euo pipefail
@@ -36,10 +36,12 @@ select 'traffic', left(t.id::text, 8), t.slug, t.plan, sum(s.value)::bigint,
 from usage_samples s join tenants t on t.id = s.tenant_id
 where s.metric = 'http_requests' and s.sampled_at > now() - interval '7 days'
 group by 2, 3, 4 order by 5 desc limit 5;
--- 'burn': average CPU over 7 days (millicores) and the requests that earned it.
--- Proxy/tunnel templates (Nezha, Xray) sit at a flat ~500m with almost no
--- traffic; a scale-to-zero app that serves requests does not. 2026-11-10: the
--- sweep that suspended 8 such tenants found them by exactly this number.
+-- 'burn': average RESERVED CPU over 7 days (millicores): pod uptime times the
+-- CPU limit, from runtime_vcpu_seconds, not CPU actually used (these pods use
+-- 0.001 to 0.03 core). About 500 means a free app's pod was up all week, i.e.
+-- it never scaled to zero. Proxy/tunnel templates (Nezha, Xray) do that with
+-- almost no traffic. It is a lead, not proof: the 2026-11-10 suspensions were
+-- decided by looking inside the pods (agent processes, obfuscated entrypoints).
 select 'burn', left(t.id::text, 8), t.slug, t.plan,
        round(1000 * u.vcpu / 604800)::bigint, u.reqs::bigint
 from (select tenant_id,
@@ -94,9 +96,9 @@ print("   %9s %7s  %s" % ("requests", "errors", "tenant (plan)"))
 for r in rows:
     if r[0] == "traffic": print("   %9d %6s%%  %s (%s)" % (int(r[4]), r[5], r[2], r[3]))
 print()
-print("5. Always-on burn: average CPU over 7 days of 250m or more, by tenant (not suspended)")
-print("   A flat 400-500m with few requests is a background agent or proxy, not an app that scales to zero.")
-print("   %7s %9s  %s" % ("avg mCPU", "requests", "tenant (plan)"))
+print("5. Always-on: tenants whose pod was up about half the week or more (reserved CPU, not CPU used)")
+print("   Around 500 on a free tenant is a pod up all week. With few requests that is a lead for a proxy or agent: look inside the pod before pausing.")
+print("   %7s %9s  %s" % ("reserved", "requests", "tenant (plan)"))
 for r in rows:
     if r[0] == "burn": print("   %7d %9d  %s (%s)" % (int(r[4]), int(r[5]), r[2], r[3]))
 print()
