@@ -38,7 +38,7 @@ where s.metric = 'http_requests' and s.sampled_at > now() - interval '7 days'
 group by 2, 3, 4 order by 5 desc limit 5;
 -- 'burn': average RESERVED CPU over 7 days (millicores): pod uptime times the
 -- CPU limit, from runtime_vcpu_seconds, not CPU actually used (these pods use
--- 0.001 to 0.03 core). About 500 means a free app's pod was up all week, i.e.
+-- 0.001 to 0.03 core). About 500 means the pod of a free app was up all week, i.e.
 -- it never scaled to zero. Proxy/tunnel templates (Nezha, Xray) do that with
 -- almost no traffic. It is a lead, not proof: the 2026-11-10 suspensions were
 -- decided by looking inside the pods (agent processes, obfuscated entrypoints).
