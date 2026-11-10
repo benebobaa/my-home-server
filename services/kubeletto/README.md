@@ -32,7 +32,7 @@ cd services/kubeletto
 ./apply.sh drift         # same, exit 1 if the cluster differs from the repo
 ./apply.sh nodes         # read-only: is every K3s node admitted by the registry policies?
 ./tenant-bandwidth.sh [secs]   # read-only: which tenant namespace uses the network (names tenant + plan)
-./weekly-review.sh            # read-only: the weekly 15-minute tenant review (network, churn, crash loops, traffic, accounts)
+./weekly-review.sh            # read-only: the weekly 15-minute tenant review (network, churn, crash loops, traffic, always-on CPU burn, accounts)
 ./pin.sh running         # pin the overlay's own images to the digests the cluster runs
 ./pin.sh set core <sha8> <sha256:...>   # pin a new build (digest from the images run)
 ```
