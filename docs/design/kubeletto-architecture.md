@@ -54,7 +54,8 @@ flowchart LR
 | Ops plane: CT 120/121 (VLAN 10) | Prometheus, Grafana, logs | pulls only; the DMZ never pushes into MGMT |
 
 Durable state is only: Postgres (PBS nightly, restore tested 29 s), the registry's
-blobs (a dedicated disk of VM 300, no backup: ADR 0021), the SOPS secrets, and the Infisical project (tenant
+blobs (a dedicated disk of VM 300, backed up to the PBS replica on pve1, not off-site:
+ADR 0021 as amended by ADR 0025 and ADR 0034), the SOPS secrets, and the Infisical project (tenant
 env keys, SaaS). NATS and Valkey are not durable state: NATS is a transport (the
 outbox lives in Postgres), Valkey holds locks, rate limits and caches.
 

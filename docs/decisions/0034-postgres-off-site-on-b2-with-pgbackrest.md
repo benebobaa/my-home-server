@@ -42,3 +42,18 @@
 
 - 2026-11-09, locally (Debian 13 + PGDG PostgreSQL 18 + pgBackRest in a container, SeaweedFS as the S3 stand-in): `setup.sh` then `offsite.sh` unchanged; stanza-create, the pending-restart path, `--restart-ok`, `check`, a full backup, a row written after it, a point-in-time restore into a fresh data directory with the row present, the metrics files, and the guard on a faked size. Details in the [experiment](../experiments/2026-11-09-pgbackrest-offsite-local.md).
 - **To do when live:** `pgbackrest check` and the first full on CT 130; the metrics in Prometheus; a point-in-time restore from B2 into a scratch Postgres with a row written after the last full present (0032's verification line); the archive alert firing when the bucket key is revoked.
+
+## Update, 2026-11-09 (live)
+
+The status line above is as written when the ADR was accepted. It went live the
+same evening: the operator created the bucket and keys, the hEX pinhole for the
+new metrics port was applied, and `offsite.sh --restart-ok` ran in an approved
+window (about 19:51 WIB). `pgbackrest check` passed, the first full backup
+(`20261109-125144F`, 1006 MB database, 103 MB in the bucket) completed with no
+failures, the metrics are on `:9100`, and a point-in-time restore from B2 with the
+read-only key into a scratch Postgres brought back a row written after the full
+(37-104 s plus about 20 s of replay, about 110 MB downloaded). The drill log is in
+[backup-restore.md](../runbooks/backup-restore.md#postgres-off-site-pgbackrest-in-b2).
+Not yet confirmed: B2's $0 caps (operator), a real-size drill after the next
+rotation, and the archive alert firing on a revoked key.
+
