@@ -12,7 +12,8 @@
 #   2. Cold-start churn: tenant apps that start more than 200 pods a day
 #   3. Crash loops: tenant containers restarting more than 50 times a day
 #   4. Traffic: top services by requests over 7 days, with their error share
-#   5. Accounts: tenants by plan, how many are paused, how many are new
+#   5. Always-on burn: tenants holding a steady slice of CPU all week
+#   6. Accounts: tenants by plan, how many are paused, how many are new
 # Tenants appear by slug and plan, never by name or e-mail.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -35,6 +36,19 @@ select 'traffic', left(t.id::text, 8), t.slug, t.plan, sum(s.value)::bigint,
 from usage_samples s join tenants t on t.id = s.tenant_id
 where s.metric = 'http_requests' and s.sampled_at > now() - interval '7 days'
 group by 2, 3, 4 order by 5 desc limit 5;
+-- 'burn': average CPU over 7 days (millicores) and the requests that earned it.
+-- Proxy/tunnel templates (Nezha, Xray) sit at a flat ~500m with almost no
+-- traffic; a scale-to-zero app that serves requests does not. 2026-11-10: the
+-- sweep that suspended 8 such tenants found them by exactly this number.
+select 'burn', left(t.id::text, 8), t.slug, t.plan,
+       round(1000 * u.vcpu / 604800)::bigint, u.reqs::bigint
+from (select tenant_id,
+             coalesce(sum(value) filter (where metric = 'runtime_vcpu_seconds'), 0) vcpu,
+             coalesce(sum(value) filter (where metric = 'http_requests'), 0) reqs
+      from usage_samples where sampled_at > now() - interval '7 days' group by 1) u
+join tenants t on t.id = u.tenant_id
+where t.suspended_at is null and t.plan <> 'internal' and u.vcpu / 604800 >= 0.25
+order by u.vcpu desc limit 12;
 select 'plan', plan, count(*), count(*) filter (where suspended_at is not null),
        count(*) filter (where created_at > now() - interval '7 days'), 0 from tenants group by plan order by plan;
 select 'slug', left(id::text, 8), slug, plan, 0, 0 from tenants;
@@ -80,7 +94,13 @@ print("   %9s %7s  %s" % ("requests", "errors", "tenant (plan)"))
 for r in rows:
     if r[0] == "traffic": print("   %9d %6s%%  %s (%s)" % (int(r[4]), r[5], r[2], r[3]))
 print()
-print("5. Accounts")
+print("5. Always-on burn: average CPU over 7 days of 250m or more, by tenant (not suspended)")
+print("   A flat 400-500m with few requests is a background agent or proxy, not an app that scales to zero.")
+print("   %7s %9s  %s" % ("avg mCPU", "requests", "tenant (plan)"))
+for r in rows:
+    if r[0] == "burn": print("   %7d %9d  %s (%s)" % (int(r[4]), int(r[5]), r[2], r[3]))
+print()
+print("6. Accounts")
 print("   %-9s %7s %7s %9s" % ("plan", "tenants", "paused", "new, 7 d"))
 for r in rows:
     if r[0] == "plan": print("   %-9s %7s %7s %9s" % (r[1], r[2], r[3], r[4]))
