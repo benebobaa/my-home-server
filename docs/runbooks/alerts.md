@@ -511,6 +511,97 @@ secrets, `services/kubeletto/secrets.sh`) and re-apply
 meter starts from its checkpoint. If the setting is there, the startup log
 names why the meter did not start.
 
+## Kubeletto payments
+
+The core's payment log lines are counted by Vector in the cluster
+(`kubeletto_payment_events_total{event=...}`, Kubeletto `infra/k8s/home/vector.toml`)
+and the rules are `rules/kubeletto-payments.yml`. They replace eight
+OpenObserve alerts that the move home removed. To read the lines themselves:
+`ssh root@10.10.10.12 'qm guest exec 300 --timeout 60 -- sh -c "k3s kubectl -n platform logs deploy/platform-core --since=30m | grep -i payments"'`.
+If the counters look empty while payments clearly happen, check that Vector is
+scraped (`up{job="service_dmz"}`) and that `kubeletto_payment_events_total`
+exists at all in Prometheus: a rename of a log message in the core silently
+zeroes its counter (the strings are pinned in `vector.toml`'s unit tests, which
+cannot see the core).
+
+### KubelettoPaymentPaidNoPlan
+**Meaning:** SumoPod says a payment completed, but the core could not match it
+to an order or activate it, or the customer paid less than the plan price: money
+taken, no plan granted. Critical; the baseline is zero. It keeps firing for 6 h
+so a night-time message is still there in the morning.
+**Check:** the core log lines `reconcile manually` and `refusing to activate plan`
+(they carry the order id and tenant); then the `payments` row for that order
+(`status`, `amount_idr`, `expires_at`) in the Kubeletto database.
+**Fix:** reconcile by hand: confirm the payment in the SumoPod dashboard, then
+grant the plan the way `activatePlan` does (a `tenant_plan_assignments` update
+plus the audit row) or ask SumoPod to resend the webhook once the cause is
+fixed. Tell the customer. Money and customer-facing: the operator's call.
+
+### KubelettoPaymentWebhookFailed
+**Meaning:** the webhook handler failed to process a `payment.completed` event
+and returned an error. SumoPod retries, and every retry fails until the cause is
+fixed; a paying customer may have no plan meanwhile. Critical.
+**Check:** the core log for `webhook completion processing failed` (the error is
+on the line); a database blip shows in Postgres alerts at the same time.
+**Fix:** fix the cause (database, a migration the binary is ahead of); SumoPod's
+retry then completes the payment. If it does not retry, resend it from the
+SumoPod dashboard (runbook in Kubeletto CONSOLE-021).
+
+### KubelettoPaymentsReconcilerStale
+**Meaning:** the hourly plan-expiry reconciler logs "sweep completed" even when
+idle and none was counted for 150 minutes: renewal reminders, expired-checkout
+emails and lapse downgrades have silently stopped. Critical. Note it also fires
+when the counter is absent, for example right after Vector restarts, until the
+next heartbeat (at most an hour; `for: 15m` plus the window avoids most of that).
+**Check:** the platform-core pod (`kubectl -n platform get pods`) and its log
+for `plan expiry reconcile sweep`; whether Vector is up (`TargetDown` for
+service_dmz would fire too).
+**Fix:** restart the core pod if it is wedged (`kubectl -n platform rollout
+restart deploy/platform-core`; old pods serve until the new one is ready).
+
+### KubelettoPaymentWebhookSignatureRejected
+**Meaning:** three or more webhook signature checks failed in 15 minutes. Probes
+of the public endpoint cause one or two; a rotated or mistyped
+`SUMOPOD_WEBHOOK_SECRET` would drop every real payment silently.
+**Check:** `client_ip` on the `webhook signature rejected` log lines (one scanner
+address is noise; SumoPod's own address failing is the fault); the secret in the
+cluster (`platform-core-env`, key names only) against the SumoPod dashboard.
+**Fix:** correct the secret and roll the core; ignore a lone scanner.
+
+### KubelettoPaymentGatewayUnavailable
+**Meaning:** creating a QRIS payment link failed twice or more in 15 minutes, so
+customers cannot start a payment ("payment provider is unavailable").
+**Check:** SumoPod's status; the core log for `gateway create payment failed`
+(the error says timeout, 401 or 5xx); the DNS or egress path from the DMZ if it
+is a timeout (ADR 0031, 0033).
+**Fix:** wait out SumoPod; a 401 means `SUMOPOD_API_KEY` is wrong or revoked.
+
+### KubelettoPaymentSeatCheckFailed
+**Meaning:** the Pro seat-capacity check failed closed, so checkout answers 503
+for everyone until it clears; usually a database blip.
+**Check:** Postgres CT 130 alerts at the same time; the core log for `seat check failed`.
+**Fix:** fix the database; the alert clears by itself.
+
+### KubelettoPaymentPlanAtCapacity
+**Meaning:** a customer tried to buy Pro and was refused because every seat
+(`plan_limits` `max_active_seats`) is taken. Not a fault: lost revenue.
+**Check:** `SELECT value_numeric FROM plan_limits ... key = 'max_active_seats'`
+against the paying count (the weekly review, section 7), and the node headroom
+(`K8sNodeCapacityTrigger`, the Kubeletto board).
+**Fix:** raise the cap with a migration if the nodes have room (operator's yes:
+money and capacity) and write to the customer who was turned away.
+
+### KubelettoPaymentDowngradeRestoreFailed
+**Meaning:** a lapse downgrade, a restore after renewal, or a whole reconcile sweep
+failed for at least one service. By design these steps log and continue, so the
+plan row can look right while the running workload was never clamped (after a
+lapse) or never restored (after a renewal).
+**Check:** the core log lines `downgrade:` or `restore:` with `failed` (tenant and
+service ids on the line); whether the service is paused or still at the old size.
+**Fix:** a later reconcile pass retries snapshots left active; if it keeps
+failing, fix the cause the line names (an image gone, no runtime room) or
+redeploy the service by hand.
+
 ## GPU (pve1's RTX 3060, in the `ai` VM)
 
 Metrics come from nvidia_gpu_exporter in `ai` (`:9835`, ADR 0014); the

@@ -1,0 +1,226 @@
+# promtool unit tests for rules/kubeletto-payments.yml (make check).
+#
+# The case that matters most is the first event of a kind: log_to_metric creates
+# the counter series when the event happens, so there is no earlier sample and
+# increase() alone would report 0 for the one event the alert exists for.
+rule_files:
+  - ../rules/kubeletto-payments.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The very first paid_no_plan ever: the series does not exist for 60 minutes,
+  # then appears at 1 and stays there. It must fire at once, keep firing past
+  # the 15 minute window (keep_firing_for 6h), and clear after that.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="paid_no_plan"}'
+        values: '_x60 1x500'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x600'
+    alert_rule_test:
+      - eval_time: 59m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+      - eval_time: 62m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts:
+          - exp_labels: { severity: critical, event: paid_no_plan }
+            exp_annotations:
+              summary: "Kubeletto: a payment was completed but no plan was granted (1 in 15 min)"
+              description: "SumoPod reports a payment completed that the core could not match to an order or activate, or the customer paid less than the plan price. Money was taken and no plan was granted. Reconcile the payments row by hand now."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentpaidnoplan
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+      - eval_time: 150m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts:
+          - exp_labels: { severity: critical, event: paid_no_plan }
+            exp_annotations:
+              summary: "Kubeletto: a payment was completed but no plan was granted (1 in 15 min)"
+              description: "SumoPod reports a payment completed that the core could not match to an order or activate, or the customer paid less than the plan price. Money was taken and no plan was granted. Reconcile the payments row by hand now."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentpaidnoplan
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+      - eval_time: 480m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+
+  # After a Prometheus restart or a scrape gap (a power cut) there is no history
+  # 15 minutes back, so every existing counter would look "new". The up guard
+  # keeps a counter that has been at 12 since long before from firing the
+  # critical alert.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="paid_no_plan"}'
+        values: '12x120'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+
+  # The Vector target was down for the 30 minutes before the series appeared:
+  # no scrape 15 minutes back, so it is not counted as new either.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="paid_no_plan"}'
+        values: '_x45 7x75'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '0x45 1x75'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: KubelettoPaymentPaidNoPlan
+        exp_alerts: []
+
+  # A counter that already existed and goes up by one: a webhook failure.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="webhook_failed"}'
+        values: '5x30 6x90'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: KubelettoPaymentWebhookFailed
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: KubelettoPaymentWebhookFailed
+        exp_alerts:
+          - exp_labels: { severity: critical, event: webhook_failed }
+            exp_annotations:
+              summary: "Kubeletto: the SumoPod payment webhook failed to process (1 in 15 min)"
+              description: "The core failed to process a payment.completed webhook and returned an error, so SumoPod will retry it. Until it is fixed a paying customer may have no plan. Read the platform-core log for 'webhook completion processing failed'."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentwebhookfailed
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+  # Two nodes' Vector pods each saw one gateway failure: summed, that is the
+  # two the alert needs. One alone is a blip.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="gateway_unavailable"}'
+        values: '_x40 1x40'
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s-worker",port="30598",event="gateway_unavailable"}'
+        values: '_x40 1x40'
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="seat_check_failed"}'
+        values: '_x40 1x40'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x600'
+      - series: 'up{job="service_dmz",instance="k3s-worker",port="30598"}'
+        values: '1x600'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: KubelettoPaymentGatewayUnavailable
+        exp_alerts:
+          - exp_labels: { severity: warning, event: gateway_unavailable }
+            exp_annotations:
+              summary: "Kubeletto: 2 SumoPod checkout calls failed in 15 min"
+              description: "Creating a QRIS payment link failed twice or more in 15 minutes, so customers cannot start a payment. Check SumoPod's status and the platform-core log for 'gateway create payment failed'."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentgatewayunavailable
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+      - eval_time: 45m
+        alertname: KubelettoPaymentSeatCheckFailed
+        exp_alerts:
+          - exp_labels: { severity: warning, event: seat_check_failed }
+            exp_annotations:
+              summary: "Kubeletto: the Pro seat-capacity check failed, blocking checkout"
+              description: "The seat check failed closed, so checkout is refused for every customer until it clears. It is usually a database blip; check Postgres in CT 130 and the platform-core log for 'seat check failed'."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentseatcheckfailed
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+  # One gateway failure on one node is a blip, and one or two rejected
+  # signatures are scanner noise: neither fires.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="gateway_unavailable"}'
+        values: '_x40 1x40'
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="signature_rejected"}'
+        values: '_x40 2x40'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: KubelettoPaymentGatewayUnavailable
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: KubelettoPaymentWebhookSignatureRejected
+        exp_alerts: []
+
+  # Four bad signatures within the window do fire.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="signature_rejected"}'
+        values: '_x40 4x40'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: KubelettoPaymentWebhookSignatureRejected
+        exp_alerts:
+          - exp_labels: { severity: warning, event: signature_rejected }
+            exp_annotations:
+              summary: "Kubeletto: 4 SumoPod webhook signatures rejected in 15 min"
+              description: "Three or more webhook signature checks failed in 15 minutes. Probes of the public endpoint do this, but so does a rotated or mistyped webhook secret, which would silently drop every real payment. Compare SUMOPOD_WEBHOOK_SECRET with the SumoPod dashboard."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentwebhooksignaturerejected
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+  # The reconciler heartbeat ticks hourly (+1 at 60, 120, 180 minutes) and then
+  # stops. Healthy until the last tick leaves the 150 minute window (330 min)
+  # plus the 15 minute `for`.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="reconcile_sweep_completed"}'
+        values: '1x59 2x60 3x60 4x400'
+      - series: 'up{job="service_dmz",instance="k3s"}'
+        values: '1x500'
+    alert_rule_test:
+      - eval_time: 200m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts: []
+      - eval_time: 340m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts: []
+      - eval_time: 352m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "Kubeletto: the payments reconciler has not completed a sweep in over 150 minutes"
+              description: "The hourly plan-expiry reconciler logs a heartbeat even when idle, and none was seen for 150 minutes: renewal reminders and lapse downgrades have silently stopped. Check the platform-core pod and its log for 'plan expiry reconcile sweep'. If Vector itself is down, TargetDown says so too."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentsreconcilerstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto
+
+  # A reconciler that keeps ticking never fires.
+  - interval: 1m
+    input_series:
+      - series: 'kubeletto_payment_events_total{job="service_dmz",instance="k3s",port="30598",event="reconcile_sweep_completed"}'
+        values: '1x59 2x60 3x60 4x60 5x60 6x60 7x60'
+    alert_rule_test:
+      - eval_time: 400m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts: []
+
+  # No heartbeat series at all (Vector never counted one): absent fires after
+  # the `for`.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="service_dmz",instance="k3s"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: KubelettoPaymentsReconcilerStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "Kubeletto: the payments reconciler has not completed a sweep in over 150 minutes"
+              description: "The hourly plan-expiry reconciler logs a heartbeat even when idle, and none was seen for 150 minutes: renewal reminders and lapse downgrades have silently stopped. Check the platform-core pod and its log for 'plan expiry reconcile sweep'. If Vector itself is down, TargetDown says so too."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#kubelettopaymentsreconcilerstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-apps-kubeletto

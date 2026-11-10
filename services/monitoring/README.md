@@ -48,6 +48,15 @@ validated with `promtool` before a reload. Every rule has a `runbook_url`
 into [`docs/runbooks/alerts.md`](../../docs/runbooks/alerts.md); the Telegram
 message (`alertmanager/telegram.tmpl`) links it.
 
+**Kubeletto payments** (`rules/kubeletto-payments.yml`, tests in
+`tests/kubeletto-payments.test.yml`): Vector in the cluster counts the core's
+payment log lines as `kubeletto_payment_events_total{event=...}` (Kubeletto
+`infra/k8s/home/vector.toml`) and eight alerts read them: paid with no plan, the
+webhook failing, the reconciler gone quiet (critical); signature rejections, the
+gateway down, the seat check failing, a checkout refused at capacity, a failed
+downgrade or restore (warning). They replace the OpenObserve rules that the move
+home removed, so they only work once that Vector config is applied.
+
 **Routing by severity** (`alertmanager/alertmanager.yml`): `critical` →
 Telegram now, repeated every 4 h; `warning` → Telegram, held 23:00–07:00
 WIB; `info` → Telegram without sound, repeated weekly (a record for the weekly review). `HostUnreachable`, `HttpProbeFailed`
