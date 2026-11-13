@@ -173,9 +173,14 @@ in its Tofu definition instead of leaving the alert.
 
 ### PveGuestNotBackedUp
 **Meaning:** a guest is in no backup job, so it has no backups at all. The
-nightly job (`nightly`, PBS) covers every guest except PBS itself, so a new
-guest is covered automatically. This fires if the job was edited, disabled
-or removed.
+nightly job (`nightly`, PBS) covers every guest except the two PBS CTs
+(`pbs`, `pbs-replica`: their disks are the datastores) and VM 300 (its own job
+`replica-registry`), so a new guest is covered automatically. The rule skips
+guests named `pbs*`; the job's exclusion list is `PBS_EXCLUDE` in
+`proxmox/opentofu/pbs.tf`, so a new deliberate exclusion needs the rule
+(`rules/cluster.yml`) and `tests/backups.test.yml` updated with it. This fires
+if the job was edited, disabled or removed. It checks coverage only, not
+whether the last run worked.
 **Check:** `pvesh get /cluster/backup/nightly` on a node; is the guest
 excluded? `pvesm status --storage pbs` — is the storage active?
 **Fix:** re-converge: `tofu apply` in `proxmox/opentofu` (`terraform_data.pbs_link`

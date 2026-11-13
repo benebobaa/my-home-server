@@ -65,15 +65,18 @@ groups:
           runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pvestoragefilling
           dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
 
-      # A guest no backup job covers (PBS, ADR 0009). The PBS CT itself is
-      # excluded from the nightly job on purpose: its disk *is* the datastore.
-      # This checks coverage, not freshness: a failed nightly run arrives as
-      # a Proxmox notification (warnings/errors → Telegram).
+      # A guest no backup job covers (PBS, ADR 0009). The PBS CTs themselves
+      # (`pbs`, `pbs-replica`: their disks *are* the datastores) are excluded
+      # from the nightly job on purpose (proxmox/opentofu/pbs.tf, PBS_EXCLUDE),
+      # hence `name=~"pbs.*"`; VM 300 is in its own job (replica-registry) and
+      # is therefore never "not backed up". This checks coverage, not
+      # freshness: a failed nightly run arrives as a Proxmox
+      # notification (warnings/errors → Telegram).
       - alert: PveGuestNotBackedUp
         expr: |
           (pve_not_backed_up_info == 1)
             * on (id) group_left (name, node) pve_guest_info{template="0"}
-            unless on (id) pve_guest_info{name="pbs"}
+            unless on (id) pve_guest_info{name=~"pbs.*"}
         for: 1h
         labels: { severity: warning }
         annotations:

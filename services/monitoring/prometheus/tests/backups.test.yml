@@ -1,0 +1,34 @@
+# promtool unit tests for the backup alerts (rules/cluster.yml, rules/backups.yml).
+rule_files:
+  - ../rules/cluster.yml
+
+evaluation_interval: 1m
+
+tests:
+  # PveGuestNotBackedUp: the PBS CTs are excluded from the nightly job on
+  # purpose (CT 112 fired for a week on a one-word exclusion); a real guest
+  # that dropped out of the job still alerts.
+  - interval: 1m
+    input_series:
+      - series: 'pve_not_backed_up_info{id="lxc/111"}'
+        values: '1x120'
+      - series: 'pve_guest_info{id="lxc/111",name="pbs",node="pve3",type="lxc",template="0"}'
+        values: '1x120'
+      - series: 'pve_not_backed_up_info{id="lxc/112"}'
+        values: '1x120'
+      - series: 'pve_guest_info{id="lxc/112",name="pbs-replica",node="pve1",type="lxc",template="0"}'
+        values: '1x120'
+      - series: 'pve_not_backed_up_info{id="lxc/150"}'
+        values: '1x120'
+      - series: 'pve_guest_info{id="lxc/150",name="newapp",node="pve2",type="lxc",template="0"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: PveGuestNotBackedUp
+        exp_alerts:
+          - exp_labels: { severity: warning, id: lxc/150, name: newapp, node: pve2 }
+            exp_annotations:
+              summary: "newapp (lxc/150 on pve2) is in no backup job"
+              description: "newapp (lxc/150 on pve2) has been in no backup job for over 1 h, so it has no backups at all. Check the nightly job's exclusions and the PBS storage, and re-converge Tofu in proxmox/opentofu if the job was changed."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestnotbackedup
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
