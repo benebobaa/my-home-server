@@ -8,7 +8,7 @@ node_memory_*) and from the alert expressions. No upstream mixin or vendor board
 was consulted.
 
 Alert expressions mirrored (rules/cluster.yml, rules/hosts.yml): PveClusterNotQuorate,
-PveNodeDown, PveGuestDown, PveStorageFilling, PveGuestNotBackedUp, ThinPoolFilling,
+PveNodeDown, PveGuestDown, PveStorageFilling, PveGuestNotBackedUp, BackupStale (rules/backups.yml), ThinPoolFilling,
 ThinPoolCritical, ThinPoolMetadataFilling, and HostMemoryLow (node memory).
 """
 from lib import (
@@ -20,11 +20,11 @@ GUESTS = 'id=~"(lxc|qemu)/.*"'
 NODES = 'id=~"node/.*"'
 STORAGES = 'id=~"storage/.*"'
 
-# PveGuestNotBackedUp, verbatim (rules/cluster.yml; the PBS CT is excluded on purpose).
+# PveGuestNotBackedUp, verbatim (rules/cluster.yml; the PBS CTs are excluded on purpose).
 NOT_BACKED_UP = (
     '(pve_not_backed_up_info == 1)'
     ' * on (id) group_left (name, node) pve_guest_info{template="0"}'
-    ' unless on (id) pve_guest_info{name="pbs"}'
+    ' unless on (id) pve_guest_info{name=~"pbs.*"}'
 )
 
 # PveGuestDown, verbatim: onboot guests only (the archive CT and the `ai` VM are off by design).
@@ -132,10 +132,9 @@ def boards():
                  "count here; the guest table below shows them as 'stopped'.", w=3),
         problem_stat(  # PveGuestNotBackedUp
             "Guests not backed up", 'count(' + NOT_BACKED_UP + ')',
-            desc="Guests in no backup job (rule PveGuestNotBackedUp, 1 hour; the PBS CT is excluded "
-                 "on purpose). It counts coverage only: there is no backup success or age metric "
-                 "yet, so a green tile does not prove the last backup worked. A freshness collector "
-                 "is planned and will add panels here.", w=3),
+            desc="Guests in no backup job (rule PveGuestNotBackedUp, 1 hour; the PBS CTs are excluded "
+                 "on purpose). It counts coverage only: whether the last backup worked is the "
+                 "'Age of the newest good backup' panel below (rule BackupStale).", w=3),
         stat(  # ThinPoolFilling 85, ThinPoolCritical 92
             "Thin pool data, fullest", 'max(node_lvm_thin_pools_allocated)', unit="percent",
             decimals=1, thresholds=hi_bad(85, 92),
@@ -328,17 +327,24 @@ def boards():
             "Guests in no backup job", NOT_BACKED_UP,
             desc="Guests that no backup job covers (rule PveGuestNotBackedUp: still listed after 1 "
                  "hour it alerts). Empty is the goal. The nightly job (PBS, 02:30 WIB) covers every guest "
-                 "except the PBS CT itself, whose disk is the datastore, so a new guest is covered "
-                 "automatically; an entry here means the job was edited, disabled or removed, or "
-                 "the guest is one the rule does not exclude. This is coverage only: there is no "
-                 "backup success or age metric yet.",
+                 "except the two PBS CTs, whose disks are the datastores, and VM 300 (its own job), so "
+                 "a new guest is covered automatically; an entry here means the job was edited, "
+                 "disabled or removed, or the guest is one the rule does not exclude. This is "
+                 "coverage only: the age panel next to it shows whether the last run worked.",
             columns=[("name", "Guest"), ("id", "ID"), ("node", "Node")],
             sort_by="Guest", descending=False, w=14, h=6, empty_ok=True),
-        text("Not measured yet", (
-            "**Backup freshness is not on this board.** Proxmox exports whether a guest is in a "
-            "backup job, not whether the last run succeeded or how old it is. A freshness "
-            "collector is planned and will add panels here. Until then a failed nightly run "
-            "reaches Telegram only as a Proxmox notification, and a restore is the real "
-            "proof (`docs/runbooks/backup-restore.md`)."), w=10, h=6),
+        bargauge(  # BackupStale
+            "Age of the newest good backup",
+            [('time() - homelab_backup_last_success_timestamp_seconds{job="node"}',
+              "{{name}} ({{backup_job}})")],
+            desc="How old each guest's newest good snapshot is in the storage of the job that must "
+                 "cover it (rule BackupStale: orange from 36 hours, then alert after 30 minutes). "
+                 "A healthy guest is under 25 hours (nightly job 02:30 WIB, registry replica 03:30). "
+                 "The expected guests come from the cluster's backup jobs, so the PBS CTs are absent "
+                 "by design. A guest that never had a snapshot counts from the moment it was first "
+                 "expected. From a collector on pve2 every 10 minutes (BackupMetricsMissing if it "
+                 "stops). A restore is still the real proof (`docs/runbooks/backup-restore.md`).",
+            unit="s", max=172800, w=10, h=6,
+            thresholds=steps(("green", None), ("orange", 129600))),
     ])
     return [b]

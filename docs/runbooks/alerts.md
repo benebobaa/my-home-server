@@ -186,6 +186,41 @@ excluded? `pvesm status --storage pbs` — is the storage active?
 **Fix:** re-converge: `tofu apply` in `proxmox/opentofu` (`terraform_data.pbs_link`
 re-creates the job). See `docs/runbooks/backup-restore.md`.
 
+### BackupStale
+**Meaning:** a guest that a backup job is meant to cover has no good snapshot
+newer than 36 h in that job's storage (the nightly job runs at 02:30, the
+registry replica at 03:30; a healthy guest is under 25 h). One night was
+missed. A guest with no snapshot at all alerts 36 h after it was first
+expected. The series come from `ansible/files/backup-freshness.py` on pve2
+(`prometheus-node-exporter-backup.timer`, every 10 min): the expected guests
+are the cluster's own backup jobs (`all` minus `exclude`, or the `vmid` list)
+over the live guest list, so a deleted guest or a changed exclusion stops
+being expected by itself. A snapshot whose PBS verification failed does not
+count. History: 2026-10-27 to 11-12 the nightly backups of CT 101 and CT 132
+failed every night (pve3's thin pool full) and nothing but Telegram's
+per-run errors noticed.
+**Check:** the labels name the guest and the storage. The failed run is in
+the node's task list (`pvesh get /cluster/tasks`, or UI → node → Task
+History, type "Backup"). `pvesm status --storage pbs` (is it active and not
+full?), `lvs pve` on the guest's node (a data pool near 100 % cannot take the
+snapshot), and `ssh root@10.10.10.12 /usr/local/sbin/backup-freshness --out -`
+prints what the collector sees.
+**Fix:** clear the cause (fstrim the guests, `docs/runbooks/node-ops.md`;
+free PBS space: prune/GC, `services/pbs/README.md`), then run it by hand:
+`vzdump <vmid> --storage <storage> --mode snapshot`. The alert resolves on
+the next collector run (10 min).
+
+### BackupMetricsMissing
+**Meaning:** Prometheus has had no `homelab_backup_*` series for 2 h, so
+`BackupStale` cannot fire.
+**Check:** pve2 up? `systemctl list-timers | grep backup` on pve2;
+`/var/lib/prometheus/node-exporter/backup.prom` exists? A pve2 outage also
+shows as `PveNodeDown`.
+**Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit pve2 | cat`.
+If monitoring moved to another node (`lab.yaml`), converge both nodes: the
+collector follows `lab.hosts.monitoring.node`, and the old node's
+`backup.prom` must be removed by hand or the series double.
+
 ### PveStorageFilling
 **Meaning:** a directory storage (`local`: ISOs, templates, backups) is over
 90 % full.
@@ -270,9 +305,11 @@ GPU VM's load? Reference: pve1's 20-min GPU + CPU soak peaked at 89 °C
 **Fix:** airflow, or limit the guest's cores. The Ryzen throttles at 95 °C.
 
 ### HostTextfileCollectorStale
-**Meaning:** the SMART or thin-pool collector has not written for over 1 h:
-the disk and pool alerts above are blind.
-**Check:** `systemctl list-timers | grep -E 'smart|lvm'` on the node.
+**Meaning:** the SMART, thin-pool or backup-freshness collector has not
+written for over 1 h: the disk, pool and backup alerts are blind.
+**Check:** `systemctl list-timers | grep -E 'smart|lvm|backup'` on the node
+(the backup collector runs on pve2 only; `journalctl -u prometheus-node-exporter-backup`
+says why a run failed: usually `pvesh` cannot reach PBS).
 **Fix:** `ansible-playbook proxmox-nodes.yml --tags monitoring --limit <node> | cat`.
 **Known cause (pve2/pve3, after a power cut):** the laptops lose their RTC
 without AC and boot at 2026-04-14. The SMART collector runs before chrony

@@ -630,7 +630,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count((pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=\"pbs\"})",
+          "expr": "count((pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=~\"pbs.*\"})",
           "legendFormat": "",
           "instant": true,
           "range": false

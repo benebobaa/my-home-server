@@ -68,8 +68,8 @@ STATE_MAP = [{
 # leaves the PBS guest itself out). 1 = in a job, 0 = in none, no value = not a guest / pbs.
 NOT_BACKED_UP = '(pve_not_backed_up_info == 1)'
 BACKUP = (
-    f'(({GUEST} * 0 + 1) unless on (id) {NOT_BACKED_UP} unless on (id) pve_guest_info{{name="pbs"}})'
-    f' or (({GUEST} * 0) and on (id) {NOT_BACKED_UP} unless on (id) pve_guest_info{{name="pbs"}})'
+    f'(({GUEST} * 0 + 1) unless on (id) {NOT_BACKED_UP} unless on (id) pve_guest_info{{name=~"pbs.*"}})'
+    f' or (({GUEST} * 0) and on (id) {NOT_BACKED_UP} unless on (id) pve_guest_info{{name=~"pbs.*"}})'
 )
 BACKUP_MAP = [{
     "type": "value",

@@ -327,7 +327,7 @@
     {
       "type": "stat",
       "title": "Guests not backed up",
-      "description": "Guests in no backup job (rule PveGuestNotBackedUp, 1 hour; the PBS CT is excluded on purpose). It counts coverage only: there is no backup success or age metric yet, so a green tile does not prove the last backup worked. A freshness collector is planned and will add panels here.",
+      "description": "Guests in no backup job (rule PveGuestNotBackedUp, 1 hour; the PBS CTs are excluded on purpose). It counts coverage only: whether the last backup worked is the 'Age of the newest good backup' panel below (rule BackupStale).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -339,7 +339,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count((pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=\"pbs\"})",
+          "expr": "count((pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=~\"pbs.*\"})",
           "legendFormat": "",
           "instant": true,
           "range": false
@@ -2178,7 +2178,7 @@
     {
       "type": "table",
       "title": "Guests in no backup job",
-      "description": "Guests that no backup job covers (rule PveGuestNotBackedUp: still listed after 1 hour it alerts). Empty is the goal. The nightly job (PBS, 02:30 WIB) covers every guest except the PBS CT itself, whose disk is the datastore, so a new guest is covered automatically; an entry here means the job was edited, disabled or removed, or the guest is one the rule does not exclude. This is coverage only: there is no backup success or age metric yet.",
+      "description": "Guests that no backup job covers (rule PveGuestNotBackedUp: still listed after 1 hour it alerts). Empty is the goal. The nightly job (PBS, 02:30 WIB) covers every guest except the two PBS CTs, whose disks are the datastores, and VM 300 (its own job), so a new guest is covered automatically; an entry here means the job was edited, disabled or removed, or the guest is one the rule does not exclude. This is coverage only: the age panel next to it shows whether the last run worked.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2190,7 +2190,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=\"pbs\"}",
+          "expr": "(pve_not_backed_up_info == 1) * on (id) group_left (name, node) pve_guest_info{template=\"0\"} unless on (id) pve_guest_info{name=~\"pbs.*\"}",
           "legendFormat": "",
           "instant": true,
           "range": false,
@@ -2255,12 +2255,64 @@
       }
     },
     {
-      "type": "text",
-      "title": "Not measured yet",
-      "description": "Reading guide.",
+      "type": "bargauge",
+      "title": "Age of the newest good backup",
+      "description": "How old each guest's newest good snapshot is in the storage of the job that must cover it (rule BackupStale: orange from 36 hours, then alert after 30 minutes). A healthy guest is under 25 hours (nightly job 02:30 WIB, registry replica 03:30). The expected guests come from the cluster's backup jobs, so the PBS CTs are absent by design. A guest that never had a snapshot counts from the moment it was first expected. From a collector on pve2 every 10 minutes (BackupMetricsMissing if it stops). A restore is still the real proof (`docs/runbooks/backup-restore.md`).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - homelab_backup_last_success_timestamp_seconds{job=\"node\"}",
+          "legendFormat": "{{name}} ({{backup_job}})",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 129600
+              }
+            ]
+          },
+          "mappings": [],
+          "max": 172800
+        },
+        "overrides": []
+      },
       "options": {
-        "mode": "markdown",
-        "content": "**Backup freshness is not on this board.** Proxmox exports whether a guest is in a backup job, not whether the last run succeeded or how old it is. A freshness collector is planned and will add panels here. Until then a failed nightly run reaches Telegram only as a Proxmox notification, and a restore is the real proof (`docs/runbooks/backup-restore.md`)."
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "minVizHeight": 16,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        }
       },
       "id": 31,
       "gridPos": {

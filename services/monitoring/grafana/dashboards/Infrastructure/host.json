@@ -522,7 +522,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "((pve_guest_info{name=~\"$instance\", template=\"0\"} * 0 + 1) unless on (id) (pve_not_backed_up_info == 1) unless on (id) pve_guest_info{name=\"pbs\"}) or ((pve_guest_info{name=~\"$instance\", template=\"0\"} * 0) and on (id) (pve_not_backed_up_info == 1) unless on (id) pve_guest_info{name=\"pbs\"})",
+          "expr": "((pve_guest_info{name=~\"$instance\", template=\"0\"} * 0 + 1) unless on (id) (pve_not_backed_up_info == 1) unless on (id) pve_guest_info{name=~\"pbs.*\"}) or ((pve_guest_info{name=~\"$instance\", template=\"0\"} * 0) and on (id) (pve_not_backed_up_info == 1) unless on (id) pve_guest_info{name=~\"pbs.*\"})",
           "legendFormat": "",
           "instant": true,
           "range": false

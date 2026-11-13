@@ -1,6 +1,7 @@
 # promtool unit tests for the backup alerts (rules/cluster.yml, rules/backups.yml).
 rule_files:
   - ../rules/cluster.yml
+  - ../rules/backups.yml
 
 evaluation_interval: 1m
 
@@ -31,4 +32,91 @@ tests:
               summary: "newapp (lxc/150 on pve2) is in no backup job"
               description: "newapp (lxc/150 on pve2) has been in no backup job for over 1 h, so it has no backups at all. Check the nightly job's exclusions and the PBS storage, and re-converge Tofu in proxmox/opentofu if the job was changed."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#pveguestnotbackedup
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+
+  # BackupStale. promtool's clock starts at 0, so a series value is "seconds
+  # after the start" and the cases are read at t = 100 h (360000 s). The first
+  # case is the real gap of 2026-10-27..11-12: CT 101 and CT 132 failed every
+  # night on a full thin pool and nothing alerted.
+  #   101: newest good backup 99 h ago           -> fires
+  #   102: 10 h ago (healthy)                    -> quiet
+  #   120: 30 h ago (one slow night, under 36 h) -> quiet
+  #   150: never backed up, first expected 40 h ago (it carries that time) -> fires
+  #   151: never backed up, first expected 3 h ago (a new guest)           -> quiet
+  - interval: 4m
+    input_series:
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="101",name="admin-gw",backup_job="nightly",storage="pbs"}'
+        values: '3600x1800'
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="102",name="admin-gw2",backup_job="nightly",storage="pbs"}'
+        values: '324000x1800'
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="120",name="monitoring",backup_job="nightly",storage="pbs"}'
+        values: '252000x1800'
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="150",name="neverbacked",backup_job="nightly",storage="pbs"}'
+        values: '216000x1800'
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="151",name="brandnew",backup_job="nightly",storage="pbs"}'
+        values: '349200x1800'
+    alert_rule_test:
+      - eval_time: 100h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve2, tier: critical, node: pve2, vmid: "101", name: admin-gw, backup_job: nightly, storage: pbs }
+            exp_annotations:
+              summary: "admin-gw (VMID 101): no good backup in 4d 3h 0m 0s"
+              description: "The newest good snapshot of admin-gw (VMID 101) in storage pbs is 4d 3h 0m 0s old (job nightly, due nightly), or it has none yet. A failed run is in the job's log on the node (the Proxmox task list) and arrives as a Telegram error only if notifications work. Usual causes: a full thin pool (a snapshot cannot be taken), a full or unreachable PBS datastore, a locked guest."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+          - exp_labels: { severity: warning, job: node, instance: pve2, tier: critical, node: pve2, vmid: "150", name: neverbacked, backup_job: nightly, storage: pbs }
+            exp_annotations:
+              summary: "neverbacked (VMID 150): no good backup in 1d 16h 0m 0s"
+              description: "The newest good snapshot of neverbacked (VMID 150) in storage pbs is 1d 16h 0m 0s old (job nightly, due nightly), or it has none yet. A failed run is in the job's log on the node (the Proxmox task list) and arrives as a Telegram error only if notifications work. Usual causes: a full thin pool (a snapshot cannot be taken), a full or unreachable PBS datastore, a locked guest."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+      # 150 is still 30 h old at t = 90 h; 101 already fires
+      - eval_time: 90h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve2, tier: critical, node: pve2, vmid: "101", name: admin-gw, backup_job: nightly, storage: pbs }
+            exp_annotations:
+              summary: "admin-gw (VMID 101): no good backup in 3d 17h 0m 0s"
+              description: "The newest good snapshot of admin-gw (VMID 101) in storage pbs is 3d 17h 0m 0s old (job nightly, due nightly), or it has none yet. A failed run is in the job's log on the node (the Proxmox task list) and arrives as a Telegram error only if notifications work. Usual causes: a full thin pool (a snapshot cannot be taken), a full or unreachable PBS datastore, a locked guest."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+
+  # a backup that lands clears the alert: 101 is stale until t = 60 h, then
+  # the collector reports a snapshot from t = 59 h
+  - interval: 4m
+    input_series:
+      - series: 'homelab_backup_last_success_timestamp_seconds{job="node",instance="pve2",tier="critical",node="pve2",vmid="101",name="admin-gw",backup_job="nightly",storage="pbs"}'
+        values: '3600x900 212400x900'
+    alert_rule_test:
+      - eval_time: 59h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node, instance: pve2, tier: critical, node: pve2, vmid: "101", name: admin-gw, backup_job: nightly, storage: pbs }
+            exp_annotations:
+              summary: "admin-gw (VMID 101): no good backup in 2d 10h 0m 0s"
+              description: "The newest good snapshot of admin-gw (VMID 101) in storage pbs is 2d 10h 0m 0s old (job nightly, due nightly), or it has none yet. A failed run is in the job's log on the node (the Proxmox task list) and arrives as a Telegram error only if notifications work. Usual causes: a full thin pool (a snapshot cannot be taken), a full or unreachable PBS datastore, a locked guest."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupstale
+              dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+      - eval_time: 70h
+        alertname: BackupStale
+        exp_alerts: []
+
+  # BackupMetricsMissing: no homelab_backup_* series for 2 h
+  - interval: 4m
+    input_series:
+      - series: 'up{job="node",instance="pve2"}'
+        values: '1x1800'
+    alert_rule_test:
+      - eval_time: 1h
+        alertname: BackupMetricsMissing
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: BackupMetricsMissing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node }
+            exp_annotations:
+              summary: "No backup freshness metrics: BackupStale is blind"
+              description: "Prometheus has had no homelab_backup_* series for 2 h, so a failed backup would go unnoticed. The collector runs on one Proxmox node from a systemd timer (prometheus-node-exporter-backup.timer); check that node is up and run ansible-playbook proxmox-nodes.yml --tags monitoring."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupmetricsmissing
               dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox

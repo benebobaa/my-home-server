@@ -21,7 +21,7 @@ WAN_IN = 'ifHCInOctets{job="snmp_hex", ifName="ether1"}'
 NOT_BACKED_UP = (
     '(pve_not_backed_up_info == 1)'
     ' * on (id) group_left (name, node) pve_guest_info{template="0"}'
-    ' unless on (id) pve_guest_info{name="pbs"}'
+    ' unless on (id) pve_guest_info{name=~"pbs.*"}'
 )
 # ADR 0036 decision 6: the SLI is both public probes up; the budget is 1 - 99.5 %.
 # The 30-day subquery runs at the probes' own 1 m step (as the rules do): at 5 m it samples

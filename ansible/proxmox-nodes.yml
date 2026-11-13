@@ -661,6 +661,67 @@
         - prometheus-node-exporter-lvm.timer
       tags: monitoring
 
+    # Backup freshness (ADR 0009, 0036): when did each backup job last leave a
+    # good snapshot for each guest it must cover? One collector on ONE node (the
+    # series are cluster-wide: on every node they would double). It lives on the
+    # node that hosts monitoring, read from inventory/lab.yaml. The script
+    # derives the expected guests from the cluster's backup jobs, so no list is
+    # kept here. Alerts: services/monitoring/prometheus/rules/backups.yml.
+    - name: Install the backup-freshness collector
+      ansible.builtin.copy:
+        src: backup-freshness.py
+        dest: /usr/local/sbin/backup-freshness
+        owner: root
+        group: root
+        mode: "0755"
+      when: inventory_hostname == lab.hosts.monitoring.node
+      tags: monitoring
+
+    - name: Install the backup-freshness service + timer
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.name }}"
+        content: "{{ item.content }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - name: prometheus-node-exporter-backup.service
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+            [Unit]
+            Description=Collect backup freshness per guest for prometheus-node-exporter
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/sbin/backup-freshness
+        - name: prometheus-node-exporter-backup.timer
+          content: |
+            # managed by Ansible — see ansible/proxmox-nodes.yml (monitoring tag).
+            [Unit]
+            Description=Collect backup freshness every 10 minutes
+
+            # OnActiveSec: the first run 2 min after the timer starts (after a
+            # boot /etc/pve needs the cluster first); then every 10 min.
+            [Timer]
+            OnActiveSec=2min
+            OnUnitActiveSec=10min
+
+            [Install]
+            WantedBy=timers.target
+      loop_control:
+        label: "{{ item.name }}"
+      when: inventory_hostname == lab.hosts.monitoring.node
+      tags: monitoring
+
+    - name: Enable the backup-freshness timer
+      ansible.builtin.systemd_service:
+        name: prometheus-node-exporter-backup.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: inventory_hostname == lab.hosts.monitoring.node
+      tags: monitoring
+
     # ---------------------------------------------------------------- logging
     # The node's journal → the lab log store (VictoriaLogs, CT 121 `logs`;
     # ADR 0008). The same setup as services/logs/ship.sh in the containers:

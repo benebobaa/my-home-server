@@ -1,0 +1,34 @@
+# Backup freshness (ADR 0009, 0036). The series come from the textfile
+# collector ansible/files/backup-freshness.py (Ansible tag `monitoring`, one
+# node), which derives the expected guests from the cluster's own backup jobs.
+# PveGuestNotBackedUp (cluster.yml) covers the other half: a guest in no job.
+groups:
+  - name: backups
+    rules:
+      # The nightly job runs at 02:30 (the registry replica at 03:30), so a
+      # healthy guest is never older than about 25 h. 36 h means one night was
+      # missed; held overnight like every warning. A guest that has never had
+      # a snapshot carries the time it was first expected as its timestamp.
+      - alert: BackupStale
+        expr: time() - homelab_backup_last_success_timestamp_seconds{job="node"} > 36 * 3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.name }} (VMID {{ $labels.vmid }}): no good backup in {{ $value | humanizeDuration }}"
+          description: "The newest good snapshot of {{ $labels.name }} (VMID {{ $labels.vmid }}) in storage {{ $labels.storage }} is {{ $value | humanizeDuration }} old (job {{ $labels.backup_job }}, due nightly), or it has none yet. A failed run is in the job's log on the node (the Proxmox task list) and arrives as a Telegram error only if notifications work. Usual causes: a full thin pool (a snapshot cannot be taken), a full or unreachable PBS datastore, a locked guest."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupstale
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox
+
+      # Without the series BackupStale can never fire: the collector is not
+      # installed, its node is down, or the file was removed. (A stale file is
+      # HostTextfileCollectorStale; the series survive a node outage only as
+      # long as Prometheus's staleness window, 5 min.)
+      - alert: BackupMetricsMissing
+        expr: absent(homelab_backup_last_success_timestamp_seconds{job="node"})
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: "No backup freshness metrics: BackupStale is blind"
+          description: "Prometheus has had no homelab_backup_* series for 2 h, so a failed backup would go unnoticed. The collector runs on one Proxmox node from a systemd timer (prometheus-node-exporter-backup.timer); check that node is up and run ansible-playbook proxmox-nodes.yml --tags monitoring."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#backupmetricsmissing
+          dashboard_url: http://10.10.10.16:3000/d/homelab-infra-proxmox

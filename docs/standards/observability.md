@@ -71,7 +71,9 @@ Every guest is in the nightly PBS job automatically (`--all`). What that
 does **not** cover: **bind mounts** (host directories mounted into the
 guest). Keep an app's state on its own volume, not a bind mount — or the app
 README must say how that state is backed up. `PveGuestNotBackedUp` fires if
-a guest falls out of the job.
+a guest falls out of the job. `BackupStale` fires if a guest's
+newest good snapshot is older than 36 h (collector: `ansible/files/backup-freshness.py`;
+the expected guests are derived from the backup jobs, nothing to register).
 
 ## 5. Optional, when the app is worth it
 
