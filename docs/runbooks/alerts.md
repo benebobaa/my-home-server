@@ -935,8 +935,8 @@ disabled deployment (owner's call); a bad release: roll back the revision.
 ### LarasrouterNoReadyPods
 **Meaning:** no `user-container` in the namespace has been ready for 5 min, so
 the API cannot answer. It runs two pods, and Knative keeps the old revision
-serving during a rollout, so a deploy does not trip it. Warning: held
-overnight, so an outage at night is read at 07:00. If the tenant is ever
+serving during a rollout, so a deploy does not trip it. Critical: it pages
+at any hour (a paid API that answers nothing). If the tenant is ever
 changed to scale to zero, this rule must go (it would fire whenever the app
 is idle).
 **Check:** `kubectl -n kl-f42a6fae-f42a6fae get pods,revision`, then describe

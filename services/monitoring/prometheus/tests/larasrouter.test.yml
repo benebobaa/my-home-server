@@ -107,7 +107,7 @@ tests:
       - eval_time: 45m
         alertname: LarasrouterNoReadyPods
         exp_alerts:
-          - exp_labels: { severity: warning }
+          - exp_labels: { severity: critical }
             exp_annotations:
               summary: "larasrouter API has no ready pod: it cannot answer requests"
               description: "No user-container of namespace kl-f42a6fae-f42a6fae has been ready for 5 min, so api.larasrouter.com cannot answer. Check the pods and the Knative revision (kubectl -n kl-f42a6fae-f42a6fae get pods,revision; describe the newest pod) through VM 300's guest agent. If a release just went out, roll back to the previous revision."

@@ -55,7 +55,9 @@ groups:
           (sum(kube_pod_container_status_ready{job="service_dmz", namespace="kl-f42a6fae-f42a6fae", container="user-container"}) or vector(0)) == 0
           and on () (count(kube_pod_info{job="service_dmz"}) > 0)
         for: 5m
-        labels: { severity: warning }
+        # Critical (operator, 2026-11-13): a paid API that answers nothing
+        # should page at any hour, not wait for the morning.
+        labels: { severity: critical }
         annotations:
           summary: "larasrouter API has no ready pod: it cannot answer requests"
           description: "No user-container of namespace kl-f42a6fae-f42a6fae has been ready for 5 min, so api.larasrouter.com cannot answer. Check the pods and the Knative revision (kubectl -n kl-f42a6fae-f42a6fae get pods,revision; describe the newest pod) through VM 300's guest agent. If a release just went out, roll back to the previous revision."
