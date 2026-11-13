@@ -35,6 +35,11 @@ Service at the pinned ClusterIP `10.43.229.215`, so the default service CIDR
 `10.43.0.0/16` must stay). Deliberately different: **secrets encryption at
 rest on**, kubeconfig 0600, no debug logging, kubelet reservations sized for
 5 GB / 3 GB (server 512 Mi + 512 Mi, worker 256 Mi + 256 Mi).
+Disk hygiene (2026-11-13, after the worker's images and journal filled
+pve3's thin pool): the worker's kubelet image GC starts at 70 % disk and
+trims to 60 % (default 85/80), and both nodes cap the journal at 500 MB
+(`journald.conf.d/10-homeserver-size.conf`; logs that matter are in
+VictoriaLogs).
 
 Two join tokens (`random_password`, encrypted state), sent on the guest
 agent's stdin, stored 0600:

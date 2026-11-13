@@ -94,7 +94,24 @@ kubelet-arg:
   - system-reserved=cpu=250m,memory=256Mi
   - kube-reserved=cpu=250m,memory=256Mi
   - pod-max-pids=1024
+  # Tenant images churn here (scale-to-zero, redeploys). The default image GC
+  # starts at 85 % disk; the disk sat at 83 % with 72 unused images and pve3's
+  # thin pool filled (2026-11-13). Unused images re-pull from the LAN registry.
+  - image-gc-high-threshold=70
+  - image-gc-low-threshold=60
 EOF
+fi
+
+# Cap the journal: it reached 3.5 GB on the worker (2026-11-13). Logs that
+# matter are shipped to VictoriaLogs; this is the local tail only.
+journald_conf=/etc/systemd/journald.conf.d/10-homeserver-size.conf
+journald_new='# managed by services/k3s/install.sh (homeserver repo) — edit there.
+[Journal]
+SystemMaxUse=500M'
+if [ "$(cat "$journald_conf" 2>/dev/null)" != "$journald_new" ]; then
+  install -d -m 0755 /etc/systemd/journald.conf.d
+  printf '%s\n' "$journald_new" > "$journald_conf"
+  systemctl restart systemd-journald
 fi
 
 # The nameservers CoreDNS's forwarder reads, and that kubelet copies for

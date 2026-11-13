@@ -87,7 +87,7 @@ returned to the pool when the guest discards it:
 
 - **VM disks:** `discard = "on"` and `ssd = true` on every `disk {}` block, so
   deletes inside the VM reach the pool (and the guest sees an SSD).
-- **Containers:** nothing to set — the hosts run `pct fstrim` weekly
+- **Containers:** nothing to set — the hosts run `pct fstrim` daily
   (`pct-fstrim.timer`, Ansible `storage` tag).
 - The pool auto-extends at 80% into the node's free VG space (Ansible), but
   that buffer is small (~15 GB) — size guests for real use, don't rely on
