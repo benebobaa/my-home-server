@@ -14,6 +14,7 @@ namespace `kl-f42a6fae-f42a6fae`, services `larasrouter-api` and `larasrouter-mo
 | Valkey instance `larasrouter`, port 6381 | CT 132, `proxmox/opentofu/valkey.tf`, exporter 9122 |
 | hEX pinholes (worker only) | `network/routeros/firewall.tf`: `forward_worker_postgres`, `forward_worker_valkey` |
 | Egress for the tenant's pods | `tenant-netpol.yaml`, applied by `apply-netpol.sh` |
+| Alerts (5xx ratio, no ready pod, crash loop; low-volume guards) | `services/monitoring/prometheus/rules/app-larasrouter.yml`, runbook `docs/runbooks/alerts.md#larasrouter-a-kubeletto-tenant`; app events (billing, routing, FX) are not metrics yet |
 | Copy of the production data | `sync-db.sh check|run` |
 | The two connection strings | `urls.sh database|redis`, to the clipboard only |
 | Migrations by hand, before a release | `migrate.sh status|up [--yes]`: through the tunnel, snapshot first, confirmation, the larasrouter checkout's goose (pinned) and seeds |

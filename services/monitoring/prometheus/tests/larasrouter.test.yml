@@ -1,0 +1,177 @@
+# promtool unit tests for rules/app-larasrouter.yml. The Traefik service of the
+# larasrouter custom domain is DOM; the namespace is the tenant's.
+rule_files:
+  - ../rules/app-larasrouter.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Healthy: a request a minute, two cancelled uploads (502) in three hours.
+  # Under the 3-errors guard and the 5 % line: quiet.
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="200"}'
+        values: '0+1x180'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="502"}'
+        values: '0x60 1x60 2x60'
+    alert_rule_test:
+      - eval_time: 150m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts: []
+
+  # An outage from minute 60: every second request fails (503). 10 min of
+  # `for`, so firing at 100 m, not yet at 65 m.
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="200"}'
+        values: '0+1x180'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="503"}'
+        values: '0x60 0+1x120'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "larasrouter API: 39.39% of requests answered 5xx in the last hour"
+              description: "api.larasrouter.com answered 39.39% of its requests (404s excluded) with a 5xx in the last hour, with at least 20 requests and 3 errors. Some of these can be client-cancelled uploads (Traefik reports them as 502): match the 5xx against the API pods' logs before acting. Real causes seen so far: an upstream provider failing every attempt, a bad release."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasroutererrorratiohigh
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # Night traffic: 6 requests in the hour, 3 of them failing (50 %): the
+  # 20-request guard keeps it quiet.
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="200"}'
+        values: '0x60 0+1x2 3x180'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="500"}'
+        values: '0x60 0+1x2 3x180'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts: []
+
+  # 404s are bots: 3000 of them in the hour must neither dilute a real error
+  # rate (21 good, 4 failing: 16 % of the real requests, 0.13 % of all, 4/25) ...
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="404"}'
+        values: '0+50x180'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="200"}'
+        values: '0x60 0+1x21 21x120'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="502"}'
+        values: '0x60 0+1x4 4x120'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "larasrouter API: 16% of requests answered 5xx in the last hour"
+              description: "api.larasrouter.com answered 16% of its requests (404s excluded) with a 5xx in the last hour, with at least 20 requests and 3 errors. Some of these can be client-cancelled uploads (Traefik reports them as 502): match the 5xx against the API pods' logs before acting. Real causes seen so far: an upstream provider failing every attempt, a bad release."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasroutererrorratiohigh
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # Another tenant's errors (the shared user-apps service) are not larasrouter's.
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-user-apps-d46a7789fade4ce6d1ec@kubernetescrd",code="200"}'
+        values: '0+1x180'
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-user-apps-d46a7789fade4ce6d1ec@kubernetescrd",code="503"}'
+        values: '0+1x180'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: LarasrouterErrorRatioHigh
+        exp_alerts: []
+
+  # LarasrouterNoReadyPods: two ready pods; both go away at minute 30 (their
+  # series vanish) and the guard (kube-state-metrics is up: kube_pod_info
+  # exists for other namespaces) lets the alert fire after 5 min.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="a",container="user-container"}'
+        values: '1x30 _x60'
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="b",container="user-container"}'
+        values: '1x30 _x60'
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="a",container="queue-proxy"}'
+        values: '1x90'
+      - series: 'kube_pod_info{job="service_dmz",namespace="kl-platform",pod="core"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: LarasrouterNoReadyPods
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: LarasrouterNoReadyPods
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "larasrouter API has no ready pod: it cannot answer requests"
+              description: "No user-container of namespace kl-f42a6fae-f42a6fae has been ready for 5 min, so api.larasrouter.com cannot answer. Check the pods and the Knative revision (kubectl -n kl-f42a6fae-f42a6fae get pods,revision; describe the newest pod) through VM 300's guest agent. If a release just went out, roll back to the previous revision."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouternoreadypods
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # One of two pods not ready (a rollout, a node drain) does not alert; neither
+  # does a blind kube-state-metrics (no kube_pod_info at all).
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="a",container="user-container"}'
+        values: '1x90'
+      - series: 'kube_pod_container_status_ready{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="b",container="user-container"}'
+        values: '0x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: LarasrouterNoReadyPods
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'up{job="service_dmz",instance="k3s"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: LarasrouterNoReadyPods
+        exp_alerts: []
+
+  # CrashLoopBackOff for 5 min fires; other tenants' loops are not its business.
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_waiting_reason{job="service_dmz",namespace="kl-f42a6fae-f42a6fae",pod="a",container="user-container",reason="CrashLoopBackOff"}'
+        values: '0x10 1x30'
+      - series: 'kube_pod_container_status_waiting_reason{job="service_dmz",namespace="kl-someone-else",pod="x",container="user-container",reason="CrashLoopBackOff"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: LarasrouterPodCrashLooping
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: LarasrouterPodCrashLooping
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "larasrouter: 1 container(s) in CrashLoopBackOff"
+              description: "1 container(s) in namespace kl-f42a6fae-f42a6fae have been in CrashLoopBackOff for 5 min. Read the previous log of the crashing container (kubectl logs --previous) for the error; a bad new revision is rolled back, a missing secret or an unreachable Postgres or Valkey is fixed at its source."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouterpodcrashlooping
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # The domain's Traefik service name changed (the domain was recreated): the
+  # old series goes stale and the blind-spot alert fires after 1 h.
+  - interval: 1m
+    input_series:
+      - series: 'traefik_service_requests_total{job="service_dmz",exported_service="traefik-dom-b5f3066c-2dbb-47d0-9a55-1020ee98e464-69d4be04404ab7d48b9c@kubernetescrd",code="200"}'
+        values: '0+1x30 _x200'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: LarasrouterEdgeMetricsMissing
+        exp_alerts: []
+      - eval_time: 120m
+        alertname: LarasrouterEdgeMetricsMissing
+        exp_alerts:
+          - exp_labels: { severity: info, job: service_dmz }
+            exp_annotations:
+              summary: "No Traefik series for the larasrouter domain: its error-ratio alert is blind"
+              description: "Prometheus has had no request counters for the larasrouter custom domain's Traefik service for 1 h. If the domain was recreated, its IngressRoute (and so the service name hash) changed: find it with kubectl -n traefik get ingressroute | grep dom- and update the exported_service match in rules/app-larasrouter.yml."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouteredgemetricsmissing
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants

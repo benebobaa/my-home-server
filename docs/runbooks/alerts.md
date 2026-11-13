@@ -903,6 +903,65 @@ keys: many keys without a TTL is an app bug).
 **Fix:** the app's TTLs; or raise `maxmemory` in `local.valkey_instances`
 (`proxmox/opentofu/valkey.tf`) within the CT's 256 MB.
 
+## larasrouter (a Kubeletto tenant)
+
+The LLM API router (`services/larasrouter`, namespace `kl-f42a6fae-f42a6fae`,
+public name `api.larasrouter.com`). Its traffic is low-volume, so
+the rules are built for low volume and use only what Prometheus already has:
+Traefik's request counters for the domain's own Traefik service (one
+IngressRoute, `dom-b5f3066c-…`) and kube-state-metrics. Per-event signals
+(billing holds written off, routing refresh failed, stale FX rate) are not
+metrics yet: they need log-derived counters (Vector) or a VictoriaLogs alert.
+Kubectl through VM 300: `qm guest exec 300 -- k3s kubectl -n kl-f42a6fae-f42a6fae ...` on pve2.
+
+### LarasrouterErrorRatioHigh
+**Meaning:** more than 5 % of the API's requests in the last hour got a 5xx
+(404s left out: bot and probe scans outnumber real calls), with at least 20
+requests and 3 errors in that hour. Warning, 10 min of `for`.
+**Reading it:** Traefik's metric code is what the client was sent, except that
+a client which cancels an upload part-way shows as a **502** here (Vector's
+rewrite to 499 only touches the logs; `larasrouter-5xx-reading` in the
+operator's notes, RCA 2026-11-07). Those are a handful a week from one client,
+well under the guards: over 30 days of this series the highest 1-hour ratio
+with the guards met was 4.6 % (the 2026-11-07 DeepSeek incident). So a firing
+alert is usually real. First 5xx of a status code that never occurred before
+is not counted (a new series starts at 1).
+**Check:** the API pods' logs for the hour (`kubectl logs -l ... --since=1h`,
+look for `error.code` and the provider that failed), and the Kubeletto Metrics
+tab for the service (the `client_aborted` rows are the cancelled uploads).
+**Fix:** an upstream provider failing every attempt: routing weights or a
+disabled deployment (owner's call); a bad release: roll back the revision.
+
+### LarasrouterNoReadyPods
+**Meaning:** no `user-container` in the namespace has been ready for 5 min, so
+the API cannot answer. It runs two pods, and Knative keeps the old revision
+serving during a rollout, so a deploy does not trip it. Warning: held
+overnight, so an outage at night is read at 07:00. If the tenant is ever
+changed to scale to zero, this rule must go (it would fire whenever the app
+is idle).
+**Check:** `kubectl -n kl-f42a6fae-f42a6fae get pods,revision`, then describe
+the newest pod (image pull, scheduling, probes). `K8sPodUnschedulable` and
+`K8sNodeMemoryPressure` explain a cluster-wide cause.
+**Fix:** roll back to the previous revision, or fix what blocks the pod.
+
+### LarasrouterPodCrashLooping
+**Meaning:** a container of the namespace has been in CrashLoopBackOff for 5
+min. The generic `K8sTenantContainerRestarting` is the 3-hour net for every
+tenant; this is the fast one for the API.
+**Check:** `kubectl logs --previous` of the crashing container: a missing
+secret, an unreachable Postgres or Valkey (`PostgresDown`, `ValkeyDown`), or a
+bad image.
+**Fix:** at the source; a bad new revision is rolled back.
+
+### LarasrouterEdgeMetricsMissing
+**Meaning:** Prometheus has had no request counters for the domain's Traefik
+service for 1 h, so `LarasrouterErrorRatioHigh` is blind. The usual cause is a
+recreated custom domain (its IngressRoute name, and with it the service name
+hash, changed); a scrape failure is `TargetDown` for the `k3s` target. Info.
+**Fix:** `kubectl -n traefik get ingressroute | grep dom-`, find the one with
+``Host(`api.larasrouter.com`)`` and put its name into the `exported_service`
+match in `rules/app-larasrouter.yml` (and its test).
+
 ## Service level objectives
 
 The one SLO ([ADR 0036](../decisions/0036-observability-v2-generated-dashboards-and-alert-contract.md),
