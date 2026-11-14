@@ -175,3 +175,108 @@ tests:
               description: "Prometheus has had no request counters for the larasrouter custom domain's Traefik service for 1 h. If the domain was recreated, its IngressRoute (and so the service name hash) changed: find it with kubectl -n traefik get ingressroute | grep dom- and update the exported_service match in rules/app-larasrouter.yml."
               runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouteredgemetricsmissing
               dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # LarasrouterProviderRejected. The case that matters most is the first
+  # rejection ever: log_to_metric creates the series on that event, so there
+  # is no earlier sample. It must fire at once, keep firing past the 10 minute
+  # window (keep_firing_for 1h), and clear after that.
+  - interval: 1m
+    input_series:
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="llm.provider.platform_rejected"}'
+        values: '_x60 1x200'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x260'
+    alert_rule_test:
+      - eval_time: 59m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+      - eval_time: 62m
+        alertname: LarasrouterProviderRejected
+        exp_alerts:
+          - exp_labels: { severity: critical, event: llm.provider.platform_rejected }
+            exp_annotations:
+              summary: "larasrouter: a supplier refused our API key or balance (1 rejected attempts in 10 min)"
+              description: "An upstream LLM supplier answered 401/402/403 to larasrouter's own credential: our balance there is empty or the key is wrong or revoked. Top up the balance or fix the key. Routing failover may be hiding it from customers, so do not wait for errors. Find which supplier in the API pods' logs (namespace kl-f42a6fae-f42a6fae): event.name llm.provider.platform_rejected and its routing.provider / routing.deployment fields; routing.breaker.changed with routing.transition disabled names the deployment too."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouterproviderrejected
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+      - eval_time: 120m
+        alertname: LarasrouterProviderRejected
+        exp_alerts:
+          - exp_labels: { severity: critical, event: llm.provider.platform_rejected }
+            exp_annotations:
+              summary: "larasrouter: a supplier refused our API key or balance (1 rejected attempts in 10 min)"
+              description: "An upstream LLM supplier answered 401/402/403 to larasrouter's own credential: our balance there is empty or the key is wrong or revoked. Top up the balance or fix the key. Routing failover may be hiding it from customers, so do not wait for errors. Find which supplier in the API pods' logs (namespace kl-f42a6fae-f42a6fae): event.name llm.provider.platform_rejected and its routing.provider / routing.deployment fields; routing.breaker.changed with routing.transition disabled names the deployment too."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouterproviderrejected
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+      - eval_time: 200m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+
+  # A counter that already exists steps again (a second outage on the same
+  # Vector pod): increase() catches it.
+  - interval: 1m
+    input_series:
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="llm.provider.platform_rejected"}'
+        values: '4x60 6x60'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: LarasrouterProviderRejected
+        exp_alerts:
+          - exp_labels: { severity: critical, event: llm.provider.platform_rejected }
+            exp_annotations:
+              summary: "larasrouter: a supplier refused our API key or balance (2 rejected attempts in 10 min)"
+              description: "An upstream LLM supplier answered 401/402/403 to larasrouter's own credential: our balance there is empty or the key is wrong or revoked. Top up the balance or fix the key. Routing failover may be hiding it from customers, so do not wait for errors. Find which supplier in the API pods' logs (namespace kl-f42a6fae-f42a6fae): event.name llm.provider.platform_rejected and its routing.provider / routing.deployment fields; routing.breaker.changed with routing.transition disabled names the deployment too."
+              runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouterproviderrejected
+              dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
+  # After a Prometheus restart or a scrape gap there is no history 10 minutes
+  # back, so every existing counter would look new. The up guard keeps a
+  # counter that has been at 3 since long before from paging.
+  - interval: 1m
+    input_series:
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="llm.provider.platform_rejected"}'
+        values: '3x120'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+
+  # The Vector target was down before the series appeared: no scrape 10
+  # minutes back, so it is not counted as new either.
+  - interval: 1m
+    input_series:
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="llm.provider.platform_rejected"}'
+        values: '_x45 5x75'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '0x45 1x75'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []
+
+  # Another counted event (a breaker change, partner spend) never fires it.
+  - interval: 1m
+    input_series:
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="routing.breaker.changed"}'
+        values: '_x60 1x60'
+      - series: 'larasrouter_events_total{job="service_dmz",instance="k3s",port="30598",event="routing.partner_spend.exceeded"}'
+        values: '_x60 1x60'
+      - series: 'up{job="service_dmz",instance="k3s",port="30598"}'
+        values: '1x120'
+    alert_rule_test:
+      - eval_time: 62m
+        alertname: LarasrouterProviderRejected
+        exp_alerts: []

@@ -3,7 +3,10 @@
 # already has about it: Traefik's per-service request counters (its custom
 # domain api.larasrouter.com is the one IngressRoute dom-b5f3066c-…, hence the
 # one Traefik service below) and kube-state-metrics for its namespace.
-# App-level events (billing, routing, FX) need log-derived metrics: not here.
+# App-level events come from its logs: Vector in the cluster counts a small
+# allow-list of event.name values as larasrouter_events_total{event=...}
+# (kubeletto repo, infra/k8s/home/vector.toml), scraped from :30598 by job
+# service_dmz like kubeletto_payment_events_total (rules/kubeletto-payments.yml).
 #
 # Traefik's own series are the only per-tenant request signal: every tenant
 # app shares one service (`traefik-user-apps-…`) and the finer router layer is
@@ -11,8 +14,44 @@
 # so it can be told apart. If the domain is ever recreated the hash changes and
 # LarasrouterEdgeMetricsMissing says so.
 groups:
+  # Counter gotcha (the same as rules/kubeletto-payments.yml): log_to_metric
+  # creates a series on its first event, so the first event of a kind has no
+  # earlier sample and increase() reports 0 for it, and on a healthy day there
+  # is no series at all. The recording rule adds the value of any series that
+  # did not exist 10 minutes ago, but only where that Vector target was up and
+  # scraped then (up offset 10m == 1): without that guard a Prometheus restart
+  # or a scrape gap would make every existing counter look new and page.
+  # Summed over the nodes' Vector pods; a Vector restart resets a counter,
+  # which increase() handles. There is no absent() rule: the counter has no
+  # heartbeat (zero events is the healthy state) and the exporter itself is
+  # TargetDown's job.
+  - name: app-larasrouter-recording
+    rules:
+      - record: larasrouter:events:new_10m
+        expr: |
+          (sum by (event) (increase(larasrouter_events_total[10m])) or sum by (event) (larasrouter_events_total) * 0)
+          +
+          (sum by (event) ((larasrouter_events_total unless larasrouter_events_total offset 10m) and on (job, instance, port) (up{job="service_dmz"} offset 10m == 1)) or sum by (event) (larasrouter_events_total) * 0)
+
   - name: app-larasrouter
     rules:
+      # An upstream supplier answered 401/402/403 to OUR credential: the key
+      # is wrong or revoked, or our prepaid balance there ran out. The app logs
+      # llm.provider.platform_rejected once per rejected attempt. Routing fails
+      # over to the next deployment, so customers may see nothing until every
+      # supplier is exhausted; that is exactly why it pages. Baseline is 0, so
+      # one is enough. Critical (operator, 2026-11-14): pages at any hour.
+      # keep_firing_for holds a one-off past the 10 minute window.
+      - alert: LarasrouterProviderRejected
+        expr: larasrouter:events:new_10m{event="llm.provider.platform_rejected"} > 0
+        keep_firing_for: 1h
+        labels: { severity: critical }
+        annotations:
+          summary: "larasrouter: a supplier refused our API key or balance ({{ $value | humanize }} rejected attempts in 10 min)"
+          description: "An upstream LLM supplier answered 401/402/403 to larasrouter's own credential: our balance there is empty or the key is wrong or revoked. Top up the balance or fix the key. Routing failover may be hiding it from customers, so do not wait for errors. Find which supplier in the API pods' logs (namespace kl-f42a6fae-f42a6fae): event.name llm.provider.platform_rejected and its routing.provider / routing.deployment fields; routing.breaker.changed with routing.transition disabled names the deployment too."
+          runbook_url: https://github.com/benebobaa/my-home-server/blob/main/docs/runbooks/alerts.md#larasrouterproviderrejected
+          dashboard_url: http://10.10.10.16:3000/d/homelab-k8s-tenants
+
       # 5xx share of the API's requests over 1 h. Three guards:
       # - 404 is left out of the denominator: bots and probes hit unknown
       #   paths (they outnumber the successful calls), and

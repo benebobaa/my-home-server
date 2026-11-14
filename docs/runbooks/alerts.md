@@ -909,10 +909,40 @@ The LLM API router (`services/larasrouter`, namespace `kl-f42a6fae-f42a6fae`,
 public name `api.larasrouter.com`). Its traffic is low-volume, so
 the rules are built for low volume and use only what Prometheus already has:
 Traefik's request counters for the domain's own Traefik service (one
-IngressRoute, `dom-b5f3066c-…`) and kube-state-metrics. Per-event signals
-(billing holds written off, routing refresh failed, stale FX rate) are not
-metrics yet: they need log-derived counters (Vector) or a VictoriaLogs alert.
+IngressRoute, `dom-b5f3066c-…`) and kube-state-metrics, plus a few app log
+events that Vector in the cluster counts as `larasrouter_events_total{event=...}`
+(an allow-list in the kubeletto repo's `infra/k8s/home/vector.toml`:
+`llm.provider.platform_rejected`, `routing.breaker.changed`,
+`routing.partner_spend.exceeded`, `routing.partner_spend.check_failed`).
+Other per-event signals (billing holds written off, routing refresh failed,
+stale FX rate) are not metrics yet: add them to that allow-list first.
 Kubectl through VM 300: `qm guest exec 300 -- k3s kubectl -n kl-f42a6fae-f42a6fae ...` on pve2.
+
+### LarasrouterProviderRejected
+**Meaning:** an upstream LLM supplier answered 401, 402 or 403 to
+larasrouter's **own** credential in the last 10 minutes: our prepaid balance
+there ran out, or the key is wrong, revoked or out of scope. The app logs
+`llm.provider.platform_rejected` once per rejected attempt; Vector counts it
+and `larasrouter:events:new_10m` catches the first one ever (the series is
+created by that event). Critical: pages at any hour. `keep_firing_for: 1h`
+holds a one-off. Routing fails over to the next deployment, so customers may
+see nothing until every supplier for that model is refused: do not wait for
+`LarasrouterErrorRatioHigh`.
+**Check:** which supplier. In the API pods' logs (`kubectl -n
+kl-f42a6fae-f42a6fae logs -l serving.knative.dev/service --since=1h -c
+user-container | grep platform_rejected`): `upstream.status_code` (402 is
+balance, 401/403 the key) and `routing.provider` / `routing.deployment`. A
+`routing.breaker.changed` line with `routing.transition` `disabled` names the
+deployment the router has taken out. The supplier's own dashboard shows the
+balance.
+**Fix:** top up the supplier's balance, or rotate the key (the deployment's
+`api_key_env` secret on the larasrouter service) and redeploy. The breaker
+re-admits the deployment after its open period. If a supplier cannot be fixed
+soon, disable that deployment (`deployment_overrides`, owner's call) so no
+request waits on it.
+**Not firing when it should:** Vector's exporter (`:30598`, `TargetDown` for
+`k3s`) or a renamed event in the app (the counter then stays at zero
+silently).
 
 ### LarasrouterErrorRatioHigh
 **Meaning:** more than 5 % of the API's requests in the last hour got a 5xx
